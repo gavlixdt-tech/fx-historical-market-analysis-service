@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node
+node_modules/
+dist/
+build/
+.vite/
+coverage/
+
+# Environment and secrets - never commit
+.env
+.env.*
+!.env.example
+secrets/
+*.key
+*.pem
+*.crt
+*.p12
+
+# Editors and OS
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Test artefacts
+.pytest-cache/
+coverage.xml
+junit.xml

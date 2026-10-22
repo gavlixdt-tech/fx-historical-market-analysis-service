@@ -1,0 +1,11 @@
+{
+  "_fixture_notice": "SYNTHETIC TEST FIXTURE - NOT REAL MARKET DATA. Hand-built from the fx-market-data-service error envelope.",
+  "error": {
+    "code": "unsupported_instrument",
+    "message": "Synthetic fixture - instrument is not supported.",
+    "request_id": "synthetic-fixture-request",
+    "details": {
+      "instrument": "SYNTH/USD"
+    }
+  }
+}

@@ -1,0 +1,64 @@
+# Local development stack for fx-historical-market-analysis-service.
+#
+# This service is independently deployable: it has no hard dependency on the
+# upstream market-data service. The upstream is only used for an optional
+# connectivity check, and its base URL is supplied through the environment.
+
+name: fx-historical-market-analysis-service
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: fx-historical-market-analysis-service-backend:latest
+    environment:
+      SERVICE_NAME: fx-historical-market-analysis-service
+      SERVICE_VERSION: 0.1.0
+      ENVIRONMENT: development
+      SERVICE_MODE: research-simulation
+      LOG_FORMAT: console
+      LOG_LEVEL: info
+      API_HOST: 0.0.0.0
+      API_PORT: "8000"
+      REQUIRE_AUTH: "false"
+      CORS_ALLOW_ORIGINS: http://localhost:5173,http://localhost:8080
+      TRUSTED_HOSTS: localhost,127.0.0.1,backend,testserver
+      MAX_REQUEST_BODY_BYTES: "1048576"
+      # Upstream market-data service (optional). Leave empty to run without it.
+      UPSTREAM_MARKET_DATA_BASE_URL: ${UPSTREAM_MARKET_DATA_BASE_URL:-}
+      UPSTREAM_API_KEY: ${UPSTREAM_API_KEY:-}
+      UPSTREAM_TIMEOUT_SECONDS: "5"
+      OTEL_ENABLED: "false"
+      METRICS_ENABLED: "true"
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health/live', timeout=4).status == 200 else 1)"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    image: fx-historical-market-analysis-service-frontend:latest
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:8080/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped

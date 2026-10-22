@@ -1,0 +1,665 @@
+{
+  "components": {
+    "schemas": {
+      "ApiResponse_LiveResponseData_": {
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LiveResponseData"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Response payload"
+          },
+          "errors": {
+            "description": "Error entries, if any",
+            "items": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta",
+            "description": "Response metadata"
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "ApiResponse[LiveResponseData]",
+        "type": "object"
+      },
+      "ApiResponse_ReadyResponseData_": {
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReadyResponseData"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Response payload"
+          },
+          "errors": {
+            "description": "Error entries, if any",
+            "items": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta",
+            "description": "Response metadata"
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "ApiResponse[ReadyResponseData]",
+        "type": "object"
+      },
+      "ApiResponse_StatusResponseData_": {
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StatusResponseData"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Response payload"
+          },
+          "errors": {
+            "description": "Error entries, if any",
+            "items": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta",
+            "description": "Response metadata"
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "ApiResponse[StatusResponseData]",
+        "type": "object"
+      },
+      "ApiResponse_VersionDetails_": {
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VersionDetails"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Response payload"
+          },
+          "errors": {
+            "description": "Error entries, if any",
+            "items": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta",
+            "description": "Response metadata"
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "ApiResponse[VersionDetails]",
+        "type": "object"
+      },
+      "CapabilityStatus": {
+        "description": "Status of a single capability.",
+        "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Human-readable description",
+            "title": "Detail"
+          },
+          "implemented": {
+            "description": "Whether the capability is implemented",
+            "title": "Implemented",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "Capability identifier",
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "implemented"
+        ],
+        "title": "CapabilityStatus",
+        "type": "object"
+      },
+      "DependencyHealth": {
+        "description": "Health of a single dependency.",
+        "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Additional detail",
+            "title": "Detail"
+          },
+          "healthy": {
+            "description": "Whether the dependency is healthy",
+            "title": "Healthy",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "Dependency identifier",
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "healthy"
+        ],
+        "title": "DependencyHealth",
+        "type": "object"
+      },
+      "ErrorDetail": {
+        "description": "A single structured error entry.",
+        "properties": {
+          "code": {
+            "description": "Stable, machine-readable error code",
+            "title": "Code",
+            "type": "string"
+          },
+          "details": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional structured detail (never secrets)",
+            "title": "Details"
+          },
+          "message": {
+            "description": "Human-readable error description",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Correlation ID for the failing request",
+            "title": "Request Id"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ErrorDetail",
+        "type": "object"
+      },
+      "LiveResponseData": {
+        "description": "Liveness response payload.",
+        "properties": {
+          "check": {
+            "default": "liveness",
+            "description": "Type of check performed",
+            "title": "Check",
+            "type": "string"
+          },
+          "mode": {
+            "description": "Operating mode",
+            "title": "Mode",
+            "type": "string"
+          },
+          "service": {
+            "description": "Service identifier",
+            "title": "Service",
+            "type": "string"
+          },
+          "status": {
+            "description": "'healthy', 'degraded' or 'unhealthy'",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "service",
+          "mode"
+        ],
+        "title": "LiveResponseData",
+        "type": "object"
+      },
+      "ReadyResponseData": {
+        "description": "Readiness response payload.",
+        "properties": {
+          "check": {
+            "default": "readiness",
+            "description": "Type of check performed",
+            "title": "Check",
+            "type": "string"
+          },
+          "dependencies": {
+            "description": "Dependency health details, if any",
+            "items": {
+              "$ref": "#/components/schemas/DependencyHealth"
+            },
+            "title": "Dependencies",
+            "type": "array"
+          },
+          "mode": {
+            "description": "Operating mode",
+            "title": "Mode",
+            "type": "string"
+          },
+          "service": {
+            "description": "Service identifier",
+            "title": "Service",
+            "type": "string"
+          },
+          "status": {
+            "description": "'healthy', 'degraded' or 'unhealthy'",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "service",
+          "mode"
+        ],
+        "title": "ReadyResponseData",
+        "type": "object"
+      },
+      "ResponseMeta": {
+        "description": "Response metadata included in every envelope.",
+        "properties": {
+          "api_version": {
+            "description": "API version, e.g. 'v1'",
+            "title": "Api Version",
+            "type": "string"
+          },
+          "request_id": {
+            "description": "Correlation ID for the request",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "timestamp_utc": {
+            "description": "UTC ISO 8601 response timestamp",
+            "title": "Timestamp Utc",
+            "type": "string"
+          }
+        },
+        "required": [
+          "api_version",
+          "request_id",
+          "timestamp_utc"
+        ],
+        "title": "ResponseMeta",
+        "type": "object"
+      },
+      "StatusResponseData": {
+        "description": "Status endpoint response payload.",
+        "properties": {
+          "api_version": {
+            "description": "API version",
+            "title": "Api Version",
+            "type": "string"
+          },
+          "application_version": {
+            "description": "Application version",
+            "title": "Application Version",
+            "type": "string"
+          },
+          "capabilities": {
+            "description": "Implemented and planned capabilities",
+            "items": {
+              "$ref": "#/components/schemas/CapabilityStatus"
+            },
+            "title": "Capabilities",
+            "type": "array"
+          },
+          "dependencies": {
+            "description": "Dependency health summary",
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Dependencies",
+            "type": "array"
+          },
+          "environment": {
+            "description": "Deployment environment",
+            "title": "Environment",
+            "type": "string"
+          },
+          "operational_state": {
+            "description": "'operational', 'degraded' or 'maintenance'",
+            "title": "Operational State",
+            "type": "string"
+          },
+          "service_id": {
+            "description": "Service identifier",
+            "title": "Service Id",
+            "type": "string"
+          },
+          "service_mode": {
+            "description": "Operating mode",
+            "title": "Service Mode",
+            "type": "string"
+          },
+          "timestamp_utc": {
+            "description": "UTC ISO 8601 status timestamp",
+            "title": "Timestamp Utc",
+            "type": "string"
+          },
+          "upstream_integration": {
+            "$ref": "#/components/schemas/UpstreamIntegrationStatus",
+            "description": "Status of the upstream market-data integration"
+          },
+          "uptime_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Process uptime in seconds, if available",
+            "title": "Uptime Seconds"
+          }
+        },
+        "required": [
+          "service_id",
+          "application_version",
+          "api_version",
+          "environment",
+          "service_mode",
+          "operational_state",
+          "timestamp_utc"
+        ],
+        "title": "StatusResponseData",
+        "type": "object"
+      },
+      "UpstreamIntegrationStatus": {
+        "description": "Connection state of the configured upstream market-data service.\n\nThe state vocabulary is deliberately explicit so that the dashboard can\ndistinguish *not configured* from *configured but never verified* from\n*verified reachable* and from *authentication failed*.",
+        "properties": {
+          "base_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Configured upstream base URL (no credentials are ever included)",
+            "title": "Base Url"
+          },
+          "base_url_configured": {
+            "default": false,
+            "description": "Whether an upstream base URL is configured",
+            "title": "Base Url Configured",
+            "type": "boolean"
+          },
+          "contract_status": {
+            "default": "verified",
+            "description": "Upstream contract verification status: 'verified' or 'proposed-not-yet-verified'",
+            "title": "Contract Status",
+            "type": "string"
+          },
+          "credential_configured": {
+            "default": false,
+            "description": "Whether an upstream credential is configured",
+            "title": "Credential Configured",
+            "type": "boolean"
+          },
+          "last_check_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Safe summary of the last connectivity check",
+            "title": "Last Check Message"
+          },
+          "last_check_succeeded": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Outcome of the last connectivity check",
+            "title": "Last Check Succeeded"
+          },
+          "last_checked_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "UTC timestamp of the last connectivity check",
+            "title": "Last Checked At"
+          },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Latency of the last successful check in milliseconds",
+            "title": "Latency Ms"
+          },
+          "service": {
+            "description": "Upstream service identifier",
+            "title": "Service",
+            "type": "string"
+          },
+          "state": {
+            "description": "One of: unconfigured, unverified, connected, unavailable, auth_failed",
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "service",
+          "state"
+        ],
+        "title": "UpstreamIntegrationStatus",
+        "type": "object"
+      },
+      "VersionDetails": {
+        "description": "Version payload extended with the operating mode.\n\nThe operating mode is always `research-simulation`; it is surfaced so that\nan operator can confirm at a glance that the deployment cannot trade.",
+        "properties": {
+          "api_version": {
+            "description": "API version",
+            "title": "Api Version",
+            "type": "string"
+          },
+          "application_version": {
+            "description": "Application version",
+            "title": "Application Version",
+            "type": "string"
+          },
+          "environment": {
+            "description": "Deployment environment",
+            "title": "Environment",
+            "type": "string"
+          },
+          "service": {
+            "description": "Service identifier",
+            "title": "Service",
+            "type": "string"
+          },
+          "service_mode": {
+            "default": "research-simulation",
+            "description": "Operating mode",
+            "title": "Service Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "service",
+          "application_version",
+          "api_version",
+          "environment"
+        ],
+        "title": "VersionDetails",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "Forex AI Platform - Historical Market Analysis Service. Research/simulation only. The historical analysis engine is not implemented in this foundation phase.",
+    "title": "fx-historical-market-analysis-service",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/health/live": {
+      "get": {
+        "description": "Confirm the backend process is alive. No external dependencies.",
+        "operationId": "live_api_v1_health_live_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_LiveResponseData_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Liveness check",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/v1/health/ready": {
+      "get": {
+        "description": "Confirm the service can accept traffic. Includes dependency health.",
+        "operationId": "ready_api_v1_health_ready_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ReadyResponseData_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Readiness check",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/v1/status": {
+      "get": {
+        "description": "Return operational status, capabilities, and dependency health.",
+        "operationId": "service_status_api_v1_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_StatusResponseData_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Service status",
+        "tags": [
+          "status"
+        ]
+      }
+    },
+    "/api/v1/version": {
+      "get": {
+        "description": "Return application version and API version information.",
+        "operationId": "version_api_v1_version_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_VersionDetails_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Version information",
+        "tags": [
+          "version"
+        ]
+      }
+    }
+  }
+}

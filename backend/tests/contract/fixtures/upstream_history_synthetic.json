@@ -1,0 +1,93 @@
+{
+  "_fixture_notice": "SYNTHETIC TEST FIXTURE - NOT REAL MARKET DATA. Hand-built from the fx-market-data-service response schemas.",
+  "data": {
+    "provider_id": "synthetic-test-adapter",
+    "canonical_instrument": "SYNTH/USD",
+    "requested_start": "2024-01-01T00:00:00Z",
+    "requested_end": "2024-01-04T00:00:00Z",
+    "effective_start": "2024-01-01T00:00:00Z",
+    "effective_end": "2024-01-03T00:00:00Z",
+    "timeframe": "D1",
+    "price_basis": "bid",
+    "candles": [
+      {
+        "provider_id": "synthetic-test-adapter",
+        "instrument": "SYNTH/USD",
+        "base_currency": "SYNTH",
+        "quote_currency": "USD",
+        "timeframe": "D1",
+        "price_basis": "bid",
+        "open_time": "2024-01-01T00:00:00Z",
+        "close_time": "2024-01-02T00:00:00Z",
+        "open": "1.00000",
+        "high": "1.01000",
+        "low": "0.99000",
+        "close": "1.00500",
+        "volume": "1000",
+        "volume_kind": "tick",
+        "source": "synthetic-fixture",
+        "retrieved_at": "2024-01-04T00:00:00Z",
+        "completeness": "complete",
+        "valid": true,
+        "validation_error": null,
+        "metadata": {}
+      },
+      {
+        "provider_id": "synthetic-test-adapter",
+        "instrument": "SYNTH/USD",
+        "base_currency": "SYNTH",
+        "quote_currency": "USD",
+        "timeframe": "D1",
+        "price_basis": "bid",
+        "open_time": "2024-01-02T00:00:00Z",
+        "close_time": "2024-01-03T00:00:00Z",
+        "open": "1.00500",
+        "high": "1.02000",
+        "low": "1.00000",
+        "close": "1.01500",
+        "volume": "1100",
+        "volume_kind": "tick",
+        "source": "synthetic-fixture",
+        "retrieved_at": "2024-01-04T00:00:00Z",
+        "completeness": "complete",
+        "valid": true,
+        "validation_error": null,
+        "metadata": {}
+      }
+    ],
+    "coverage": {
+      "requested_start": "2024-01-01T00:00:00Z",
+      "requested_end": "2024-01-04T00:00:00Z",
+      "actual_start": "2024-01-01T00:00:00Z",
+      "actual_end": "2024-01-03T00:00:00Z",
+      "expected_intervals": 3,
+      "returned_count": 2,
+      "valid_count": 2,
+      "rejected_count": 0,
+      "duplicate_count": 0,
+      "missing_intervals": ["2024-01-03T00:00:00Z"],
+      "status": "incomplete",
+      "complete": false,
+      "provider_limited": false,
+      "notes": ["Synthetic fixture - one interval deliberately omitted."]
+    },
+    "validation_summary": {
+      "total_received": 2,
+      "valid": 2,
+      "rejected": 0,
+      "duplicates": 0
+    },
+    "pagination": {
+      "limit": 500,
+      "has_more": false
+    },
+    "retrieved_at": "2024-01-04T00:00:00Z",
+    "limitations": ["Synthetic fixture for contract testing only."]
+  },
+  "meta": {
+    "api_version": "v1",
+    "request_id": "synthetic-fixture-request",
+    "timestamp_utc": "2024-01-04T00:00:00Z"
+  },
+  "errors": []
+}
