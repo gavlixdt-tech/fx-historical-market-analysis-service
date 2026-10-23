@@ -459,18 +459,32 @@ class ForecastingService(AnalysisService):
             # insufficient data
             pass
 
-        # dataset fingerprint
+        # dataset fingerprint (deterministic, content-based)
+        obs_digest_payload = [
+            {
+                "timestamp": o.timestamp.isoformat(),
+                "open": o.open,
+                "high": o.high,
+                "low": o.low,
+                "close": o.close,
+                "volume": o.volume,
+            }
+            for o in observations
+        ]
         fp_payload = {
             "instrument": instrument,
             "timeframe": timeframe,
+            "price_basis": getattr(request, "price_basis", None) or spec.price_basis,
             "problem": request.problem.problem_id,
             "version": request.problem.version,
             "lookback": request.lookback,
             "n": len(y_vals),
+            "observations": obs_digest_payload,
             "timestamps": [t.isoformat() for t in ts_list],
+            "outcome_ends": [t.isoformat() for t in outcome_ends],
         }
         dataset_fingerprint = hashlib.sha256(
-            json.dumps(fp_payload, sort_keys=True).encode()
+            json.dumps(fp_payload, sort_keys=True, default=str).encode("utf-8")
         ).hexdigest()
 
         tt = task_type_for_target(spec.target_type)
@@ -773,6 +787,62 @@ class ForecastingService(AnalysisService):
         if warnings:
             status = "completed_with_warnings"
 
+        # Research-readiness classification (evidence-based, conservative).
+        best_model_name = aggregate.get("best_model_by_primary")
+        best_model_result = next(
+            (m for m in model_results if m.get("model_family") == best_model_name),
+            None,
+        )
+        raw_improvement = (
+            best_model_result.get("improvement_vs_baseline") if best_model_result else None
+        )
+        try:
+            best_improvement = (
+                float(cast(Any, raw_improvement)) if raw_improvement is not None else float("nan")
+            )
+        except (TypeError, ValueError):
+            best_improvement = float("nan")
+        required_coverage = getattr(request.problem, "required_historical_coverage", 0) or 0
+        readiness_reasons: list[str] = []
+        if not folds:
+            readiness_reasons.append("No valid walk-forward folds were produced.")
+        if not model_results:
+            readiness_reasons.append("No model results were produced.")
+        if best_model_result is None:
+            readiness_reasons.append("No best model could be identified.")
+        elif not (best_improvement == best_improvement):  # NaN check
+            readiness_reasons.append("Best model primary metric is not finite.")
+        elif best_improvement <= 0:
+            readiness_reasons.append("Best model did not improve over the relevant baseline.")
+        if len(y_vals) < max(100, required_coverage):
+            readiness_reasons.append("Sample size is below the configured reliability threshold.")
+        if len(folds) < 3:
+            readiness_reasons.append("Fewer than three walk-forward folds.")
+        best_fold_primaries = []
+        if best_model_result is not None:
+            for f in best_model_result.get("folds", []):
+                try:
+                    best_fold_primaries.append(
+                        float(
+                            f["metrics"].get("mae")
+                            if tt == "regression"
+                            else f["metrics"].get("accuracy")
+                        )
+                    )
+                except (TypeError, ValueError):
+                    best_fold_primaries.append(float("nan"))
+        stable_folds = bool(best_fold_primaries) and all(p == p for p in best_fold_primaries)
+        if not folds or not model_results or best_model_result is None:
+            research_readiness_status = "INSUFFICIENT EVIDENCE"
+        elif not (best_improvement == best_improvement) or best_improvement <= 0:
+            research_readiness_status = "NOT DEMONSTRATED"
+        elif len(y_vals) < max(100, required_coverage) or len(folds) < 3 or not stable_folds:
+            research_readiness_status = "PROMISING, NOT ESTABLISHED"
+        elif len(best_model_result.get("folds", [])) < len(folds):
+            research_readiness_status = "PROMISING, NOT ESTABLISHED"
+        else:
+            research_readiness_status = "RESEARCH VALIDATION PASSED"
+
         result = {
             "experiment_id": experiment_id,
             "status": status,
@@ -792,6 +862,11 @@ class ForecastingService(AnalysisService):
                 "timeframe": timeframe,
                 "user_supplied_observations": bool(
                     getattr(request, "observations", None) is not None
+                ),
+                "synthetic_classification": (
+                    "user_supplied_unverified"
+                    if getattr(request, "observations", None) is not None
+                    else "upstream_source_unverified"
                 ),
             },
             "feature_set_version": "1.0.0",
@@ -815,6 +890,28 @@ class ForecastingService(AnalysisService):
             "warnings": warnings,
             "limitations": limitations,
             "artifact": artifact_meta,
+            "random_seed": request.random_seed,
+            "validation_scheme": request.problem.evaluation_protocol,
+            "purge": request.purge,
+            "embargo_periods": request.embargo_periods,
+            "reproducibility": {
+                "deterministic_fingerprint": True,
+                "random_seed": request.random_seed,
+                "numerical_tolerance": "1e-9",
+            },
+            "effective_config": {
+                "n_folds_requested": request.n_folds,
+                "n_folds_completed": len(folds),
+                "min_train_samples": request.min_train_samples,
+                "model_families": model_families,
+            },
+            "research_readiness_status": research_readiness_status,
+            "research_readiness": {
+                "status": research_readiness_status,
+                "reasons": readiness_reasons,
+            },
+            "code_version": "0.1.0",
+            "git_commit": "unknown",
         }
 
         self._experiments[experiment_id] = result
@@ -940,6 +1037,17 @@ class ForecastingService(AnalysisService):
             "row_count": len(data.candles),
             "retrieved_at": data.retrieved_at.isoformat(),
             "coverage": data.coverage.model_dump(),
+            "observations": [
+                {
+                    "timestamp": o.timestamp.isoformat(),
+                    "open": o.open,
+                    "high": o.high,
+                    "low": o.low,
+                    "close": o.close,
+                    "volume": o.volume,
+                }
+                for o in observations
+            ],
         }
         fingerprint = hashlib.sha256(
             json.dumps(canonical, sort_keys=True, default=str).encode("utf-8")
@@ -1059,9 +1167,17 @@ class ForecastingService(AnalysisService):
                 )
 
         has_blocking = any(f["severity"] == "error" for f in findings)
+        if has_blocking:
+            readiness_status = "BLOCKED"
+        elif not valid:
+            readiness_status = "BLOCKED"
+        else:
+            readiness_status = "INSUFFICIENT EVIDENCE"
         return {
             "ready": (not has_blocking) and valid,
             "findings": findings,
             "experiment_validation": {"valid": valid, "errors": errors, "config": config},
             "dataset_quality": dataset_quality,
+            "readiness_status": readiness_status,
+            "research_readiness_status": readiness_status,
         }

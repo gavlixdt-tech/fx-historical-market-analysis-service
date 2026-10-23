@@ -141,6 +141,23 @@ export function ForecastingReadiness() {
               {result.experiment_id} - {result.status} - {result.n_observations}{" "}
               obs / {result.n_folds} folds
             </p>
+            <p data-testid="experiment-data-source">
+              data source: {result.data_source ?? "unknown"}; synthetic:{" "}
+              {String(result.synthetic)}
+            </p>
+            <p data-testid="experiment-fingerprint">
+              dataset fingerprint: {result.dataset_fingerprint}
+            </p>
+            <p data-testid="research-readiness-status">
+              research readiness: {result.research_readiness_status ?? "not evaluated"}
+            </p>
+            <p data-testid="reproducibility">
+              random seed: {result.random_seed ?? "n/a"}; validation:{" "}
+              {result.validation_scheme ?? "n/a"}
+            </p>
+            <p className="muted">
+              Research evidence only. Not live trading readiness.
+            </p>
             <table>
               <thead>
                 <tr>
@@ -161,15 +178,23 @@ export function ForecastingReadiness() {
                 ))}
               </tbody>
             </table>
+            {Array.isArray(result.research_readiness?.reasons) &&
+            (result.research_readiness.reasons as string[]).length ? (
+              <ul data-testid="readiness-reasons">
+                {(result.research_readiness.reasons as string[]).map((w, i) => (
+                  <li key={i}>{w}</li>
+                ))}
+              </ul>
+            ) : null}
             {result.warnings.length > 0 && (
-              <ul>
+              <ul data-testid="experiment-warnings">
                 {result.warnings.map((w, i) => (
                   <li key={i}>{w}</li>
                 ))}
               </ul>
             )}
             {result.limitations.length > 0 && (
-              <ul>
+              <ul data-testid="experiment-limitations">
                 {result.limitations.map((w, i) => (
                   <li key={i}>{w}</li>
                 ))}

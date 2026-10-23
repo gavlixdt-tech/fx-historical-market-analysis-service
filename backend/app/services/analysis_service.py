@@ -79,16 +79,21 @@ class AnalysisService:
             request_id=request_id,
         )
         for c in data.candles:
-            observations.append(
-                Observation(
-                    timestamp=c.open_time,
-                    open=float(c.open) if c.open is not None else 0.0,
-                    high=float(c.high) if c.high is not None else 0.0,
-                    low=float(c.low) if c.low is not None else 0.0,
-                    close=float(c.close) if c.close is not None else 0.0,
-                    volume=float(c.volume) if c.volume is not None else None,
+            if c.open is None or c.high is None or c.low is None or c.close is None:
+                continue
+            try:
+                observations.append(
+                    Observation(
+                        timestamp=c.open_time,
+                        open=float(c.open),
+                        high=float(c.high),
+                        low=float(c.low),
+                        close=float(c.close),
+                        volume=float(c.volume) if c.volume is not None else None,
+                    )
                 )
-            )
+            except (TypeError, ValueError):
+                continue
         observations = ensure_sorted(observations)
         return observations, data.canonical_instrument, str(data.timeframe)
 

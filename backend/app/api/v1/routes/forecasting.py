@@ -333,5 +333,7 @@ async def research_readiness(request: Request, payload: ExperimentRunRequest):
         findings=result["findings"],
         experiment_validation=result["experiment_validation"],
         dataset_quality=result["dataset_quality"],
+        readiness_status=result.get("readiness_status"),
+        research_readiness_status=result.get("research_readiness_status"),
     )
     return ApiResponse(data=data, meta=build_meta(request.app.state.settings, rid))

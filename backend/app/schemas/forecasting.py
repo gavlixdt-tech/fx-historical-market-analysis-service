@@ -256,6 +256,16 @@ class ExperimentRunResponseData(BaseModel):
     data_source: str | None = None
     synthetic: bool | None = None
     data_provenance: dict[str, Any] | None = None
+    random_seed: int | None = None
+    validation_scheme: str | None = None
+    purge: bool | None = None
+    embargo_periods: int | None = None
+    reproducibility: dict[str, Any] | None = None
+    effective_config: dict[str, Any] | None = None
+    research_readiness_status: str | None = None
+    research_readiness: dict[str, Any] | None = None
+    code_version: str | None = None
+    git_commit: str | None = None
 
 
 class HistoricalDatasetRequest(BaseModel):
@@ -304,3 +314,5 @@ class ResearchReadinessResponseData(BaseModel):
     findings: list[dict[str, Any]]
     experiment_validation: dict[str, Any]
     dataset_quality: dict[str, Any] | None = None
+    readiness_status: str | None = None
+    research_readiness_status: str | None = None

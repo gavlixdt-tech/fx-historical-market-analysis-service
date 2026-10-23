@@ -178,6 +178,8 @@ export const ResearchReadinessResponseDataSchema = z.object({
   findings: z.array(z.record(z.unknown())),
   experiment_validation: z.record(z.unknown()),
   dataset_quality: z.record(z.unknown()).nullable().optional(),
+  readiness_status: z.string().nullable().optional(),
+  research_readiness_status: z.string().nullable().optional(),
 });
 
 export type ResearchReadinessResponseData = z.infer<
@@ -227,6 +229,16 @@ export const ExperimentRunResponseDataSchema = z.object({
   data_source: z.string().nullable().optional(),
   synthetic: z.boolean().nullable().optional(),
   data_provenance: z.record(z.unknown()).nullable().optional(),
+  random_seed: z.number().nullable().optional(),
+  validation_scheme: z.string().nullable().optional(),
+  purge: z.boolean().nullable().optional(),
+  embargo_periods: z.number().nullable().optional(),
+  reproducibility: z.record(z.unknown()).nullable().optional(),
+  effective_config: z.record(z.unknown()).nullable().optional(),
+  research_readiness_status: z.string().nullable().optional(),
+  research_readiness: z.record(z.unknown()).nullable().optional(),
+  code_version: z.string().nullable().optional(),
+  git_commit: z.string().nullable().optional(),
 });
 
 export type ExperimentRunResponseData = z.infer<
