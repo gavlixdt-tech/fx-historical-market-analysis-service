@@ -15,6 +15,7 @@ quote collection, and no source-quality computation of its own.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from datetime import UTC, datetime
@@ -72,10 +73,28 @@ class MarketDataClient:
         timeout_seconds: float = 5.0,
         transport: httpx.AsyncBaseTransport | None = None,
         client: httpx.AsyncClient | None = None,
+        max_retries: int = 2,
+        retry_max_duration_seconds: float = 10.0,
+        connect_timeout_seconds: float | None = None,
+        read_timeout_seconds: float | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/") if base_url else None
         self._api_key = api_key
-        self._timeout = timeout_seconds
+        self._timeout_seconds = timeout_seconds
+        self._connect_timeout = (
+            connect_timeout_seconds if connect_timeout_seconds is not None else timeout_seconds
+        )
+        self._read_timeout = (
+            read_timeout_seconds if read_timeout_seconds is not None else timeout_seconds
+        )
+        self._timeout = httpx.Timeout(
+            connect=self._connect_timeout,
+            read=self._read_timeout,
+            write=self._read_timeout,
+            pool=self._connect_timeout,
+        )
+        self._max_retries = max(0, int(max_retries))
+        self._retry_max_duration_seconds = max(1.0, float(retry_max_duration_seconds))
         self._transport = transport
         self._client = client
         self._owns_client = client is None
@@ -115,7 +134,7 @@ class MarketDataClient:
             return self._client
         self._client = httpx.AsyncClient(
             base_url=self._base_url or "",
-            timeout=httpx.Timeout(self._timeout),
+            timeout=self._timeout,
             transport=self._transport,
             headers={"Accept": "application/json"},
             follow_redirects=False,
@@ -128,6 +147,43 @@ class MarketDataClient:
             await self._client.aclose()
             self._client = None
 
+    async def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> httpx.Response:
+        """Perform an HTTP request with bounded retries for transient failures."""
+        self._require_configured()
+        client = await self._get_client()
+        started = time.perf_counter()
+        attempt = 0
+        while True:
+            try:
+                response = await client.request(method, path, params=params, headers=headers)
+            except (httpx.TimeoutException, httpx.HTTPError):
+                if (
+                    attempt < self._max_retries
+                    and (time.perf_counter() - started) < self._retry_max_duration_seconds
+                ):
+                    attempt += 1
+                    await asyncio.sleep(min(0.25 * attempt, 1.0))
+                    continue
+                raise
+
+            retryable_status = response.status_code in {408, 500, 502, 503, 504}
+            if (
+                retryable_status
+                and attempt < self._max_retries
+                and (time.perf_counter() - started) < self._retry_max_duration_seconds
+            ):
+                attempt += 1
+                await asyncio.sleep(min(0.25 * attempt, 1.0))
+                continue
+            return response
+
     def _require_configured(self) -> str:
         if not self._base_url:
             raise UpstreamError(
@@ -135,8 +191,6 @@ class MarketDataClient:
                 details={"dependency": "fx-market-data-service"},
             )
         return self._base_url
-
-    # ---- Operations ----
 
     async def check_connectivity(self, request_id: str | None = None) -> UpstreamCheckResult:
         """Verify that the upstream service is reachable.
@@ -152,17 +206,15 @@ class MarketDataClient:
                 contract_status=UpstreamContractStatus.VERIFIED,
             )
 
-        client = await self._get_client()
         started = time.perf_counter()
         try:
-            response = await client.get(
-                UPSTREAM_LIVE_PATH,
-                headers=self._build_headers(request_id),
+            response = await self._request(
+                "GET", UPSTREAM_LIVE_PATH, headers=self._build_headers(request_id)
             )
         except httpx.TimeoutException:
             return UpstreamCheckResult(
                 state=UpstreamState.UNAVAILABLE,
-                message=f"Upstream did not respond within {self._timeout:g}s.",
+                message=f"Upstream did not respond within {self._connect_timeout:g}s.",
                 checked_at=_utc_now(),
                 contract_status=UpstreamContractStatus.VERIFIED,
             )
@@ -177,6 +229,14 @@ class MarketDataClient:
 
         latency_ms = round((time.perf_counter() - started) * 1000, 2)
 
+        if response.status_code == 429:
+            return UpstreamCheckResult(
+                state=UpstreamState.RATE_LIMITED,
+                message="Upstream rate limited the connectivity probe.",
+                latency_ms=latency_ms,
+                checked_at=_utc_now(),
+                contract_status=UpstreamContractStatus.VERIFIED,
+            )
         if response.status_code == 401 or response.status_code == 403:
             return UpstreamCheckResult(
                 state=UpstreamState.AUTH_FAILED,
@@ -255,45 +315,48 @@ class MarketDataClient:
         if end is not None:
             params["end"] = _to_iso(end)
 
-        client = await self._get_client()
         path = UPSTREAM_HISTORY_PATH.format(instrument=instrument)
 
         try:
-            response = await client.get(
-                path,
-                params=params,
-                headers=self._build_headers(request_id),
+            response = await self._request(
+                "GET", path, params=params, headers=self._build_headers(request_id)
             )
         except httpx.TimeoutException as exc:
             raise UpstreamError(
-                f"Upstream market-data service timed out after {self._timeout:g}s.",
-                details={"dependency": "fx-market-data-service"},
+                f"Upstream market-data service timed out after {self._connect_timeout:g}s.",
+                details={"dependency": "fx-market-data-service", "error_type": "timeout"},
             ) from exc
         except httpx.HTTPError as exc:
             raise UpstreamError(
                 "Upstream market-data service could not be reached.",
-                details={"dependency": "fx-market-data-service"},
+                details={"dependency": "fx-market-data-service", "error_type": "connection_error"},
             ) from exc
 
+        if response.status_code == 429:
+            raise UpstreamError(
+                "Upstream market-data service rate limited the request.",
+                upstream_status=429,
+                details={"dependency": "fx-market-data-service", "error_type": "rate_limited"},
+            )
         if response.status_code == 401 or response.status_code == 403:
             raise UpstreamError(
                 "Upstream market-data service rejected the configured credential.",
                 upstream_status=response.status_code,
-                details={"dependency": "fx-market-data-service"},
+                details={"dependency": "fx-market-data-service", "error_type": "auth_failed"},
             )
         if response.status_code >= 400:
             raise UpstreamError(
                 f"Upstream market-data service returned HTTP {response.status_code}.",
                 upstream_status=response.status_code,
-                details={"dependency": "fx-market-data-service"},
+                details={"dependency": "fx-market-data-service", "error_type": "http_error"},
             )
 
         try:
             parsed = UpstreamHistoricalResponse.model_validate(response.json())
-        except ValueError as exc:
+        except (ValueError, TypeError) as exc:
             raise UpstreamError(
                 "Upstream market-data service returned an unexpected payload shape.",
-                details={"dependency": "fx-market-data-service"},
+                details={"dependency": "fx-market-data-service", "error_type": "invalid_response"},
             ) from exc
 
         if parsed.data is None:
@@ -324,7 +387,7 @@ class MarketDataClient:
             )
         except httpx.TimeoutException as exc:
             raise UpstreamError(
-                f"Upstream market-data service timed out after {self._timeout:g}s.",
+                f"Upstream market-data service timed out after {self._connect_timeout:g}s.",
                 details={"dependency": "fx-market-data-service"},
             ) from exc
         except httpx.HTTPError as exc:

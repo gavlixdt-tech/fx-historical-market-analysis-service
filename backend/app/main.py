@@ -41,6 +41,7 @@ from backend.app.middleware.security import (
 )
 from backend.app.observability.metrics import SERVICE_UP, metrics_response
 from backend.app.observability.tracing import init_observability
+from backend.app.services.forecasting_service import ForecastingService as AnalysisService
 from backend.app.services.health_service import HealthService
 
 logger = logging.getLogger("fx-historical-market-analysis-service")
@@ -62,6 +63,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     app.state.start_time = None
     app.state.health_service = HealthService(
+        settings=settings,
+        upstream_client=app.state.upstream_client,
+    )
+    app.state.analysis_service = AnalysisService(
         settings=settings,
         upstream_client=app.state.upstream_client,
     )
@@ -114,6 +119,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         base_url=resolved.upstream_market_data_base_url,
         api_key=resolved.upstream_api_key,
         timeout_seconds=resolved.upstream_timeout_seconds,
+        connect_timeout_seconds=resolved.upstream_connect_timeout_seconds,
+        read_timeout_seconds=resolved.upstream_read_timeout_seconds,
+        max_retries=resolved.upstream_max_retries,
+        retry_max_duration_seconds=resolved.upstream_retry_max_duration_seconds,
     )
 
     _register_middleware(application, resolved)
@@ -178,15 +187,12 @@ def _register_exception_handlers(application: FastAPI) -> None:
 
     # The handler signatures are narrowed to the concrete exception type for
     # readability; Starlette accepts any callable taking (Request, Exception).
+    # A `type: ignore` is only needed where the narrowed exception type is
+    # stricter than Starlette's `Exception` contract.
     application.add_exception_handler(AppError, app_error_handler)  # type: ignore[arg-type]
-    application.add_exception_handler(Exception, unhandled_exception_handler)  # type: ignore[arg-type]
-    application.add_exception_handler(  # type: ignore[arg-type]
-        StarletteHTTPException,
-        http_exception_handler,  # type: ignore[arg-type]
-    )
-    application.add_exception_handler(  # type: ignore[arg-type]
-        RequestValidationError, validation_exception_handler
-    )
+    application.add_exception_handler(Exception, unhandled_exception_handler)
+    application.add_exception_handler(StarletteHTTPException, http_exception_handler)  # type: ignore[arg-type]
+    application.add_exception_handler(RequestValidationError, validation_exception_handler)
 
 
 def _register_operational_routes(application: FastAPI, settings: Settings) -> None:

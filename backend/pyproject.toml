@@ -56,6 +56,8 @@ ignore = ["E501", "D100", "D101", "D102", "D103", "D104", "D105", "D107", "D203"
 [tool.ruff.lint.per-file-ignores]
 "backend/tests/**" = ["S101", "S105", "S106", "S107"]
 "**/tests/**" = ["S101", "S105", "S106", "S107"]
+"app/analysis/model_research.py" = ["N803", "N806"]
+"app/services/forecasting_service.py" = ["N806"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["backend"]

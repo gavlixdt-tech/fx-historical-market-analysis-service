@@ -11,9 +11,8 @@ from __future__ import annotations
 import secrets
 import string
 from contextvars import ContextVar
-from typing import Any
 
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response
 
@@ -57,7 +56,7 @@ def _generate_id() -> str:
 class CorrelationIDMiddleware(BaseHTTPMiddleware):
     """Middleware that sets, validates, and echoes the correlation ID."""
 
-    async def dispatch(self, request: Request, call_next: Any) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         raw_id = (
             request.headers.get("x-request-id") or request.headers.get("x-correlation-id") or ""
         )

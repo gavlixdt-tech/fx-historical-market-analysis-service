@@ -17,6 +17,9 @@ class UpstreamState(StrEnum):
     CONNECTED = "connected"
     UNAVAILABLE = "unavailable"
     AUTH_FAILED = "auth_failed"
+    CONTRACT_MISMATCH = "contract_mismatch"
+    INVALID_RESPONSE = "invalid_response"
+    RATE_LIMITED = "rate_limited"
 
 
 class UpstreamContractStatus(StrEnum):

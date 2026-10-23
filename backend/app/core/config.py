@@ -9,6 +9,7 @@ refuses to start rather than serving traffic with unsafe defaults.
 
 from __future__ import annotations
 
+from datetime import datetime
 from functools import lru_cache
 
 from pydantic import Field, field_validator, model_validator
@@ -90,6 +91,12 @@ class Settings(BaseSettings):
         le=33_554_432,
     )
 
+    # ---- Forecasting research artifacts ----
+    forecasting_artifact_dir: str | None = Field(
+        default=None,
+        description="Optional local directory for reproducible experiment artifact JSON (no DB)",
+    )
+
     # ---- Upstream integration: fx-market-data-service ----
     # The upstream base URL is configurable; no production hostname is hard-coded.
     upstream_market_data_base_url: str | None = Field(
@@ -102,8 +109,32 @@ class Settings(BaseSettings):
     )
     upstream_timeout_seconds: float = Field(
         default=5.0,
-        description="Upstream request timeout in seconds",
+        description="Overall upstream request timeout in seconds",
         ge=0.5,
+        le=60.0,
+    )
+    upstream_connect_timeout_seconds: float = Field(
+        default=5.0,
+        description="Upstream connection timeout in seconds",
+        ge=0.5,
+        le=60.0,
+    )
+    upstream_read_timeout_seconds: float = Field(
+        default=5.0,
+        description="Upstream read timeout in seconds",
+        ge=0.5,
+        le=60.0,
+    )
+    upstream_max_retries: int = Field(
+        default=2,
+        description="Maximum retries for transient upstream failures",
+        ge=0,
+        le=5,
+    )
+    upstream_retry_max_duration_seconds: float = Field(
+        default=10.0,
+        description="Maximum total duration for upstream retry attempts",
+        ge=1.0,
         le=60.0,
     )
     upstream_connectivity_check_enabled: bool = Field(
@@ -113,6 +144,20 @@ class Settings(BaseSettings):
     upstream_default_provider_id: str = Field(
         default="test-adapter",
         description="Default upstream provider id used when querying historical data",
+    )
+    upstream_max_history_limit: int = Field(
+        default=5000,
+        description="Maximum permitted historical request limit",
+        ge=1,
+        le=5000,
+    )
+    upstream_allowed_history_start: datetime | None = Field(
+        default=None,
+        description="Earliest permitted historical request start (ISO-8601 UTC)",
+    )
+    upstream_allowed_history_end: datetime | None = Field(
+        default=None,
+        description="Latest permitted historical request end (ISO-8601 UTC)",
     )
 
     # ---- Observability ----
@@ -160,6 +205,16 @@ class Settings(BaseSettings):
         normalised = value.strip().rstrip("/")
         if not normalised.startswith(("http://", "https://")):
             raise ValueError("upstream_market_data_base_url must be an http(s) URL")
+        # Reject embedded credentials and fragments in the configured origin.
+        from urllib.parse import urlparse
+
+        parsed = urlparse(normalised)
+        if not parsed.hostname:
+            raise ValueError("upstream_market_data_base_url must include a host")
+        if parsed.username or parsed.password:
+            raise ValueError("upstream_market_data_base_url must not contain credentials")
+        if parsed.fragment:
+            raise ValueError("upstream_market_data_base_url must not contain a fragment")
         return normalised
 
     @model_validator(mode="after")
@@ -175,6 +230,19 @@ class Settings(BaseSettings):
                 raise ValueError("Wildcard CORS origin is not permitted in production")
             if not self.require_auth:
                 raise ValueError("require_auth must be true in production")
+            if (
+                self.upstream_market_data_base_url
+                and not self.upstream_market_data_base_url.startswith("https://")
+            ):
+                raise ValueError("upstream_market_data_base_url must use https in production")
+        if (
+            self.upstream_allowed_history_start is not None
+            and self.upstream_allowed_history_end is not None
+            and self.upstream_allowed_history_start > self.upstream_allowed_history_end
+        ):
+            raise ValueError(
+                "upstream_allowed_history_start must be <= upstream_allowed_history_end"
+            )
         return self
 
     @property

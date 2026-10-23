@@ -210,6 +210,48 @@ class UpstreamHistoricalResponse(BaseModel):
     errors: list[UpstreamErrorDetail] = Field(default_factory=list)
 
 
+class ProviderType(StrEnum):
+    """Provider implementation type.
+
+    Mirrors `backend/domain/market_data.py::ProviderType` in Service 1.
+    """
+
+    REAL = "real"
+    TEST = "test"
+
+
+class ProviderConnectionStatus(StrEnum):
+    """Explicit provider connection status.
+
+    Mirrors `backend/domain/market_data.py::ProviderConnectionStatus` in
+    Service 1. The states are never interchangeable: a provider that has
+    never been tested is not the same as one that is reachable.
+    """
+
+    NOT_CONFIGURED = "not_configured"
+    CONFIGURED_NOT_TESTED = "configured_not_tested"
+    AVAILABLE = "available"
+    UNAVAILABLE = "unavailable"
+    AUTHENTICATION_FAILED = "authentication_failed"
+    RATE_LIMITED = "rate_limited"
+    UNKNOWN = "unknown"
+
+
+class ProviderCapability(StrEnum):
+    """Capability flags a provider may advertise.
+
+    Mirrors `backend/domain/market_data.py::ProviderCapability` in Service 1.
+    These are the string values produced by `ProviderCapabilities.to_list()`.
+    """
+
+    CONNECTION_TEST = "connection_test"
+    INSTRUMENT_DISCOVERY = "instrument_discovery"
+    LATEST_QUOTE = "latest_quote"
+    HISTORICAL_CANDLES = "historical_candles"
+    STREAMING = "streaming"
+    RATE_LIMIT_INFO = "rate_limit_info"
+
+
 class UpstreamProviderSummary(BaseModel):
     """Safe provider summary.
 
@@ -220,10 +262,10 @@ class UpstreamProviderSummary(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     provider_id: str
-    provider_type: str
+    provider_type: ProviderType
     configured: bool
-    connection_status: str
-    capabilities: list[str] = Field(default_factory=list)
+    connection_status: ProviderConnectionStatus
+    capabilities: list[ProviderCapability]
     last_connection_test_at: str | None = None
     last_connection_test_success: bool | None = None
     last_connection_test_message: str | None = None
@@ -233,19 +275,18 @@ class UpstreamProviderSummary(BaseModel):
     rate_limit_limit: int | None = None
 
 
-class UpstreamProviderListData(BaseModel):
-    """Payload of Service 1's provider listing endpoint."""
-
-    model_config = ConfigDict(frozen=True)
-
-    providers: list[UpstreamProviderSummary] = Field(default_factory=list)
-
-
 class UpstreamProviderListResponse(BaseModel):
-    """Service 1 provider listing envelope."""
+    """Service 1 provider listing envelope.
+
+    Service 1 declares the route as
+    `ApiResponse[list[ProviderSummarySchema]]` and returns
+    `ApiResponse(data=providers, ...)`, so the serialised `data` is a **bare
+    JSON array** of provider summaries — not an object wrapping a
+    `providers` key. See `contracts/upstream-market-data-contract.md` §4.2.
+    """
 
     model_config = ConfigDict(frozen=True)
 
-    data: UpstreamProviderListData | None = None
+    data: list[UpstreamProviderSummary] | None = None
     meta: UpstreamResponseMeta
     errors: list[UpstreamErrorDetail] = Field(default_factory=list)

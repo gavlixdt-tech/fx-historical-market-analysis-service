@@ -22,7 +22,7 @@ from backend.app.schemas.status import (
 )
 from backend.app.schemas.version import VersionDetails
 
-# Capabilities that are implemented in this foundation phase.
+# Capabilities implemented in this phase.
 IMPLEMENTED_CAPABILITIES: tuple[CapabilityStatus, ...] = (
     CapabilityStatus(
         name="service_health",
@@ -42,36 +42,40 @@ IMPLEMENTED_CAPABILITIES: tuple[CapabilityStatus, ...] = (
         implemented=True,
         detail="Structured JSON logging, Prometheus metrics and OpenTelemetry tracing.",
     ),
-)
-
-# Capabilities that are reserved for a later phase and are NOT implemented.
-DEFERRED_CAPABILITIES: tuple[CapabilityStatus, ...] = (
     CapabilityStatus(
         name="historical_statistics",
-        implemented=False,
-        detail="Deferred: descriptive statistics over historical observations.",
+        implemented=True,
+        detail="Descriptive statistics over historical observations.",
     ),
     CapabilityStatus(
         name="pattern_discovery",
-        implemented=False,
-        detail="Deferred: historical pattern and relationship identification.",
+        implemented=True,
+        detail="Historical pattern and relationship identification.",
     ),
     CapabilityStatus(
         name="regime_classification",
-        implemented=False,
-        detail="Deferred: historical market regime and volatility characterisation.",
+        implemented=True,
+        detail="Historical market regime and volatility characterisation.",
     ),
     CapabilityStatus(
         name="analytical_significance",
-        implemented=False,
-        detail="Deferred: statistical strength and limitation evaluation.",
+        implemented=True,
+        detail="Statistical strength and limitation evaluation.",
     ),
     CapabilityStatus(
         name="reproducible_results",
-        implemented=False,
-        detail="Deferred: reproducible analytical results with provenance.",
+        implemented=True,
+        detail="Reproducible analytical results with provenance.",
+    ),
+    CapabilityStatus(
+        name="forecasting_readiness",
+        implemented=True,
+        detail="Forecasting datasets, targets, splits, manifests, and baselines (no trained model).",
     ),
 )
+
+# No capabilities are deferred in this phase.
+DEFERRED_CAPABILITIES: tuple[CapabilityStatus, ...] = ()
 
 
 def _utc_now_iso() -> str:

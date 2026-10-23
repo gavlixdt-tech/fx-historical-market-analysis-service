@@ -7,6 +7,8 @@ never mistake a reserved capability for a working one.
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -85,7 +87,9 @@ class StatusResponseData(BaseModel):
     capabilities: list[CapabilityStatus] = Field(
         default_factory=list, description="Implemented and planned capabilities"
     )
-    dependencies: list[dict] = Field(default_factory=list, description="Dependency health summary")
+    dependencies: list[dict[str, Any]] = Field(
+        default_factory=list, description="Dependency health summary"
+    )
     upstream_integration: UpstreamIntegrationStatus = Field(
         default_factory=lambda: UpstreamIntegrationStatus(
             service="fx-market-data-service",
