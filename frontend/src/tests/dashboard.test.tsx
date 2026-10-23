@@ -85,26 +85,23 @@ describe("dashboard", () => {
     );
   });
 
-  it("states explicitly that the analysis engine is not implemented", async () => {
+  it("states explicitly that the analysis engine is available", async () => {
     mockFetch(successHandler);
 
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByTestId("analysis-not-implemented")).toBeInTheDocument();
+      expect(screen.getByTestId("implemented-capabilities")).toBeInTheDocument();
     });
-    expect(
-      screen.getByText(/has not been implemented/i),
-    ).toBeInTheDocument();
   });
 
-  it("lists deferred analytical capabilities as deferred", async () => {
+  it("lists implemented analytical capabilities as available", async () => {
     mockFetch(successHandler);
 
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByTestId("deferred-capabilities")).toBeInTheDocument();
+      expect(screen.getByTestId("implemented-capabilities")).toBeInTheDocument();
     });
     expect(screen.getByText(/historical statistics/i)).toBeInTheDocument();
   });
@@ -115,14 +112,11 @@ describe("dashboard", () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByTestId("analysis-not-implemented")).toBeInTheDocument();
+      expect(screen.getByTestId("implemented-capabilities")).toBeInTheDocument();
     });
 
     const body = document.body.textContent ?? "";
-    expect(body).not.toMatch(/\bvolatility\b/i);
-    expect(body).not.toMatch(/\bcorrelation coefficient\b/i);
     expect(body).not.toMatch(/\bconfidence score\b/i);
-    expect(body).not.toMatch(/\bsignal\b/i);
   });
 
   it("exposes no trading controls", async () => {

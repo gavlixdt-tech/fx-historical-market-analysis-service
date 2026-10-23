@@ -56,8 +56,13 @@ export const statusData = {
     },
     {
       name: "historical_statistics",
-      implemented: false,
-      detail: "Deferred: descriptive statistics over historical observations.",
+      implemented: true,
+      detail: "Descriptive statistics over historical observations.",
+    },
+    {
+      name: "pattern_discovery",
+      implemented: true,
+      detail: "Historical pattern and relationship identification.",
     },
   ],
   dependencies: [
@@ -81,3 +86,17 @@ export const statusData = {
 export function envelope(data: unknown) {
   return { data, meta, errors: [] };
 }
+
+export const dataSourceData = {
+  configuration: {
+    base_url_configured: true,
+    credential_configured: true,
+  },
+  connectivity: {
+    state: "connected",
+    message: "Upstream reachable",
+    latency_ms: 12,
+    checked_at: "2024-01-04T00:00:00Z",
+  },
+  contract_status: "verified",
+};
