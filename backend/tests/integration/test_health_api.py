@@ -57,15 +57,15 @@ def test_status_reports_capabilities_and_upstream_state(client: TestClient) -> N
     assert implemented["upstream_integration_contract"] is True
     assert implemented["observability"] is True
 
-    # Deferred analytical capabilities must be flagged as NOT implemented.
-    for deferred in (
+    # Analytical capabilities implemented in this phase.
+    for implemented_name in (
         "historical_statistics",
         "pattern_discovery",
         "regime_classification",
         "analytical_significance",
         "reproducible_results",
     ):
-        assert implemented[deferred] is False
+        assert implemented[implemented_name] is True
 
 
 def test_status_reports_unconfigured_upstream_truthfully(client: TestClient) -> None:
@@ -109,11 +109,6 @@ def test_legacy_health_alias(client: TestClient) -> None:
 def test_no_analysis_endpoint_is_exposed(client: TestClient) -> None:
     """The analysis engine must not be reachable in this phase."""
     for path in (
-        "/api/v1/analysis",
-        "/api/v1/analysis/results",
-        "/api/v1/analysis/statistics",
-        "/api/v1/analysis/patterns",
-        "/api/v1/analysis/regimes",
         "/api/v1/trading",
         "/api/v1/orders",
     ):

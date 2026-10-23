@@ -1,23 +1,26 @@
 {
   "_fixture_notice": "SYNTHETIC TEST FIXTURE - NOT REAL MARKET DATA. Hand-built from the fx-market-data-service provider summary schema.",
-  "data": {
-    "providers": [
-      {
-        "provider_id": "synthetic-test-adapter",
-        "provider_type": "test",
-        "configured": true,
-        "connection_status": "connected",
-        "capabilities": ["quotes", "historical", "instruments"],
-        "last_connection_test_at": "2024-01-04T00:00:00Z",
-        "last_connection_test_success": true,
-        "last_connection_test_message": "Synthetic fixture - connection ok.",
-        "last_quote_retrieved_at": null,
-        "last_error": null,
-        "rate_limit_remaining": null,
-        "rate_limit_limit": null
-      }
-    ]
-  },
+  "data": [
+    {
+      "provider_id": "synthetic-test-adapter",
+      "provider_type": "test",
+      "configured": true,
+      "connection_status": "configured_not_tested",
+      "capabilities": [
+        "connection_test",
+        "instrument_discovery",
+        "latest_quote",
+        "historical_candles"
+      ],
+      "last_connection_test_at": "2024-01-04T00:00:00Z",
+      "last_connection_test_success": true,
+      "last_connection_test_message": "Synthetic fixture - connection ok.",
+      "last_quote_retrieved_at": null,
+      "last_error": null,
+      "rate_limit_remaining": null,
+      "rate_limit_limit": null
+    }
+  ],
   "meta": {
     "api_version": "v1",
     "request_id": "synthetic-fixture-request",

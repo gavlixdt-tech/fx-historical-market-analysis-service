@@ -41,15 +41,59 @@ def test_historical_payload_matches_the_upstream_contract() -> None:
 
 
 def test_provider_payload_matches_the_upstream_contract() -> None:
+    """Service 1 serialises the providers payload as a bare JSON array.
+
+    The route is `ApiResponse[list[ProviderSummarySchema]]`, so `data` is the
+    list itself — not an object wrapping a `providers` key.
+    """
     payload = _load("upstream_providers_synthetic.json")
     parsed = UpstreamProviderListResponse.model_validate(payload)
 
     assert parsed.data is not None
-    assert len(parsed.data.providers) == 1
-    provider = parsed.data.providers[0]
+    assert len(parsed.data) == 1
+    provider = parsed.data[0]
     assert provider.provider_id == "synthetic-test-adapter"
     assert provider.configured is True
-    assert provider.connection_status == "connected"
+    assert provider.connection_status == "configured_not_tested"
+    assert provider.provider_type == "test"
+    assert provider.capabilities == [
+        "connection_test",
+        "instrument_discovery",
+        "latest_quote",
+        "historical_candles",
+    ]
+
+
+def test_provider_payload_rejects_the_obsolete_object_envelope() -> None:
+    """Regression guard: `data` must never be an object wrapping providers.
+
+    Service 2 previously modelled `data` as `{"providers": [...]}`, which
+    every real Service 1 response violated. The obsolete shape must now be
+    rejected rather than silently accepted.
+    """
+    payload = _load("upstream_providers_synthetic.json")
+    payload["data"] = {"providers": payload["data"]}
+
+    with pytest.raises(ValueError):
+        UpstreamProviderListResponse.model_validate(payload)
+
+
+def test_provider_payload_rejects_an_unknown_connection_status() -> None:
+    """An unrecognised upstream status must not be silently accepted."""
+    payload = _load("upstream_providers_synthetic.json")
+    payload["data"][0]["connection_status"] = "connected"
+
+    with pytest.raises(ValueError):
+        UpstreamProviderListResponse.model_validate(payload)
+
+
+def test_provider_payload_rejects_an_unknown_capability() -> None:
+    """Capabilities must come from Service 1's documented vocabulary."""
+    payload = _load("upstream_providers_synthetic.json")
+    payload["data"][0]["capabilities"] = ["quotes", "historical", "instruments"]
+
+    with pytest.raises(ValueError):
+        UpstreamProviderListResponse.model_validate(payload)
 
 
 def test_provider_payload_never_exposes_credentials() -> None:

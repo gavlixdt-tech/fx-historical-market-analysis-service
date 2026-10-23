@@ -169,4 +169,32 @@ async def test_list_providers_returns_validated_payload() -> None:
     parsed = await client.list_providers()
 
     assert parsed.data is not None
-    assert parsed.data.providers[0].provider_id == "synthetic-test-adapter"
+    assert parsed.data[0].provider_id == "synthetic-test-adapter"
+
+
+async def test_list_providers_rejects_the_obsolete_object_envelope() -> None:
+    """The client must not accept the retired `data.providers` object shape."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = _fixture("upstream_providers_synthetic.json")
+        payload["data"] = {"providers": payload["data"]}
+        return httpx.Response(200, json=payload)
+
+    client = _client(httpx.MockTransport(handler))
+
+    with pytest.raises(UpstreamError):
+        await client.list_providers()
+
+
+async def test_list_providers_rejects_an_unknown_provider_type() -> None:
+    """An unrecognised upstream provider type must be rejected, not coerced."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = _fixture("upstream_providers_synthetic.json")
+        payload["data"][0]["provider_type"] = "mock"
+        return httpx.Response(200, json=payload)
+
+    client = _client(httpx.MockTransport(handler))
+
+    with pytest.raises(UpstreamError):
+        await client.list_providers()
