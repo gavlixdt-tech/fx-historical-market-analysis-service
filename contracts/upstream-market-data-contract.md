@@ -145,13 +145,37 @@ later phase. It does not recompute them.
 
 ### 4.2 Provider listing — `GET /api/v1/market-data/providers`
 
-**Verified.** Returns an envelope whose `data` contains a `providers` array.
+**Verified.** Returns an envelope whose `data` is a **bare JSON array** of
+provider summaries — *not* an object wrapping a `providers` key.
+
+Service 1 declares the route as `ApiResponse[list[ProviderSummarySchema]]`
+and returns `ApiResponse(data=providers, meta=...)`, where `providers` is a
+Python list. Because `ApiResponse.data` is typed `T | None` with
+`T = list[ProviderSummarySchema]`, the serialised `data` is the list itself.
+Service 2 therefore models it as `list[UpstreamProviderSummary] | None`.
+
 Each provider summary carries `provider_id`, `provider_type`, `configured`,
 `connection_status`, `capabilities`, `last_connection_test_*`,
 `last_quote_retrieved_at`, `last_error`, and rate-limit fields.
 
+`provider_type`, `connection_status`, and each entry of `capabilities` are
+enumerated in Service 2 (mirroring Service 1's
+`backend/domain/market_data.py`), so an unrecognised value is rejected rather
+than silently accepted:
+
+| Field | Service 1 source | Values |
+| --- | --- | --- |
+| `provider_type` | `ProviderType` | `real`, `test` |
+| `connection_status` | `ProviderConnectionStatus` | `not_configured`, `configured_not_tested`, `available`, `unavailable`, `authentication_failed`, `rate_limited`, `unknown` |
+| `capabilities[]` | `ProviderCapability` | `connection_test`, `instrument_discovery`, `latest_quote`, `historical_candles`, `streaming`, `rate_limit_info` |
+
 Service 1 guarantees this endpoint never returns credentials. The client
 re-validates that property in a contract test.
+
+> **Drift corrected on 2026-10-22.** Service 2 previously expected
+> `data.providers` (an object envelope) and would have rejected every real
+> Service 1 providers response. The correction is covered by a regression
+> test that asserts the obsolete object shape is now rejected.
 
 ### 4.3 Liveness probe — `GET /api/v1/health/live`
 

@@ -177,3 +177,27 @@ OpenAPI document.
 No endpoint returns historical analysis results. Requests to paths such as
 `/api/v1/analysis/*`, `/api/v1/trading`, or `/api/v1/orders` return `404`
 with the standard error envelope. A test asserts this.
+
+### `GET /api/v1/data-source`
+
+Returns backend-reported configuration and connectivity for the upstream market-data service.
+
+### `POST /api/v1/historical-data/retrieve`
+
+Retrieves a bounded historical dataset through the verified Service 2 client. Returns observations, quality findings, provenance and a dataset fingerprint. `synthetic` is `false` for upstream data.
+
+### `POST /api/v1/research/readiness`
+
+Validates whether an `ExperimentRunRequest` is ready to run, including experiment validation, dataset quality and coverage checks.
+
+### `GET /api/v1/forecasting/models`
+
+Lists supported model families, optionally filtered by `task_type`.
+
+### `POST /api/v1/forecasting/experiment/validate`
+
+Validates an experiment configuration without executing it.
+
+### `POST /api/v1/forecasting/experiment/run`
+
+Executes a forecasting experiment and returns fold, model, comparison, aggregate, warning and limitation data. Experiment results may include `data_source`, `synthetic` and `data_provenance`.

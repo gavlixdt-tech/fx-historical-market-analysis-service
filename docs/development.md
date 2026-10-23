@@ -155,3 +155,19 @@ cd frontend && npx tsc --noEmit && npm run test && npm run build
 ```
 
 All of these run in CI on every push and pull request.
+
+## 10. Real market data workflow (Prompt 8)
+
+The dashboard integrates the verified backend workflow:
+
+1. Open the **Real Market Data Research** panel.
+2. Refresh **Data source status** (`GET /api/v1/data-source`). Only a backend-reported `connected` state may be treated as verified.
+3. Submit a bounded historical-data request (`POST /api/v1/historical-data/retrieve`).
+4. Inspect dataset quality, coverage, provenance and fingerprint.
+5. Run **Validate research readiness** (`POST /api/v1/research/readiness`).
+6. Run the forecasting experiment only when readiness is `true`.
+7. Inspect model-vs-baseline metrics, fold results, warnings and limitations.
+
+The dashboard never calls Service 1 directly. All upstream access remains server-side.
+
+Synthetic demo experiments remain available in **AI Forecast Research & Evaluation** and are explicitly labeled as synthetic.

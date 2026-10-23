@@ -51,6 +51,25 @@ This service consumes Service 1's data through a documented contract and does
   tests, linting, type checking, builds, and container checks, and an
   `.env.example` containing placeholders only.
 
+## Forecasting readiness (Prompt 5)
+
+- Typed forecasting-problem specifications, prediction targets, point-in-time features.
+- Deterministic future-outcome labels, chronological splits, purge and embargo.
+- Dataset manifests, quality reports, and baseline evaluation metrics.
+- No model training, inference, signals, or trading capabilities.
+
+## AI forecast research & evaluation (Prompt 6)
+
+- Pure-Python model portfolio: baselines, ridge regression/logistic, random forest,
+  histogram gradient boosting.
+- Leakage-resistant walk-forward evaluation with purge/embargo and holdout isolation.
+- Target-appropriate metrics, fold-level stability, block bootstrap uncertainty.
+- In-memory experiment store with optional local JSON artifacts (configurable).
+- API endpoints under `/api/v1/forecasting` for model families, experiment validation,
+  execution, retrieval, folds, comparison and limitations.
+- Integrated frontend workspace for experiment configuration and results.
+- No live prediction, signals, trading, or production model serving.
+
 ## Deferred to a later phase (requires authorisation)
 
 Historical statistics, pattern discovery, regime classification, statistical
