@@ -906,14 +906,21 @@ class ForecastingService(AnalysisService):
 
         observations: list[Observation] = []
         for candle in data.candles:
+            if (
+                candle.open is None
+                or candle.high is None
+                or candle.low is None
+                or candle.close is None
+            ):
+                continue
             try:
                 observations.append(
                     Observation(
                         timestamp=coerce_timestamp(candle.open_time),
-                        open=float(candle.open) if candle.open is not None else 0.0,
-                        high=float(candle.high) if candle.high is not None else 0.0,
-                        low=float(candle.low) if candle.low is not None else 0.0,
-                        close=float(candle.close) if candle.close is not None else 0.0,
+                        open=float(candle.open),
+                        high=float(candle.high),
+                        low=float(candle.low),
+                        close=float(candle.close),
                         volume=float(candle.volume) if candle.volume is not None else None,
                     )
                 )

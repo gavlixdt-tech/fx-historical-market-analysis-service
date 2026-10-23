@@ -196,7 +196,7 @@ def validate_historical_payload(
         warnings.append(f"{volume_issues} candle(s) with negative volume")
 
     precision_issues = 0
-    for _ts, _ in parsed_rows:
+    for ts, _ in parsed_rows:
         if ts.microsecond not in (0,):
             precision_issues += 1
     if precision_issues:
