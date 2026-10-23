@@ -216,6 +216,14 @@ class ExperimentRunRequest(BaseModel):
     model_families: list[str] = Field(default_factory=list)
     random_seed: int = Field(default=42, ge=0)
     calibration: bool = False
+    data_source: str | None = Field(
+        default=None,
+        description="Declared origin of supplied observations",
+    )
+    synthetic: bool | None = Field(
+        default=None,
+        description="Whether supplied observations are synthetic/test data",
+    )
 
 
 class ModelFamiliesResponseData(BaseModel):

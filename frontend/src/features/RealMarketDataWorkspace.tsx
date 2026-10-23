@@ -185,6 +185,8 @@ async function handleRetrieve(event: FormEvent) {
       timeframe: dataset.timeframe,
       price_basis: dataset.price_basis,
       provider_id: dataset.provider_id,
+      data_source: "upstream_historical",
+      synthetic: dataset.synthetic,
       problem,
       lookback: 20,
       n_folds: 3,

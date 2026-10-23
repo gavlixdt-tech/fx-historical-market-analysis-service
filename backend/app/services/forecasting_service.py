@@ -399,6 +399,20 @@ class ForecastingService(AnalysisService):
             raise AppValidationError("; ".join(errors))
 
         observations, instrument, timeframe = await self._resolve_observations(request, request_id)
+        request_observations = getattr(request, "observations", None)
+        if request_observations is None and getattr(request, "instrument", None):
+            resolved_data_source = "upstream_historical"
+            provider_id = getattr(request, "provider_id", None) or getattr(
+                self._settings, "upstream_default_provider_id", "test-adapter"
+            )
+            resolved_synthetic = provider_id == "test-adapter"
+        else:
+            resolved_data_source = (
+                getattr(request, "data_source", None) or "user_supplied_observations"
+            )
+            resolved_synthetic = getattr(request, "synthetic", None)
+            if resolved_synthetic is None:
+                resolved_synthetic = resolved_data_source != "upstream_historical"
         spec = ForecastingProblemSpec(
             problem_id=request.problem.problem_id,
             version=request.problem.version,
@@ -850,13 +864,8 @@ class ForecastingService(AnalysisService):
             "completed_at": completed_at,
             "problem": dataclasses.asdict(spec),
             "dataset_fingerprint": dataset_fingerprint,
-            "data_source": (
-                "upstream_historical"
-                if getattr(request, "observations", None) is None
-                and getattr(request, "instrument", None)
-                else "user_supplied_observations"
-            ),
-            "synthetic": bool(getattr(request, "observations", None) is not None),
+            "data_source": resolved_data_source,
+            "synthetic": bool(resolved_synthetic),
             "data_provenance": {
                 "instrument": instrument,
                 "timeframe": timeframe,
@@ -864,9 +873,13 @@ class ForecastingService(AnalysisService):
                     getattr(request, "observations", None) is not None
                 ),
                 "synthetic_classification": (
-                    "user_supplied_unverified"
-                    if getattr(request, "observations", None) is not None
-                    else "upstream_source_unverified"
+                    "synthetic_fixture"
+                    if resolved_synthetic
+                    else (
+                        "user_supplied_unverified"
+                        if getattr(request, "observations", None) is not None
+                        else "upstream_source_unverified"
+                    )
                 ),
             },
             "feature_set_version": "1.0.0",
@@ -1074,10 +1087,21 @@ class ForecastingService(AnalysisService):
             "dataset_fingerprint": fingerprint,
         }
 
+        is_synthetic_fixture = (
+            provider_id == "test-adapter"
+            or data.provider_id == "test-adapter"
+            or any(
+                str(c.source).strip().lower() == "test-adapter"
+                or bool((c.metadata or {}).get("fixture"))
+                or bool((c.metadata or {}).get("source_metadata", {}).get("fixture"))
+                for c in data.candles
+            )
+        )
+
         return {
             "status": "completed",
             "data_source": "upstream_historical",
-            "synthetic": False,
+            "synthetic": is_synthetic_fixture,
             "instrument": data.canonical_instrument,
             "timeframe": str(data.timeframe),
             "price_basis": str(data.price_basis),

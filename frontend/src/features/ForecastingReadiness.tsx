@@ -80,6 +80,8 @@ export function ForecastingReadiness() {
     };
     const body = {
       observations,
+      data_source: "user_supplied_observations",
+      synthetic: true,
       problem,
       lookback: 20,
       n_folds: 3,
