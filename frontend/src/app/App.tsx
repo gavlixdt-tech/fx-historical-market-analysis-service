@@ -1,3 +1,5 @@
+import { ForecastingReadiness } from "@/features/ForecastingReadiness";
+import { RealMarketDataWorkspace } from "@/features/RealMarketDataWorkspace";
 import { AnalysisWorkspace } from "@/features/AnalysisWorkspace";
 import { DataSourceIntegration } from "@/features/DataSourceIntegration";
 import { OperationalDiagnostics } from "@/features/OperationalDiagnostics";
@@ -65,6 +67,10 @@ export default function App() {
           isLoading={isLoading}
         />
 
+        <ForecastingReadiness />
+
+        <RealMarketDataWorkspace />
+
         <DataSourceIntegration
           upstream={status?.upstream_integration ?? null}
           isLoading={isLoading}
@@ -80,9 +86,8 @@ export default function App() {
 
       <footer className="app-footer">
         <p>
-          Foundation phase &mdash; the historical analysis engine is not
-          implemented. No market statistics, predictions, or trading signals
-          are presented.
+          Historical analysis engine available &mdash; research/simulation mode.
+          No trading signals or execution capabilities.
         </p>
       </footer>
     </div>

@@ -17,4 +17,10 @@ export type {
   DependencyHealth,
   UpstreamIntegrationStatus,
   HealthResponseData,
+  DataSourceResponseData,
+  HistoricalDatasetResponseData,
+  ResearchReadinessResponseData,
+  ModelFamiliesResponseData,
+  ExperimentValidationResponseData,
+  ExperimentRunResponseData,
 } from "@/schemas/api";

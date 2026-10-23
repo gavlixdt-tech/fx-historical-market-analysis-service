@@ -13,12 +13,24 @@
 import { z } from "zod";
 
 import {
+  DataSourceEnvelopeSchema,
+  ExperimentRunEnvelopeSchema,
+  ExperimentValidationEnvelopeSchema,
+  HistoricalDatasetEnvelopeSchema,
   LiveEnvelopeSchema,
+  ModelFamiliesEnvelopeSchema,
   ReadyEnvelopeSchema,
+  ResearchReadinessEnvelopeSchema,
   StatusEnvelopeSchema,
   VersionEnvelopeSchema,
+  type DataSourceResponseData,
   type ErrorDetail,
+  type ExperimentRunResponseData,
+  type ExperimentValidationResponseData,
+  type HistoricalDatasetResponseData,
+  type ModelFamiliesResponseData,
   type ReadyResponseData,
+  type ResearchReadinessResponseData,
   type StatusResponseData,
   type VersionResponseData,
 } from "@/schemas/api";
@@ -83,6 +95,8 @@ export class ValidationError extends ApiError {
 export interface RequestOptions {
   signal?: AbortSignal;
   timeoutMs?: number;
+  method?: "GET" | "POST";
+  body?: unknown;
 }
 
 async function request<S extends z.ZodTypeAny>(
@@ -90,6 +104,7 @@ async function request<S extends z.ZodTypeAny>(
   schema: S,
   options: RequestOptions = {},
 ): Promise<z.infer<S>> {
+  const method = options.method ?? "GET";
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const controller = new AbortController();
   const timeoutHandle = window.setTimeout(() => controller.abort(), timeoutMs);
@@ -107,8 +122,15 @@ async function request<S extends z.ZodTypeAny>(
   let response: Response;
   try {
     response = await fetch(`${API_BASE_URL}${path}`, {
-      method: "GET",
-      headers: { Accept: "application/json" },
+      method,
+      headers: {
+        Accept: "application/json",
+        ...(options.body !== undefined
+          ? { "Content-Type": "application/json" }
+          : {}),
+      },
+      body:
+        options.body !== undefined ? JSON.stringify(options.body) : undefined,
       signal: controller.signal,
     });
   } catch (error) {
@@ -168,6 +190,67 @@ export const api = {
 
   getVersion: (options?: RequestOptions) =>
     request("/version", VersionEnvelopeSchema, options).then((r) => r.data),
+
+  getDataSource: (options?: RequestOptions) =>
+    request("/data-source", DataSourceEnvelopeSchema, options).then((r) => r.data),
+
+  retrieveHistoricalDataset: (
+    payload: unknown,
+    options?: RequestOptions,
+  ) =>
+    request("/historical-data/retrieve", HistoricalDatasetEnvelopeSchema, {
+      ...options,
+      method: "POST",
+      body: payload,
+    }).then((r) => r.data),
+
+  assessResearchReadiness: (payload: unknown, options?: RequestOptions) =>
+    request("/research/readiness", ResearchReadinessEnvelopeSchema, {
+      ...options,
+      method: "POST",
+      body: payload,
+    }).then((r) => r.data),
+
+  listModelFamilies: (taskType?: string, options?: RequestOptions) =>
+    request(
+      taskType
+        ? `/forecasting/models?task_type=${encodeURIComponent(taskType)}`
+        : "/forecasting/models",
+      ModelFamiliesEnvelopeSchema,
+      options,
+    ).then((r) => r.data.families),
+
+  validateExperiment: (payload: unknown, options?: RequestOptions) =>
+    request("/forecasting/experiment/validate", ExperimentValidationEnvelopeSchema, {
+      ...options,
+      method: "POST",
+      body: payload,
+    }).then((r) => r.data),
+
+  runExperiment: (payload: unknown, options?: RequestOptions) =>
+    request("/forecasting/experiment/run", ExperimentRunEnvelopeSchema, {
+      ...options,
+      method: "POST",
+      body: payload,
+    }).then((r) => r.data),
+
+  getExperiment: (experimentId: string, options?: RequestOptions) =>
+    request(
+      `/forecasting/experiment/${encodeURIComponent(experimentId)}`,
+      ExperimentRunEnvelopeSchema,
+      options,
+    ).then((r) => r.data),
 };
 
-export type { ErrorDetail, ReadyResponseData, StatusResponseData, VersionResponseData };
+export type {
+  DataSourceResponseData,
+  ErrorDetail,
+  ExperimentRunResponseData,
+  ExperimentValidationResponseData,
+  HistoricalDatasetResponseData,
+  ModelFamiliesResponseData,
+  ReadyResponseData,
+  ResearchReadinessResponseData,
+  StatusResponseData,
+  VersionResponseData,
+};

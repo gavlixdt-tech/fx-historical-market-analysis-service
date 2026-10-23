@@ -88,6 +88,9 @@ export const UPSTREAM_STATES = [
   "connected",
   "unavailable",
   "auth_failed",
+  "contract_mismatch",
+  "invalid_response",
+  "rate_limited",
 ] as const;
 
 export const UpstreamIntegrationStatusSchema = z.object({
@@ -138,4 +141,119 @@ export const VersionEnvelopeSchema = ApiEnvelopeSchema.extend({
 
 export const StatusEnvelopeSchema = ApiEnvelopeSchema.extend({
   data: StatusResponseDataSchema,
+});
+
+/** Data source status returned by GET /api/v1/data-source. */
+export const DataSourceResponseDataSchema = z.object({
+  configuration: z.record(z.unknown()),
+  connectivity: z.record(z.unknown()),
+  contract_status: z.string(),
+});
+
+export type DataSourceResponseData = z.infer<typeof DataSourceResponseDataSchema>;
+
+/** Historical dataset returned by POST /api/v1/historical-data/retrieve. */
+export const HistoricalDatasetResponseDataSchema = z.object({
+  status: z.string(),
+  data_source: z.string(),
+  synthetic: z.boolean(),
+  instrument: z.string(),
+  timeframe: z.string(),
+  price_basis: z.string(),
+  provider_id: z.string(),
+  observations: z.array(z.record(z.unknown())),
+  quality: z.record(z.unknown()),
+  provenance: z.record(z.unknown()),
+  dataset_fingerprint: z.string(),
+  partial: z.boolean().optional().default(false),
+});
+
+export type HistoricalDatasetResponseData = z.infer<
+  typeof HistoricalDatasetResponseDataSchema
+>;
+
+/** Research readiness returned by POST /api/v1/research/readiness. */
+export const ResearchReadinessResponseDataSchema = z.object({
+  ready: z.boolean(),
+  findings: z.array(z.record(z.unknown())),
+  experiment_validation: z.record(z.unknown()),
+  dataset_quality: z.record(z.unknown()).nullable().optional(),
+});
+
+export type ResearchReadinessResponseData = z.infer<
+  typeof ResearchReadinessResponseDataSchema
+>;
+
+/** Model families returned by GET /api/v1/forecasting/models. */
+export const ModelFamiliesResponseDataSchema = z.object({
+  families: z.array(z.record(z.unknown())),
+});
+
+export type ModelFamiliesResponseData = z.infer<
+  typeof ModelFamiliesResponseDataSchema
+>;
+
+/** Experiment validation returned by POST /api/v1/forecasting/experiment/validate. */
+export const ExperimentValidationResponseDataSchema = z.object({
+  valid: z.boolean(),
+  errors: z.array(z.string()),
+  config: z.record(z.unknown()),
+});
+
+export type ExperimentValidationResponseData = z.infer<
+  typeof ExperimentValidationResponseDataSchema
+>;
+
+/** Experiment run returned by POST /api/v1/forecasting/experiment/run. */
+export const ExperimentRunResponseDataSchema = z.object({
+  experiment_id: z.string(),
+  status: z.string(),
+  started_at: z.string(),
+  completed_at: z.string(),
+  problem: z.record(z.unknown()),
+  dataset_fingerprint: z.string(),
+  feature_set_version: z.string(),
+  target_type: z.string(),
+  task_type: z.string(),
+  n_observations: z.number(),
+  n_folds: z.number(),
+  folds: z.array(z.record(z.unknown())),
+  models: z.array(z.record(z.unknown())),
+  comparison: z.array(z.record(z.unknown())),
+  aggregate: z.record(z.unknown()),
+  warnings: z.array(z.string()),
+  limitations: z.array(z.string()),
+  artifact: z.record(z.unknown()),
+  data_source: z.string().nullable().optional(),
+  synthetic: z.boolean().nullable().optional(),
+  data_provenance: z.record(z.unknown()).nullable().optional(),
+});
+
+export type ExperimentRunResponseData = z.infer<
+  typeof ExperimentRunResponseDataSchema
+>;
+
+/** Envelope schemas for the new endpoints. */
+export const DataSourceEnvelopeSchema = ApiEnvelopeSchema.extend({
+  data: DataSourceResponseDataSchema,
+});
+
+export const HistoricalDatasetEnvelopeSchema = ApiEnvelopeSchema.extend({
+  data: HistoricalDatasetResponseDataSchema,
+});
+
+export const ResearchReadinessEnvelopeSchema = ApiEnvelopeSchema.extend({
+  data: ResearchReadinessResponseDataSchema,
+});
+
+export const ModelFamiliesEnvelopeSchema = ApiEnvelopeSchema.extend({
+  data: ModelFamiliesResponseDataSchema,
+});
+
+export const ExperimentValidationEnvelopeSchema = ApiEnvelopeSchema.extend({
+  data: ExperimentValidationResponseDataSchema,
+});
+
+export const ExperimentRunEnvelopeSchema = ApiEnvelopeSchema.extend({
+  data: ExperimentRunResponseDataSchema,
 });
