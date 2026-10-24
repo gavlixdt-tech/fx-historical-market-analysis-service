@@ -359,6 +359,18 @@ async function handleRetrieve(event: FormEvent) {
             <dd className="data-row__value">{dataset.price_basis}</dd>
             <dt className="data-row__label">Provider</dt>
             <dd className="data-row__value">{dataset.provider_id}</dd>
+            <dt className="data-row__label">Provider type</dt>
+            <dd className="data-row__value" data-testid="dataset-provider-type">
+              {dataset.provenance?.provider_type === "test"
+                ? "test adapter (synthetic)"
+                : dataset.provenance?.provider_type === "genuine"
+                  ? "genuine (unverified)"
+                  : "unknown"}
+            </dd>
+            <dt className="data-row__label">Real-market research</dt>
+            <dd className="data-row__value" data-testid="dataset-real-market-status">
+              Blocked (no verified genuine provider)
+            </dd>
             <dt className="data-row__label">Row count</dt>
             <dd className="data-row__value" data-testid="dataset-row-count">
               {dataset.observations.length}

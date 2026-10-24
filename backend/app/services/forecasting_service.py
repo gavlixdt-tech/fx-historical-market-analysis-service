@@ -406,6 +406,10 @@ class ForecastingService(AnalysisService):
                 self._settings, "upstream_default_provider_id", "test-adapter"
             )
             resolved_synthetic = provider_id == "test-adapter"
+            if resolved_synthetic:
+                resolved_provenance_status = "synthetic_fixture"
+            else:
+                resolved_provenance_status = "genuine_source_unverified"
         else:
             resolved_data_source = (
                 getattr(request, "data_source", None) or "user_supplied_observations"
@@ -413,6 +417,12 @@ class ForecastingService(AnalysisService):
             resolved_synthetic = getattr(request, "synthetic", None)
             if resolved_synthetic is None:
                 resolved_synthetic = resolved_data_source != "upstream_historical"
+            if resolved_synthetic:
+                resolved_provenance_status = "synthetic_unverified"
+            elif resolved_data_source == "upstream_historical":
+                resolved_provenance_status = "genuine_source_unverified"
+            else:
+                resolved_provenance_status = "user_supplied_unverified"
         spec = ForecastingProblemSpec(
             problem_id=request.problem.problem_id,
             version=request.problem.version,
@@ -872,7 +882,9 @@ class ForecastingService(AnalysisService):
                 "user_supplied_observations": bool(
                     getattr(request, "observations", None) is not None
                 ),
-                "synthetic_classification": (
+                "provenance_status": resolved_provenance_status,
+            "real_market_research_accepted": False,
+            "synthetic_classification": (
                     "synthetic_fixture"
                     if resolved_synthetic
                     else (
@@ -1088,14 +1100,35 @@ class ForecastingService(AnalysisService):
         }
 
         is_synthetic_fixture = (
+            # Check provider_id: "test-adapter" or anything starting with "synthetic-"
             provider_id == "test-adapter"
             or data.provider_id == "test-adapter"
+            or provider_id.startswith("synthetic-")
             or any(
-                str(c.source).strip().lower() == "test-adapter"
+                # Check candle source: "synthetic-fixture" or "test-adapter"
+                str(c.source).strip().lower() in ("test-adapter", "synthetic-fixture")
                 or bool((c.metadata or {}).get("fixture"))
                 or bool((c.metadata or {}).get("source_metadata", {}).get("fixture"))
                 for c in data.candles
             )
+        )
+
+        # Conservative provider classification: only the deterministic test
+        # adapter is labelled as test data. Any other upstream provider is a
+        # candidate source whose credentials/authenticity remain unverified.
+        if is_synthetic_fixture:
+            provider_type = "test"
+            provenance_status = "synthetic_fixture"
+        else:
+            provider_type = "genuine"
+            provenance_status = "genuine_source_unverified"
+
+        provenance["provider_type"] = provider_type
+        provenance["provenance_status"] = provenance_status
+        provenance["verified_real_market_data"] = False
+        provenance["real_market_research_accepted"] = False
+        provenance["synthetic_classification"] = (
+            "synthetic_fixture" if is_synthetic_fixture else "upstream_source_unverified"
         )
 
         return {
@@ -1139,6 +1172,17 @@ class ForecastingService(AnalysisService):
             try:
                 dataset_result = await self.retrieve_historical_dataset(request, request_id)
                 dataset_quality = dataset_result.get("quality")
+                if dataset_result.get("synthetic") is True:
+                    findings.append(
+                        {
+                            "severity": "error",
+                            "code": "synthetic_data",
+                            "message": (
+                                "Retrieved data is synthetic test-adapter data and "
+                                "cannot support real-market research."
+                            ),
+                        }
+                    )
                 if dataset_quality and not dataset_quality.get("valid", False):
                     for err in dataset_quality.get("blocking_errors", []):
                         findings.append(
@@ -1189,6 +1233,16 @@ class ForecastingService(AnalysisService):
                         "message": "Supplied observations are below the required historical coverage.",
                     }
                 )
+            findings.append(
+                {
+                    "severity": "warning",
+                    "code": "unverified_provenance",
+                    "message": (
+                        "User-supplied observations are unverified and must not be "
+                        "treated as genuine market data."
+                    ),
+                }
+            )
 
         has_blocking = any(f["severity"] == "error" for f in findings)
         if has_blocking:
