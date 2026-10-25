@@ -7,9 +7,10 @@ observations in order to discover statistically defensible historical
 patterns, market regimes, temporal relationships, and other evidence-supported
 findings.
 
-> **This repository is the foundation phase.**
-> The historical analysis engine is **not implemented**. No analytical result,
-> market statistic, prediction, or trading signal is produced or presented.
+> **Status:** Foundation plus forecasting research/simulation capabilities are implemented.
+> Historical statistical pattern discovery, regime characterisation, and persistence
+> remain deferred. No live prediction, signal, trading, or production model serving
+> is provided.
 
 Private research system. Research / simulation mode only.
 
@@ -72,9 +73,11 @@ This service consumes Service 1's data through a documented contract and does
 
 ## Deferred to a later phase (requires authorisation)
 
-Historical statistics, pattern discovery, regime classification, statistical
-significance evaluation, reproducible results with provenance, persistence of
-analytical results, and anything resembling trading, prediction, or strategy.
+Historical statistics and descriptive measures, pattern and relationship
+discovery, market regime and volatility characterisation, statistical
+significance evaluation, persistence of analytical results, and anything
+resembling trading, prediction, or strategy. Reproducible forecasting
+experiment metadata and dataset fingerprints are implemented in-memory.
 
 ---
 

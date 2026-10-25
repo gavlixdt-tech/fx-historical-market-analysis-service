@@ -442,7 +442,10 @@ class ForecastingService(AnalysisService):
             provider_id = getattr(request, "provider_id", None) or getattr(
                 self._settings, "upstream_default_provider_id", "test-adapter"
             )
-            resolved_synthetic = provider_id == "test-adapter"
+            resolved_synthetic = (
+                provider_id == "test-adapter"
+                or str(provider_id).startswith("synthetic-")
+            )
             if resolved_synthetic:
                 resolved_provenance_status = "synthetic_fixture"
             else:

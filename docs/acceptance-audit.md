@@ -13,12 +13,12 @@ historical analysis engine is **not** implemented.
 | # | Criterion | Status | Evidence |
 | --- | --- | --- | --- |
 | 1 | Service 2 exists as an independent repository or a verified local repository ready to publish. | **MET (local)** | Independent repository at `C:\Users\ian mai\fx-historical-market-analysis-service`, initialised with `git init`, own history, own CI. **No remote was created or verified** — see section 3. |
-| 2 | Its backend foundation is implemented. | **MET** | `backend/app/` — factory, versioned routing, config validation, correlation IDs, error envelopes, health/readiness/status/version, observability, security. 62 tests pass. |
+| 2 | Its backend foundation is implemented. | **MET** | `backend/app/` — factory, versioned routing, config validation, correlation IDs, error envelopes, health/readiness/status/version, observability, security, and forecasting research endpoints. 115 backend tests pass. |
 | 3 | Its dedicated frontend dashboard is integrated and functional. | **MET** | `frontend/` — React 18 + TypeScript + Vite, four panels, typed client with runtime validation. 19 tests pass; production build succeeds. |
 | 4 | Backend and frontend contracts are validated. | **MET** | Shared Zod schemas mirror the Pydantic schemas; the frontend client validates every response at runtime; a test asserts the dashboard calls only its own backend. |
 | 5 | The upstream integration contract is verified or clearly marked unverified. | **PARTIAL** | Request/response contract **VERIFIED** against Service 1 source. **Authentication contract is PROPOSED — NOT YET VERIFIED** and is labelled as such in the code, the contract document, and the status response. |
 | 6 | Service 1's responsibilities have not been duplicated. | **MET** | No provider SDK, no feed code, no source-quality engine. The upstream client is read-only and does not re-validate or re-price observations. |
-| 7 | No fabricated market information or analytical results are presented. | **MET** | No analysis endpoint exists. Deferred capabilities are reported with `implemented: false`. Contract fixtures are labelled synthetic. A dashboard test asserts no volatility/score/signal text is rendered. |
+| 7 | No fabricated market information or analytical results are presented. | **MET** | Forecasting endpoints return research metadata, manifests, and evaluation metrics only; no trading signals or live predictions. Deferred capabilities are reported with `implemented: false`. Contract fixtures are labelled synthetic. A dashboard test asserts no volatility/score/signal text is rendered. |
 | 8 | Security and configuration safeguards are implemented. | **MET** | See `docs/security.md` section 1. Production invariants fail fast. Non-root containers. `.env.example` contains placeholders only. |
 | 9 | Tests and CI are configured, with actual execution results reported honestly. | **MET** | See sections 2 and 4 below. |
 | 10 | Documentation and architecture diagrams are present. | **MET** | `README.md`, `docs/architecture.md` (with Mermaid diagrams), `docs/api.md`, `docs/security.md`, `docs/development.md`, `docs/deployment.md`, `docs/acceptance-audit.md`, `contracts/upstream-market-data-contract.md`. |
@@ -35,7 +35,7 @@ All results below were produced locally in this working environment
 
 | Check | Command | Result |
 | --- | --- | --- |
-| Backend tests | `pytest backend/tests -q` | **62 passed** (exit 0) |
+| Backend tests | `pytest backend/tests -q` | **115 passed, 1 skipped** (exit 0) |
 | Backend lint | `ruff check backend` | **All checks passed** (exit 0) |
 | Backend format | `ruff format --check backend` | **48 files already formatted** (exit 0) |
 | Backend types | `mypy backend/app` | **Success: no issues found in 33 source files** (strict mode, exit 0) |
