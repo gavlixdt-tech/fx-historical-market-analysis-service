@@ -9,7 +9,6 @@ from types import SimpleNamespace
 import httpx
 import pytest
 
-from backend.app.clients.base import UpstreamState
 from backend.app.clients.market_data import MarketDataClient
 from backend.app.core.config import Settings
 from backend.app.services.forecasting_service import ForecastingService
@@ -66,9 +65,10 @@ async def test_test_adapter_is_classified_as_synthetic():
 async def test_non_test_provider_is_not_verified_real_data():
     payload = _fixture("upstream_history_synthetic.json")
     payload["data"]["provider_id"] = "candidate-provider"
-    payload["data"]["candles"][0]["source"] = "candidate-provider"
-    payload["data"]["candles"][0]["metadata"]["fixture"] = False
-    payload["data"]["candles"][0]["metadata"]["source_metadata"]["fixture"] = False
+    for candle in payload["data"]["candles"]:
+        candle["source"] = "candidate-provider"
+        candle["metadata"]["fixture"] = False
+        candle["metadata"].setdefault("source_metadata", {})["fixture"] = False
 
     def handler(request):
         return httpx.Response(200, json=payload)

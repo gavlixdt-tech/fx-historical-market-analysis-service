@@ -638,9 +638,9 @@ def classification_metrics(
     recalls = []
     f1s = []
     for c in classes:
-        tp = sum(1 for a, b in zip(y_true, y_pred, strict=False) if a == c and b == c)
-        fp = sum(1 for a, b in zip(y_true, y_pred, strict=False) if a != c and b == c)
-        fn = sum(1 for a, b in zip(y_true, y_pred, strict=False) if a == c and b != c)
+        tp = sum(1 for a, b in zip(y_true, y_pred, strict=True) if a == c and b == c)
+        fp = sum(1 for a, b in zip(y_true, y_pred, strict=True) if a != c and b == c)
+        fn = sum(1 for a, b in zip(y_true, y_pred, strict=True) if a == c and b != c)
         prec = tp / (tp + fp) if (tp + fp) else 0.0
         rec = tp / (tp + fn) if (tp + fn) else 0.0
         f1 = 2 * prec * rec / (prec + rec) if (prec + rec) else 0.0
@@ -653,16 +653,16 @@ def classification_metrics(
     mcc = float("nan")
     if len(classes) == 2:
         tp = sum(
-            1 for a, b in zip(y_true, y_pred, strict=False) if a == classes[1] and b == classes[1]
+            1 for a, b in zip(y_true, y_pred, strict=True) if a == classes[1] and b == classes[1]
         )
         tn = sum(
-            1 for a, b in zip(y_true, y_pred, strict=False) if a == classes[0] and b == classes[0]
+            1 for a, b in zip(y_true, y_pred, strict=True) if a == classes[0] and b == classes[0]
         )
         fp = sum(
-            1 for a, b in zip(y_true, y_pred, strict=False) if a == classes[0] and b == classes[1]
+            1 for a, b in zip(y_true, y_pred, strict=True) if a == classes[0] and b == classes[1]
         )
         fn = sum(
-            1 for a, b in zip(y_true, y_pred, strict=False) if a == classes[1] and b == classes[0]
+            1 for a, b in zip(y_true, y_pred, strict=True) if a == classes[1] and b == classes[0]
         )
         denom = math.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn))
         mcc = (tp * tn - fp * fn) / denom if denom > 0 else 0.0

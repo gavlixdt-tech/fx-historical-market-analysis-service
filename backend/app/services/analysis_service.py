@@ -55,13 +55,13 @@ class AnalysisService:
 
     async def _resolve_observations(
         self, request: Any, request_id: str
-    ) -> tuple[list[Observation], str | None, str | None]:
+    ) -> tuple[list[Observation], str | None, str | None, dict[str, Any] | None]:
         observations: list[Observation] = []
         if getattr(request, "observations", None):
             for raw in request.observations:
                 observations.append(_obs_from_input(raw))
             observations = ensure_sorted(observations)
-            return observations, request.instrument, request.timeframe
+            return observations, request.instrument, request.timeframe, None
         # upstream fetch
         instrument = request.instrument
         if not instrument:
@@ -95,7 +95,12 @@ class AnalysisService:
             except (TypeError, ValueError):
                 continue
         observations = ensure_sorted(observations)
-        return observations, data.canonical_instrument, str(data.timeframe)
+        upstream_quality = {
+            "validation_summary": data.validation_summary.model_dump(),
+            "coverage": data.coverage.model_dump(),
+            "row_count": len(data.candles),
+        }
+        return observations, data.canonical_instrument, str(data.timeframe), upstream_quality
 
     async def analyze_regimes(
         self, request: RegimeAnalysisRequest, request_id: str
@@ -107,7 +112,9 @@ class AnalysisService:
             "Regime labels are descriptive model outputs, not ground truth.",
             "Change-point detection is retrospective and may not be knowable in real time.",
         ]
-        observations, instrument, timeframe = await self._resolve_observations(request, request_id)
+        observations, instrument, timeframe, _ = await self._resolve_observations(
+            request, request_id
+        )
         cfg_in: RegimeConfigInput = request.config
         config = RegimeConfig(
             return_window=cfg_in.return_window,
@@ -291,7 +298,9 @@ class AnalysisService:
             "Pattern outcomes are retrospective evaluation labels, not real-time signals.",
             "Overlapping windows are not independent samples.",
         ]
-        observations, instrument, timeframe = await self._resolve_observations(request, request_id)
+        observations, instrument, timeframe, _ = await self._resolve_observations(
+            request, request_id
+        )
         cfg_in: PatternConfigInput = request.config
         validate_minimum(observations, cfg_in.lookback + cfg_in.outcome_horizon + 5)
 

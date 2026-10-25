@@ -59,7 +59,7 @@ class UpstreamIntegrationStatus(BaseModel):
     contract_status: str = Field(
         default="verified",
         description=(
-            "Upstream contract verification status: 'verified' or " "'proposed-not-yet-verified'"
+            "Upstream contract verification status: 'verified' or 'proposed-not-yet-verified'"
         ),
     )
     latency_ms: float | None = Field(

@@ -201,6 +201,19 @@ async def run_experiment(request: Request, payload: ExperimentRunRequest):
         warnings=result["warnings"],
         limitations=result["limitations"],
         artifact=result["artifact"],
+        data_source=result.get("data_source"),
+        synthetic=result.get("synthetic"),
+        data_provenance=result.get("data_provenance"),
+        random_seed=result.get("random_seed"),
+        validation_scheme=result.get("validation_scheme"),
+        purge=result.get("purge"),
+        embargo_periods=result.get("embargo_periods"),
+        reproducibility=result.get("reproducibility"),
+        effective_config=result.get("effective_config"),
+        research_readiness_status=result.get("research_readiness_status"),
+        research_readiness=result.get("research_readiness"),
+        code_version=result.get("code_version"),
+        git_commit=result.get("git_commit"),
     )
     return ApiResponse(data=data, meta=build_meta(request.app.state.settings, rid))
 
@@ -235,6 +248,19 @@ async def get_experiment(request: Request, experiment_id: str):
         warnings=result["warnings"],
         limitations=result["limitations"],
         artifact=result["artifact"],
+        data_source=result.get("data_source"),
+        synthetic=result.get("synthetic"),
+        data_provenance=result.get("data_provenance"),
+        random_seed=result.get("random_seed"),
+        validation_scheme=result.get("validation_scheme"),
+        purge=result.get("purge"),
+        embargo_periods=result.get("embargo_periods"),
+        reproducibility=result.get("reproducibility"),
+        effective_config=result.get("effective_config"),
+        research_readiness_status=result.get("research_readiness_status"),
+        research_readiness=result.get("research_readiness"),
+        code_version=result.get("code_version"),
+        git_commit=result.get("git_commit"),
     )
     return ApiResponse(data=data, meta=build_meta(request.app.state.settings, rid))
 

@@ -98,7 +98,7 @@ async def test_fetch_historical_candles_sends_verified_parameters() -> None:
         request_id="req-42",
     )
 
-    assert captured["path"] == "/api/v1/market-data/history/SYNTH/USD"
+    assert captured["path"] == "/api/v1/market-data/history/SYNTH_USD"
     params = captured["params"]
     assert isinstance(params, dict)
     assert params["provider_id"] == "synthetic-test-adapter"

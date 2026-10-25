@@ -315,7 +315,8 @@ class MarketDataClient:
         if end is not None:
             params["end"] = _to_iso(end)
 
-        path = UPSTREAM_HISTORY_PATH.format(instrument=instrument)
+        path_instrument = instrument.strip().replace("/", "_")
+        path = UPSTREAM_HISTORY_PATH.format(instrument=path_instrument)
 
         try:
             response = await self._request(

@@ -171,6 +171,72 @@ FEATURE_SPECS: tuple[FeatureSpec, ...] = (
 )
 
 
+FORECAST_FEATURE_NAMES: tuple[str, ...] = (
+    "lag_return_1",
+    "rolling_mean_return",
+    "rolling_std_return",
+    "historical_volatility",
+    "cumulative_return",
+    "direction_consistency",
+    "max_drawdown",
+    "candle_range_pct",
+    "candle_body_ratio",
+    "data_quality_missing_count",
+    "coverage_ratio",
+)
+
+
+def _parse_eligibility_index(rule: str) -> int:
+    if not isinstance(rule, str) or not rule.strip():
+        raise ValueError("eligibility rule must be a non-empty string")
+    text = rule.strip()
+    if ":" in text:
+        prefix, value = text.split(":", 1)
+        prefix = prefix.strip().lower().replace("-", "_")
+        if prefix not in {
+            "exclude_index",
+            "exclude_reference_index",
+            "exclude",
+            "index",
+        }:
+            raise ValueError("unsupported eligibility rule type; expected exclude_index:<index>")
+    else:
+        value = text
+    value = value.strip()
+    try:
+        index = int(value)
+    except ValueError as exc:
+        raise ValueError("eligibility rule index must be an integer") from exc
+    if index < 0:
+        raise ValueError("eligibility rule index must be non-negative")
+    return index
+
+
+def validate_eligibility_rules(rules: Sequence[str]) -> list[str]:
+    errors: list[str] = []
+    for rule in rules:
+        try:
+            _parse_eligibility_index(rule)
+        except ValueError as exc:
+            errors.append(f"invalid eligibility rule {rule!r}: {exc}")
+    return errors
+
+
+def resolve_eligibility_exclusions(rules: Sequence[str], observation_count: int) -> set[int]:
+    if observation_count < 0:
+        raise ValueError("observation_count must be non-negative")
+    excluded: set[int] = set()
+    for rule in rules:
+        index = _parse_eligibility_index(rule)
+        if index >= observation_count:
+            raise ValueError(
+                f"eligibility rule index {index} is out of range for "
+                f"{observation_count} observations"
+            )
+        excluded.add(index)
+    return excluded
+
+
 @dataclass(frozen=True)
 class ForecastingProblemSpec:
     problem_id: str
@@ -222,6 +288,8 @@ class ForecastingProblemSpec:
             self.volatility_window is None or self.volatility_window < 2
         ):
             errors.append("volatility_window >= 2 is required for realized_volatility targets")
+        if self.eligibility_rules:
+            errors.extend(validate_eligibility_rules(self.eligibility_rules))
         return errors
 
 
@@ -254,7 +322,8 @@ def generate_labels(
     excluded_indices: set[int] | None = None,
 ) -> list[TargetLabel]:
     """Generate deterministic historical labels without future leakage in features."""
-    excluded = excluded_indices or set()
+    excluded = set(excluded_indices or ())
+    excluded.update(resolve_eligibility_exclusions(spec.eligibility_rules, len(observations)))
     closes = [o.close for o in observations]
     n = len(observations)
     horizon = spec.prediction_horizon
@@ -351,12 +420,27 @@ def generate_labels(
             )
         elif spec.target_type == "realized_volatility":
             window = spec.volatility_window or horizon
-            # returns strictly after reference timestamp, up to j
-            end = min(j, n - 1)
-            rets = _simple_returns(closes[i : end + 1])
-            # drop the first None and align; require at least 2 returns
-            nums = [r for r in rets[1:] if r is not None]
-            if len(nums) < 2 or len(nums) < window - 1:
+            # The volatility window must be contiguous over the exact future
+            # horizon. Missing or invalid returns are not filtered out to
+            # manufacture a label.
+            future_closes = closes[i : j + 1]
+            rets = _simple_returns(future_closes)
+            returns = rets[1:]
+            if len(returns) != horizon or any(r is None for r in returns):
+                out.append(
+                    TargetLabel(
+                        reference_index=i,
+                        reference_timestamp=ref_ts,
+                        future_index=j,
+                        future_timestamp=observations[j].timestamp.isoformat(),
+                        status="invalid_source_observation",
+                        reason="non-contiguous or invalid future observations for volatility",
+                        value=None,
+                        target_type=spec.target_type,
+                    )
+                )
+                continue
+            if window > len(returns) or len(returns) < 2:
                 out.append(
                     TargetLabel(
                         reference_index=i,
@@ -370,7 +454,7 @@ def generate_labels(
                     )
                 )
                 continue
-            chunk = nums[-window:] if len(nums) >= window else nums
+            chunk = returns[-window:]
             if len(chunk) < 2:
                 out.append(
                     TargetLabel(
@@ -718,6 +802,8 @@ def build_quality_report(
     labels: Sequence[TargetLabel],
     split: SplitResult,
     source_provenance: dict[str, Any] | None = None,
+    validation_summary: dict[str, Any] | None = None,
+    coverage: dict[str, Any] | None = None,
 ) -> DataQualityReport:
     eligible = sum(1 for r in feature_rows if r is not None)
     valid = sum(1 for lab in labels if lab.status == "valid")
@@ -764,8 +850,8 @@ def build_quality_report(
         eligible_feature_rows=eligible,
         valid_labels=valid,
         missing_labels=missing,
-        invalid_observations=0,
-        coverage_gaps=[],
+        invalid_observations=int((validation_summary or {}).get("rejected", 0) or 0),
+        coverage_gaps=list((coverage or {}).get("missing_intervals", []) or []),
         duplicate_observations=dup,
         per_class_counts=class_counts,
         split_counts=dict(split.counts),
@@ -792,6 +878,7 @@ def build_manifest(
     split_config: SplitConfig,
     source_provenance: dict[str, Any] | None = None,
     seed: int | None = 42,
+    lookback: int | None = None,
 ) -> DatasetManifest:
     from datetime import datetime as _dt
 
@@ -824,8 +911,18 @@ def build_manifest(
         target_version=spec.version,
         split_config=split.config,
         purge_rule="exclude training samples whose outcome window overlaps validation/test interval",
-        embargo_rule=f"embargo_periods={split_config.embargo_periods}",
-        transformation_config={"lookback": 20, "point_in_time": True},
+        embargo_rule=f"embargo_periods={split_config.embargo_periods} observations (count-based, not a time duration)",
+        transformation_config={
+            "lookback": 20 if lookback is None else lookback,
+            "point_in_time": True,
+            "max_features": spec.max_features,
+            "effective_feature_count": min(max(1, spec.max_features), len(FORECAST_FEATURE_NAMES)),
+            "effective_feature_names": list(
+                FORECAST_FEATURE_NAMES[
+                    : min(max(1, spec.max_features), len(FORECAST_FEATURE_NAMES))
+                ]
+            ),
+        },
         observation_count=len(observations),
         feature_row_count=sum(1 for r in feature_rows if r is not None),
         label_count=len(labels),
@@ -845,21 +942,21 @@ def build_manifest(
 def mae(y_true: Sequence[float], y_pred: Sequence[float]) -> float:
     if not y_true:
         return float("nan")
-    return sum(abs(a - b) for a, b in zip(y_true, y_pred, strict=False)) / len(y_true)
+    return sum(abs(a - b) for a, b in zip(y_true, y_pred, strict=True)) / len(y_true)
 
 
 def rmse(y_true: Sequence[float], y_pred: Sequence[float]) -> float:
     if not y_true:
         return float("nan")
     return float(
-        (sum((a - b) ** 2 for a, b in zip(y_true, y_pred, strict=False)) / len(y_true)) ** 0.5
+        (sum((a - b) ** 2 for a, b in zip(y_true, y_pred, strict=True)) / len(y_true)) ** 0.5
     )
 
 
 def mean_error(y_true: Sequence[float], y_pred: Sequence[float]) -> float:
     if not y_true:
         return float("nan")
-    return sum(b - a for a, b in zip(y_true, y_pred, strict=False)) / len(y_true)
+    return sum(b - a for a, b in zip(y_true, y_pred, strict=True)) / len(y_true)
 
 
 def r2_score(y_true: Sequence[float], y_pred: Sequence[float]) -> float:
@@ -869,14 +966,14 @@ def r2_score(y_true: Sequence[float], y_pred: Sequence[float]) -> float:
     ss_tot = sum((y - mean_y) ** 2 for y in y_true)
     if ss_tot == 0:
         return float("nan")
-    ss_res = sum((a - b) ** 2 for a, b in zip(y_true, y_pred, strict=False))
+    ss_res = sum((a - b) ** 2 for a, b in zip(y_true, y_pred, strict=True))
     return 1.0 - ss_res / ss_tot
 
 
 def accuracy(y_true: Sequence[float], y_pred: Sequence[float]) -> float:
     if not y_true:
         return float("nan")
-    correct = sum(1 for a, b in zip(y_true, y_pred, strict=False) if a == b)
+    correct = sum(1 for a, b in zip(y_true, y_pred, strict=True) if a == b)
     return correct / len(y_true)
 
 
@@ -886,7 +983,7 @@ def balanced_accuracy(y_true: Sequence[float], y_pred: Sequence[float]) -> float
         return float("nan")
     recalls = []
     for c in classes:
-        tp = sum(1 for a, b in zip(y_true, y_pred, strict=False) if a == c and b == c)
+        tp = sum(1 for a, b in zip(y_true, y_pred, strict=True) if a == c and b == c)
         support = sum(1 for a in y_true if a == c)
         recalls.append(tp / support if support else 0.0)
     return sum(recalls) / len(recalls)
@@ -894,7 +991,7 @@ def balanced_accuracy(y_true: Sequence[float], y_pred: Sequence[float]) -> float
 
 def confusion_matrix(y_true: Sequence[float], y_pred: Sequence[float]) -> dict[str, int]:
     out: dict[str, int] = {}
-    for a, b in zip(y_true, y_pred, strict=False):
+    for a, b in zip(y_true, y_pred, strict=True):
         key = f"{a}->{b}"
         out[key] = out.get(key, 0) + 1
     return out

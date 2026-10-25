@@ -87,7 +87,9 @@ class ForecastingService(AnalysisService):
             build_point_in_time_features,
         )
 
-        observations, instrument, timeframe = await self._resolve_observations(request, request_id)
+        observations, instrument, timeframe, _upstream_quality = await self._resolve_observations(
+            request, request_id
+        )
         spec = ForecastingProblemSpec(
             problem_id=request.problem.problem_id,
             version=request.problem.version,
@@ -124,7 +126,9 @@ class ForecastingService(AnalysisService):
     async def generate_forecasting_labels(self, request: Any, request_id: str):
         from backend.app.analysis.forecasting import ForecastingProblemSpec, generate_labels
 
-        observations, instrument, timeframe = await self._resolve_observations(request, request_id)
+        observations, instrument, timeframe, _upstream_quality = await self._resolve_observations(
+            request, request_id
+        )
         spec = ForecastingProblemSpec(
             problem_id=request.problem.problem_id,
             version=request.problem.version,
@@ -146,7 +150,12 @@ class ForecastingService(AnalysisService):
             volatility_window=request.problem.volatility_window,
             max_features=request.problem.max_features,
         )
-        labels = generate_labels(observations, spec)
+        try:
+            labels = generate_labels(observations, spec)
+        except ValueError as exc:
+            from backend.app.core.errors import ValidationError as AppValidationError
+
+            raise AppValidationError(str(exc)) from exc
         return (
             [dataclasses.asdict(lab) for lab in labels],
             sum(1 for lab in labels if lab.status == "valid"),
@@ -166,7 +175,9 @@ class ForecastingService(AnalysisService):
             generate_labels,
         )
 
-        observations, instrument, timeframe = await self._resolve_observations(request, request_id)
+        observations, instrument, timeframe, _upstream_quality = await self._resolve_observations(
+            request, request_id
+        )
         spec = ForecastingProblemSpec(
             problem_id=request.problem.problem_id,
             version=request.problem.version,
@@ -189,7 +200,12 @@ class ForecastingService(AnalysisService):
             max_features=request.problem.max_features,
         )
         rows = build_point_in_time_features(observations, spec, lookback=request.lookback)
-        labels = generate_labels(observations, spec)
+        try:
+            labels = generate_labels(observations, spec)
+        except ValueError as exc:
+            from backend.app.core.errors import ValidationError as AppValidationError
+
+            raise AppValidationError(str(exc)) from exc
         ref_ts = [o.timestamp for o in observations]
         outcome_ends = []
         for lab in labels:
@@ -211,7 +227,17 @@ class ForecastingService(AnalysisService):
         split = chronological_split(ref_ts, split_config, outcome_ends)
         dataset_id = str(uuid.uuid4())
         prov = {"instrument": instrument, "timeframe": timeframe}
-        quality = build_quality_report(observations, rows, labels, split, prov)
+        _vs = (_upstream_quality or {}).get("validation_summary")
+        _cov = (_upstream_quality or {}).get("coverage")
+        quality = build_quality_report(
+            observations,
+            rows,
+            labels,
+            split,
+            prov,
+            validation_summary=_vs,
+            coverage=_cov,
+        )
         manifest = build_manifest(
             dataset_id,
             spec,
@@ -225,6 +251,7 @@ class ForecastingService(AnalysisService):
             split_config,
             prov,
             42,
+            lookback=request.lookback,
         )
         baselines = None
         if request.include_baselines:
@@ -314,32 +341,35 @@ class ForecastingService(AnalysisService):
         from backend.app.analysis.forecasting import ForecastingProblemSpec
         from backend.app.analysis.model_research import task_type_for_target
 
+        problem = getattr(request, "problem", None)
+        if problem is None:
+            return False, ["A forecasting problem specification is required."], {}
         errors: list[str] = []
         spec = ForecastingProblemSpec(
-            problem_id=request.problem.problem_id,
-            version=request.problem.version,
-            instrument_scope=tuple(request.problem.instrument_scope),
-            input_timeframe=request.problem.input_timeframe,
-            price_basis=request.problem.price_basis,
-            feature_availability_policy=request.problem.feature_availability_policy,
-            prediction_reference=request.problem.prediction_reference,
-            prediction_horizon=request.problem.prediction_horizon,
-            target_type=request.problem.target_type,
-            target_units=request.problem.target_units,
-            eligibility_rules=tuple(request.problem.eligibility_rules),
-            label_generation_method=request.problem.label_generation_method,
-            missing_observation_policy=request.problem.missing_observation_policy,
-            required_historical_coverage=request.problem.required_historical_coverage,
-            evaluation_protocol=request.problem.evaluation_protocol,
-            known_limitations=tuple(request.problem.known_limitations),
-            neutral_threshold=request.problem.neutral_threshold,
-            volatility_window=request.problem.volatility_window,
-            max_features=request.problem.max_features,
+            problem_id=problem.problem_id,
+            version=problem.version,
+            instrument_scope=tuple(problem.instrument_scope),
+            input_timeframe=problem.input_timeframe,
+            price_basis=problem.price_basis,
+            feature_availability_policy=problem.feature_availability_policy,
+            prediction_reference=problem.prediction_reference,
+            prediction_horizon=problem.prediction_horizon,
+            target_type=problem.target_type,
+            target_units=problem.target_units,
+            eligibility_rules=tuple(problem.eligibility_rules),
+            label_generation_method=problem.label_generation_method,
+            missing_observation_policy=problem.missing_observation_policy,
+            required_historical_coverage=problem.required_historical_coverage,
+            evaluation_protocol=problem.evaluation_protocol,
+            known_limitations=tuple(problem.known_limitations),
+            neutral_threshold=problem.neutral_threshold,
+            volatility_window=problem.volatility_window,
+            max_features=problem.max_features,
         )
         errors.extend(spec.validate())
         tt = task_type_for_target(spec.target_type)
         allowed = {f["name"] for f in await self.list_model_families(tt)}
-        if not request.model_families:
+        if not getattr(request, "model_families", None):
             # default to all supported families for the target type
             request_model_families = [f["name"] for f in await self.list_model_families(tt)]
         else:
@@ -347,23 +377,27 @@ class ForecastingService(AnalysisService):
         for mf in request_model_families:
             if mf not in allowed:
                 errors.append(f"unsupported model family for target: {mf}")
-        if request.n_folds < 1 or request.n_folds > 5:
+        _n_folds = getattr(request, "n_folds", None)
+        if _n_folds is not None and (_n_folds < 1 or _n_folds > 5):
             errors.append("n_folds must be between 1 and 5")
-        if request.min_train_samples < 10:
+        _min_train_samples = getattr(request, "min_train_samples", None)
+        if _min_train_samples is not None and _min_train_samples < 10:
             errors.append("min_train_samples must be >= 10")
         # resource limits
-        if request.limit is not None and request.limit > 2000:
+        if getattr(request, "limit", None) is not None and getattr(request, "limit", None) > 2000:
             errors.append("limit exceeds experiment resource cap (2000)")
+        if getattr(request, "calibration", False):
+            errors.append("calibration is not implemented in the current evaluation path")
         config = {
             "problem": dataclasses.asdict(spec),
-            "lookback": request.lookback,
-            "n_folds": request.n_folds,
-            "min_train_samples": request.min_train_samples,
-            "purge": request.purge,
-            "embargo_periods": request.embargo_periods,
+            "lookback": getattr(request, "lookback", None),
+            "n_folds": getattr(request, "n_folds", None),
+            "min_train_samples": getattr(request, "min_train_samples", None),
+            "purge": getattr(request, "purge", None),
+            "embargo_periods": getattr(request, "embargo_periods", None),
             "model_families": request_model_families,
-            "random_seed": request.random_seed,
-            "calibration": request.calibration,
+            "random_seed": getattr(request, "random_seed", None),
+            "calibration": getattr(request, "calibration", None),
             "task_type": tt,
         }
         return len(errors) == 0, errors, config
@@ -374,6 +408,7 @@ class ForecastingService(AnalysisService):
         from datetime import UTC, datetime
 
         from backend.app.analysis.forecasting import (
+            FORECAST_FEATURE_NAMES,
             ForecastingProblemSpec,
             build_point_in_time_features,
             generate_labels,
@@ -398,7 +433,9 @@ class ForecastingService(AnalysisService):
         if not valid:
             raise AppValidationError("; ".join(errors))
 
-        observations, instrument, timeframe = await self._resolve_observations(request, request_id)
+        observations, instrument, timeframe, _upstream_quality = await self._resolve_observations(
+            request, request_id
+        )
         request_observations = getattr(request, "observations", None)
         if request_observations is None and getattr(request, "instrument", None):
             resolved_data_source = "upstream_historical"
@@ -446,21 +483,14 @@ class ForecastingService(AnalysisService):
         )
 
         rows = build_point_in_time_features(observations, spec, lookback=request.lookback)
-        labels = generate_labels(observations, spec)
+        try:
+            labels = generate_labels(observations, spec)
+        except ValueError as exc:
+            from backend.app.core.errors import ValidationError as AppValidationError
 
-        feature_names = [
-            "lag_return_1",
-            "rolling_mean_return",
-            "rolling_std_return",
-            "historical_volatility",
-            "cumulative_return",
-            "direction_consistency",
-            "max_drawdown",
-            "candle_range_pct",
-            "candle_body_ratio",
-            "data_quality_missing_count",
-            "coverage_ratio",
-        ]
+            raise AppValidationError(str(exc)) from exc
+        effective_feature_count = min(max(1, spec.max_features), len(FORECAST_FEATURE_NAMES))
+        feature_names = list(FORECAST_FEATURE_NAMES[:effective_feature_count])
 
         X_rows: list[dict[str, Any]] = []
         y_vals: list[float] = []
@@ -789,16 +819,20 @@ class ForecastingService(AnalysisService):
             if tt == "regression":
                 best = min(
                     model_results,
-                    key=lambda m: m["aggregate_primary_metric"]
-                    if m["aggregate_primary_metric"] == m["aggregate_primary_metric"]
-                    else float("inf"),
+                    key=lambda m: (
+                        m["aggregate_primary_metric"]
+                        if m["aggregate_primary_metric"] == m["aggregate_primary_metric"]
+                        else float("inf")
+                    ),
                 )
             else:
                 best = max(
                     model_results,
-                    key=lambda m: m["aggregate_primary_metric"]
-                    if m["aggregate_primary_metric"] == m["aggregate_primary_metric"]
-                    else -float("inf"),
+                    key=lambda m: (
+                        m["aggregate_primary_metric"]
+                        if m["aggregate_primary_metric"] == m["aggregate_primary_metric"]
+                        else -float("inf")
+                    ),
                 )
             aggregate["best_model_by_primary"] = best["model_family"]
 
@@ -855,7 +889,12 @@ class ForecastingService(AnalysisService):
                     )
                 except (TypeError, ValueError):
                     best_fold_primaries.append(float("nan"))
-        stable_folds = bool(best_fold_primaries) and all(p == p for p in best_fold_primaries)
+        stable_folds = (
+            len(best_fold_primaries) >= 2
+            and all(isinstance(p, float) and p == p for p in best_fold_primaries)
+            and (max(best_fold_primaries) - min(best_fold_primaries))
+            <= max(1e-9, abs(sum(best_fold_primaries) / len(best_fold_primaries)) * 0.1)
+        )
         if not folds or not model_results or best_model_result is None:
             research_readiness_status = "INSUFFICIENT EVIDENCE"
         elif not (best_improvement == best_improvement) or best_improvement <= 0:
@@ -883,8 +922,8 @@ class ForecastingService(AnalysisService):
                     getattr(request, "observations", None) is not None
                 ),
                 "provenance_status": resolved_provenance_status,
-            "real_market_research_accepted": False,
-            "synthetic_classification": (
+                "real_market_research_accepted": False,
+                "synthetic_classification": (
                     "synthetic_fixture"
                     if resolved_synthetic
                     else (
@@ -929,6 +968,9 @@ class ForecastingService(AnalysisService):
                 "n_folds_completed": len(folds),
                 "min_train_samples": request.min_train_samples,
                 "model_families": model_families,
+                "max_features_requested": spec.max_features,
+                "effective_feature_count": len(feature_names),
+                "effective_feature_names": feature_names,
             },
             "research_readiness_status": research_readiness_status,
             "research_readiness": {
@@ -1104,12 +1146,14 @@ class ForecastingService(AnalysisService):
             provider_id == "test-adapter"
             or data.provider_id == "test-adapter"
             or provider_id.startswith("synthetic-")
-            or any(
-                # Check candle source: "synthetic-fixture" or "test-adapter"
-                str(c.source).strip().lower() in ("test-adapter", "synthetic-fixture")
-                or bool((c.metadata or {}).get("fixture"))
-                or bool((c.metadata or {}).get("source_metadata", {}).get("fixture"))
-                for c in data.candles
+            or (
+                len(data.candles) > 0
+                and any(
+                    str(c.source).strip().lower() in ("test-adapter", "synthetic-fixture")
+                    or bool((c.metadata or {}).get("fixture"))
+                    or bool((c.metadata or {}).get("source_metadata", {}).get("fixture"))
+                    for c in data.candles
+                )
             )
         )
 
@@ -1200,7 +1244,7 @@ class ForecastingService(AnalysisService):
                             "message": "Dataset is partial and may not satisfy coverage requirements.",
                         }
                     )
-                min_required = request.problem.required_historical_coverage
+                min_required = (config.get("problem") or {}).get("required_historical_coverage", 0)
                 if len(dataset_result.get("observations", [])) < min_required:
                     findings.append(
                         {
@@ -1250,12 +1294,14 @@ class ForecastingService(AnalysisService):
         elif not valid:
             readiness_status = "BLOCKED"
         else:
-            readiness_status = "INSUFFICIENT EVIDENCE"
+            readiness_status = "READY"
         return {
             "ready": (not has_blocking) and valid,
             "findings": findings,
             "experiment_validation": {"valid": valid, "errors": errors, "config": config},
             "dataset_quality": dataset_quality,
             "readiness_status": readiness_status,
-            "research_readiness_status": readiness_status,
+            # The readiness endpoint assesses prerequisites only; it does not
+            # execute or validate an experiment.
+            "research_readiness_status": "NOT_EVALUATED",
         }

@@ -105,12 +105,24 @@ async def test_retrieve_does_not_silently_fallback():
         raise httpx.ConnectError("refused", request=request)
 
     client = _client(httpx.MockTransport(handler))
-    settings = Settings(environment="testing", log_format="console", log_level="warning",
-                       upstream_market_data_base_url="https://upstream.test.invalid")
+    settings = Settings(
+        environment="testing",
+        log_format="console",
+        log_level="warning",
+        upstream_market_data_base_url="https://upstream.test.invalid",
+    )
     service = ForecastingService(settings, client)
     from types import SimpleNamespace
-    req = SimpleNamespace(instrument="EURUSD", timeframe="D1", price_basis="bid",
-                          start=None, end=None, provider_id="test-adapter", limit=5)
+
+    req = SimpleNamespace(
+        instrument="EURUSD",
+        timeframe="D1",
+        price_basis="bid",
+        start=None,
+        end=None,
+        provider_id="test-adapter",
+        limit=5,
+    )
     with pytest.raises((UpstreamError, ValidationError)):
         await service.retrieve_historical_dataset(req, "req-1")
 
@@ -128,12 +140,24 @@ async def test_empty_response_quality():
         return httpx.Response(200, json=payload)
 
     client = _client(httpx.MockTransport(handler))
-    settings = Settings(environment="testing", log_format="console", log_level="warning",
-                       upstream_market_data_base_url="https://upstream.test.invalid")
+    settings = Settings(
+        environment="testing",
+        log_format="console",
+        log_level="warning",
+        upstream_market_data_base_url="https://upstream.test.invalid",
+    )
     service = ForecastingService(settings, client)
     from types import SimpleNamespace
-    req = SimpleNamespace(instrument="SYNTH/USD", timeframe="D1", price_basis="bid",
-                          start=None, end=None, provider_id="synthetic-test-adapter", limit=5)
+
+    req = SimpleNamespace(
+        instrument="SYNTH/USD",
+        timeframe="D1",
+        price_basis="bid",
+        start=None,
+        end=None,
+        provider_id="synthetic-test-adapter",
+        limit=5,
+    )
     result = await service.retrieve_historical_dataset(req, "req-2")
     assert result["quality"]["row_count"] == 0
 
@@ -146,13 +170,20 @@ async def test_live_upstream_if_available():
     client = MarketDataClient(base_url=base_url, timeout_seconds=10.0)
     try:
         check = await client.check_connectivity(request_id="prompt11-live")
-        assert check.state in {UpstreamState.CONNECTED, UpstreamState.UNAVAILABLE, UpstreamState.AUTH_FAILED}
+        assert check.state in {
+            UpstreamState.CONNECTED,
+            UpstreamState.UNAVAILABLE,
+            UpstreamState.AUTH_FAILED,
+        }
         if check.state == UpstreamState.CONNECTED:
             data = await client.fetch_historical_candles(
                 os.getenv("PROMPT11_TEST_INSTRUMENT", "EURUSD"),
                 provider_id=os.getenv("UPSTREAM_DEFAULT_PROVIDER_ID", "test-adapter"),
-                timeframe="D1", price_basis="bid", limit=5,
-                request_id="prompt11-live-history")
+                timeframe="D1",
+                price_basis="bid",
+                limit=5,
+                request_id="prompt11-live-history",
+            )
             assert data.canonical_instrument
     finally:
         await client.aclose()

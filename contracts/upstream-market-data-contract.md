@@ -106,6 +106,15 @@ Path parameter: `{instrument}` — a canonical instrument identifier. The exact
 identifier vocabulary is **not** documented by Service 1 and was not verified;
 this service passes the identifier through unchanged.
 
+**Path-segment encoding note (verified by implementation):** Service 1's
+route is mounted as `/api/v1/market-data/history/{instrument}` and a forward
+slash cannot appear inside a single path segment, so Service 1's
+canonicaliser accepts the underscore form (`EUR_USD`) and returns the
+canonical slash form (`EUR/USD`) in `canonical_instrument`. This client
+therefore normalises any `/` in the requested instrument to `_` before
+building the path, while leaving an already-underscore form unchanged, so
+either input form is supported.
+
 **Response** — standard envelope:
 
 ```json

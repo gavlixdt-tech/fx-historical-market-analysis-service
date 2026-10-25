@@ -23,7 +23,14 @@ class ForecastingProblemInput(BaseModel):
     prediction_horizon: int = Field(default=1, ge=1, le=365)
     target_type: str = "future_return"
     target_units: str = "fraction"
-    eligibility_rules: list[str] = Field(default_factory=list)
+    eligibility_rules: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Rules excluding reference observations from label generation. "
+            "Supported form: 'exclude_index:<zero-based observation index>' "
+            "(aliases: '<index>', 'exclude:<index>')."
+        ),
+    )
     label_generation_method: str = "exact_future_observation"
     missing_observation_policy: str = "drop_row"
     required_historical_coverage: int = Field(default=100, ge=1)
@@ -31,7 +38,17 @@ class ForecastingProblemInput(BaseModel):
     known_limitations: list[str] = Field(default_factory=list)
     neutral_threshold: float | None = None
     volatility_window: int | None = Field(default=None, ge=2)
-    max_features: int = Field(default=64, ge=1, le=256)
+    max_features: int = Field(
+        default=64,
+        ge=1,
+        le=256,
+        description=(
+            "Upper bound on the number of point-in-time features used by models. "
+            "The fixed feature set currently contains 11 features, so values above "
+            "11 use all available features; smaller values use the first N features "
+            "in declared feature order."
+        ),
+    )
 
 
 class SplitConfigInput(BaseModel):
