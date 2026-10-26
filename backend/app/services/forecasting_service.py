@@ -377,14 +377,14 @@ class ForecastingService(AnalysisService):
         for mf in request_model_families:
             if mf not in allowed:
                 errors.append(f"unsupported model family for target: {mf}")
-        _n_folds = getattr(request, "n_folds", None)
+        _n_folds = cast(int | None, getattr(request, "n_folds", None))
         if _n_folds is not None and (_n_folds < 1 or _n_folds > 5):
             errors.append("n_folds must be between 1 and 5")
-        _min_train_samples = getattr(request, "min_train_samples", None)
+        _min_train_samples = cast(int | None, getattr(request, "min_train_samples", None))
         if _min_train_samples is not None and _min_train_samples < 10:
             errors.append("min_train_samples must be >= 10")
         # resource limits
-        if getattr(request, "limit", None) is not None and getattr(request, "limit", None) > 2000:
+        if getattr(request, "limit", None) is not None and cast(int, getattr(request, "limit", None)) > 2000:
             errors.append("limit exceeds experiment resource cap (2000)")
         if getattr(request, "calibration", False):
             errors.append("calibration is not implemented in the current evaluation path")

@@ -469,8 +469,9 @@ def generate_labels(
                     )
                 )
                 continue
-            mean = sum(chunk) / len(chunk)
-            var = sum((r - mean) ** 2 for r in chunk) / (len(chunk) - 1)
+            valid_chunk = [r for r in chunk if r is not None]
+            mean = sum(valid_chunk) / len(valid_chunk)
+            var = sum((r - mean) ** 2 for r in valid_chunk) / (len(valid_chunk) - 1)
             vol = math.sqrt(var) if var >= 0 else None
             out.append(
                 TargetLabel(
