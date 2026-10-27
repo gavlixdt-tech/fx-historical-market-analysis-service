@@ -11,8 +11,6 @@ import { EmptyState } from "@/components/EmptyState";
 import { ErrorNotice } from "@/components/ErrorNotice";
 import { LoadingState } from "@/components/LoadingState";
 import { Panel } from "@/components/Panel";
-import { DatasetQualityProvenance } from "./DatasetQualityProvenance";
-
 export function RealMarketDataWorkspace() {
   const [dataSource, setDataSource] = useState<DataSourceResponseData | null>(null);
   const [dataSourceLoading, setDataSourceLoading] = useState(false);
@@ -341,11 +339,6 @@ async function handleRetrieve(event: FormEvent) {
       </section>
 
       {dataset ? (
-        <DatasetQualityProvenance
-          provenance={dataset.provenance}
-          loading={false}
-          error={null}
-        />
         <section>
           <h3 className="section-subtitle">Dataset quality and provenance</h3>
           <dl className="data-list">
