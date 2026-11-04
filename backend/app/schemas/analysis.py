@@ -123,6 +123,27 @@ class PatternResearchRequest(BaseModel):
     config: PatternConfigInput = Field(default_factory=PatternConfigInput)
 
 
+class ResearchSummaryConfigInput(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    regime: RegimeConfigInput = Field(default_factory=RegimeConfigInput)
+    pattern: PatternConfigInput = Field(default_factory=PatternConfigInput)
+
+
+class ResearchSummaryRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    observations: list[ObservationInput] | None = None
+    instrument: str | None = None
+    timeframe: str | None = None
+    start: datetime | None = None
+    end: datetime | None = None
+    provider_id: str | None = None
+    price_basis: str | None = None
+    limit: int | None = Field(default=None, ge=1, le=5000)
+    config: ResearchSummaryConfigInput = Field(default_factory=ResearchSummaryConfigInput)
+
+
 class PatternResult(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -161,6 +182,29 @@ class PatternResearchResponseData(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     limitations: list[str] = Field(default_factory=list)
     duration_ms: float
+
+
+class ResearchSummaryData(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    status: str
+    analysis_id: str
+    instrument: str | None = None
+    timeframe: str | None = None
+    observation_count: int = 0
+    dominant_regime: str | None = None
+    regime_share: float | None = None
+    volatility_state: str = "unknown"
+    trend_state: str = "unknown"
+    pattern_id: str | None = None
+    pattern_effect_size: float | None = None
+    pattern_significance: bool = False
+    confidence: float = 0.0
+    narrative: str = ""
+    recommendations: list[str] = Field(default_factory=list)
+    regime_summary: dict[str, Any] | None = None
+    pattern_summary: dict[str, Any] | None = None
+    duration_ms: float = 0.0
 
 
 class CapabilityDiscoveryData(BaseModel):

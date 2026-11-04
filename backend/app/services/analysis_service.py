@@ -38,6 +38,9 @@ from backend.app.schemas.analysis import (
     RegimeAnalysisResponseData,
     RegimeConfigInput,
     RegimeSegment,
+    ResearchSummaryConfigInput,
+    ResearchSummaryData,
+    ResearchSummaryRequest,
 )
 
 
@@ -448,6 +451,169 @@ class AnalysisService:
             hypothesis_count=len(results_list),
             warnings=warnings,
             limitations=limitations,
+            duration_ms=duration_ms,
+        )
+
+    async def research_summary(
+        self, request: ResearchSummaryRequest, request_id: str
+    ) -> ResearchSummaryData:
+        started = time.perf_counter()
+        analysis_id = str(uuid.uuid4())
+
+        regime_config: ResearchSummaryConfigInput = request.config
+        regime_request = RegimeAnalysisRequest(
+            observations=request.observations,
+            instrument=request.instrument,
+            timeframe=request.timeframe,
+            start=request.start,
+            end=request.end,
+            provider_id=request.provider_id,
+            price_basis=request.price_basis,
+            limit=request.limit,
+            config=regime_config.regime,
+        )
+        pattern_request = PatternResearchRequest(
+            observations=request.observations,
+            instrument=request.instrument,
+            timeframe=request.timeframe,
+            start=request.start,
+            end=request.end,
+            provider_id=request.provider_id,
+            price_basis=request.price_basis,
+            limit=request.limit,
+            config=regime_config.pattern,
+        )
+
+        regime_result = await self.analyze_regimes(regime_request, request_id=request_id)
+        pattern_result = await self.research_patterns(pattern_request, request_id=request_id)
+
+        observations, instrument, timeframe, _ = await self._resolve_observations(
+            request, request_id
+        )
+
+        dominant_regime = "unknown"
+        regime_share = 0.0
+        if regime_result.regime_proportions:
+            dominant_regime, regime_share = max(
+                regime_result.regime_proportions.items(), key=lambda item: item[1]
+            )
+
+        recent_returns: list[float] = []
+        for index in range(1, len(observations)):
+            previous_close = observations[index - 1].close
+            current_close = observations[index].close
+            if previous_close == 0:
+                continue
+            recent_returns.append((current_close - previous_close) / previous_close)
+
+        trend_state = "range"
+        if recent_returns:
+            recent_window = recent_returns[-min(20, len(recent_returns)) :]
+            mean_recent_return = sum(recent_window) / len(recent_window)
+            threshold = regime_config.regime.trend_threshold
+            if mean_recent_return > threshold:
+                trend_state = "uptrend"
+            elif mean_recent_return < -threshold:
+                trend_state = "downtrend"
+
+        volatility_values = [
+            segment.volatility
+            for segment in regime_result.segments
+            if segment.volatility is not None
+        ]
+        avg_volatility = (
+            sum(volatility_values) / len(volatility_values) if volatility_values else 0.0
+        )
+        if avg_volatility >= regime_config.regime.high_volatility_threshold:
+            volatility_state = "elevated"
+        elif avg_volatility <= regime_config.regime.low_volatility_threshold:
+            volatility_state = "contained"
+        else:
+            volatility_state = "moderate"
+
+        best_pattern = None
+        if pattern_result.patterns:
+            best_pattern = max(
+                pattern_result.patterns,
+                key=lambda item: abs(float(item.effect_size or 0.0)),
+            )
+
+        pattern_id = best_pattern.pattern_id if best_pattern else None
+        pattern_effect_size = best_pattern.effect_size if best_pattern else None
+        pattern_significance = bool(best_pattern and best_pattern.significant)
+
+        confidence = min(
+            0.99,
+            max(
+                0.05,
+                regime_share * 0.65
+                + (0.25 if pattern_significance else 0.05)
+                + (0.15 if pattern_effect_size is not None else 0.0),
+            ),
+        )
+
+        effect_text = (
+            f"with effect size {pattern_effect_size:.4f}"
+            if pattern_effect_size is not None
+            else "with no stable effect estimate"
+        )
+        narrative = (
+            f"{instrument or 'The instrument'} is currently dominated by a {dominant_regime} "
+            f"regime with {volatility_state} volatility and a {trend_state} bias. "
+            f"The strongest research signal is {pattern_id or 'no stable pattern'} {effect_text}."
+        )
+
+        recommendations: list[str] = []
+        if dominant_regime in {"trend_up", "trend_down"}:
+            recommendations.append(
+                "Prioritize continuation research while preserving strict risk control."
+            )
+        elif dominant_regime == "range":
+            recommendations.append(
+                "Lean into range-mean-reversion tests and refine support/resistance overlays."
+            )
+        else:
+            recommendations.append(
+                "Collect more history before turning the regime into a trading conclusion."
+            )
+
+        if volatility_state == "elevated":
+            recommendations.append(
+                "Tighten drawdown monitoring and require more confirmation before interpreting a move."
+            )
+        elif volatility_state == "contained":
+            recommendations.append(
+                "Use tighter entries to harvest stable structure while monitoring for regime shifts."
+            )
+
+        if pattern_significance:
+            recommendations.append(
+                "Use the significant pattern as a directional research lens rather than a production signal."
+            )
+        else:
+            recommendations.append(
+                "Collect more qualifying events so pattern evidence becomes less fragile."
+            )
+
+        duration_ms = (time.perf_counter() - started) * 1000
+        return ResearchSummaryData(
+            status="completed" if observations else "insufficient_data",
+            analysis_id=analysis_id,
+            instrument=instrument,
+            timeframe=timeframe,
+            observation_count=len(observations),
+            dominant_regime=dominant_regime,
+            regime_share=regime_share,
+            volatility_state=volatility_state,
+            trend_state=trend_state,
+            pattern_id=pattern_id,
+            pattern_effect_size=pattern_effect_size,
+            pattern_significance=pattern_significance,
+            confidence=float(confidence),
+            narrative=narrative,
+            recommendations=recommendations,
+            regime_summary=regime_result.model_dump(mode="json"),
+            pattern_summary=pattern_result.model_dump(mode="json"),
             duration_ms=duration_ms,
         )
 

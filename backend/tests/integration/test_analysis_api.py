@@ -38,6 +38,24 @@ def test_pattern_endpoint(client) -> None:
     assert data["patterns"][0]["pattern_id"] == "directional_persistence"
 
 
+def test_research_summary_endpoint(client) -> None:
+    response = client.post(
+        "/api/v1/analysis/research-summary",
+        json={
+            "observations": _obs(120),
+            "config": {"pattern": {"pattern_ids": ["directional_persistence"]}},
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["status"] == "completed"
+    assert data["observation_count"] == 120
+    assert 0.0 <= data["confidence"] <= 1.0
+    assert data["narrative"]
+    assert data["recommendations"]
+    assert data["regime_summary"]["status"] == "completed"
+
+
 def test_capabilities_endpoint(client) -> None:
     response = client.get("/api/v1/analysis/capabilities")
     assert response.status_code == 200
