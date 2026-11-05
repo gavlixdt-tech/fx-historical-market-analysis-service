@@ -23,4 +23,5 @@ export type {
   ModelFamiliesResponseData,
   ExperimentValidationResponseData,
   ExperimentRunResponseData,
+  HistoricalReplayResponseData,
 } from "@/schemas/api";

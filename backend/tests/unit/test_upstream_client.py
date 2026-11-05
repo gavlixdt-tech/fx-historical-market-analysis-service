@@ -198,3 +198,36 @@ async def test_list_providers_rejects_an_unknown_provider_type() -> None:
 
     with pytest.raises(UpstreamError):
         await client.list_providers()
+
+
+async def test_provider_connection_test_forwards_auth_and_validates_identity() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        assert request.url.path == (
+            "/api/v1/market-data/providers/real-provider/test-connection"
+        )
+        assert request.headers["x-api-key"] == "test-upstream-key"
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    "provider_id": "real-provider",
+                    "success": True,
+                    "latency_ms": 12.0,
+                    "started_at": "2026-01-01T00:00:00Z",
+                    "completed_at": "2026-01-01T00:00:01Z",
+                    "message": "connected",
+                    "request_id": "req-42",
+                },
+                "meta": {
+                    "api_version": "v1",
+                    "request_id": "req-42",
+                    "timestamp_utc": "2026-01-01T00:00:01Z",
+                },
+                "errors": [],
+            },
+        )
+
+    client = _client(httpx.MockTransport(handler))
+
+    assert await client.test_provider_connection("real-provider", request_id="req-42")

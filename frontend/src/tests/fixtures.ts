@@ -64,6 +64,12 @@ export const statusData = {
       implemented: true,
       detail: "Historical pattern and relationship identification.",
     },
+    {
+      name: "historical_replay",
+      implemented: true,
+      detail:
+        "Research-only chronological replay with caller-supplied point-in-time availability.",
+    },
   ],
   dependencies: [
     { name: "fx-market-data-service", healthy: false, state: "unconfigured" },

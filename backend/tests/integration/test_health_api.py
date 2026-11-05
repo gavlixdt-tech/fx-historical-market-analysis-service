@@ -64,8 +64,16 @@ def test_status_reports_capabilities_and_upstream_state(client: TestClient) -> N
         "regime_classification",
         "analytical_significance",
         "reproducible_results",
+        "historical_replay",
     ):
         assert implemented[implemented_name] is True
+    replay_detail = next(
+        capability["detail"]
+        for capability in data["capabilities"]
+        if capability["name"] == "historical_replay"
+    )
+    assert "caller-supplied" in replay_detail
+    assert "not persisted" in replay_detail
 
 
 def test_status_reports_unconfigured_upstream_truthfully(client: TestClient) -> None:
@@ -80,14 +88,14 @@ def test_status_reports_unconfigured_upstream_truthfully(client: TestClient) -> 
     assert upstream["last_check_succeeded"] is None
 
 
-def test_root_banner_states_foundation_status(client: TestClient) -> None:
+def test_root_banner_states_research_status(client: TestClient) -> None:
     response = client.get("/")
 
     assert response.status_code == 200
     body = response.json()
-    assert body["status"] == "foundation"
+    assert body["status"] == "research"
     assert body["mode"] == "research-simulation"
-    assert "not implemented" in body["note"].lower()
+    assert "caller-asserted" in body["note"].lower()
 
 
 def test_metrics_endpoint_exposes_prometheus_payload(client: TestClient) -> None:

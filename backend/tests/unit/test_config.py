@@ -83,6 +83,18 @@ def test_empty_upstream_base_url_means_unconfigured() -> None:
     assert settings.upstream_configured is False
 
 
+def test_market_data_replay_requires_explicit_publication_lag() -> None:
+    settings = Settings()
+    assert settings.upstream_replay_availability_delay_seconds is None
+    empty_setting = Settings(upstream_replay_availability_delay_seconds="")
+    assert empty_setting.upstream_replay_availability_delay_seconds is None
+
+
+def test_market_data_replay_publication_lag_is_bounded() -> None:
+    with pytest.raises(PydanticValidationError):
+        Settings(upstream_replay_availability_delay_seconds=86_401)
+
+
 def test_trusted_hosts_are_parsed() -> None:
     settings = Settings(trusted_hosts="localhost, testserver ,127.0.0.1")
     assert settings.trusted_host_list == ["localhost", "testserver", "127.0.0.1"]

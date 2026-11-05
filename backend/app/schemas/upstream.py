@@ -290,3 +290,25 @@ class UpstreamProviderListResponse(BaseModel):
     data: list[UpstreamProviderSummary] | None = None
     meta: UpstreamResponseMeta
     errors: list[UpstreamErrorDetail] = Field(default_factory=list)
+
+
+class UpstreamConnectionTestResult(BaseModel):
+    """Verified shape of Service 1's provider connection-test result."""
+
+    model_config = ConfigDict(frozen=True)
+
+    provider_id: str
+    success: bool
+    latency_ms: float | None = None
+    started_at: str | None = None
+    completed_at: str | None = None
+    message: str
+    request_id: str
+
+
+class UpstreamConnectionTestResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    data: UpstreamConnectionTestResult | None = None
+    meta: UpstreamResponseMeta
+    errors: list[UpstreamErrorDetail] = Field(default_factory=list)

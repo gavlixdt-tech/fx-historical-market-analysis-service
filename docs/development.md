@@ -114,6 +114,7 @@ The settings that matter most in development:
 | `TRUSTED_HOSTS` | `localhost,127.0.0.1,testserver` | Comma-separated. |
 | `UPSTREAM_MARKET_DATA_BASE_URL` | *(empty)* | Empty means no upstream. |
 | `UPSTREAM_API_KEY` | *(empty)* | Server-side only. |
+| `UPSTREAM_REPLAY_AVAILABILITY_DELAY_SECONDS` | *(unset)* | Required by market-data-sourced replay; provider-specific assumed publication lag, minimum 1 second. |
 
 ## 7. Adding a backend endpoint
 

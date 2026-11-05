@@ -16,6 +16,7 @@ import {
   DataSourceEnvelopeSchema,
   ExperimentRunEnvelopeSchema,
   ExperimentValidationEnvelopeSchema,
+  HistoricalReplayEnvelopeSchema,
   HistoricalDatasetEnvelopeSchema,
   LiveEnvelopeSchema,
   ModelFamiliesEnvelopeSchema,
@@ -27,6 +28,7 @@ import {
   type ErrorDetail,
   type ExperimentRunResponseData,
   type ExperimentValidationResponseData,
+  type HistoricalReplayResponseData,
   type HistoricalDatasetResponseData,
   type ModelFamiliesResponseData,
   type ReadyResponseData,
@@ -234,6 +236,14 @@ export const api = {
       body: payload,
     }).then((r) => r.data),
 
+  runHistoricalReplay: (payload: unknown, options?: RequestOptions) =>
+    request("/historical-replay/run", HistoricalReplayEnvelopeSchema, {
+      ...options,
+      method: "POST",
+      timeoutMs: options?.timeoutMs ?? 180_000,
+      body: payload,
+    }).then((r) => r.data),
+
   getExperiment: (experimentId: string, options?: RequestOptions) =>
     request(
       `/forecasting/experiment/${encodeURIComponent(experimentId)}`,
@@ -247,6 +257,7 @@ export type {
   ErrorDetail,
   ExperimentRunResponseData,
   ExperimentValidationResponseData,
+  HistoricalReplayResponseData,
   HistoricalDatasetResponseData,
   ModelFamiliesResponseData,
   ReadyResponseData,

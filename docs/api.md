@@ -172,12 +172,6 @@ Prometheus text exposition format. Not part of the OpenAPI document.
 Legacy aliases retained for infrastructure compatibility. Not part of the
 OpenAPI document.
 
-## Not implemented in this phase
-
-No endpoint returns historical analysis results. Requests to paths such as
-`/api/v1/analysis/*`, `/api/v1/trading`, or `/api/v1/orders` return `404`
-with the standard error envelope. A test asserts this.
-
 ### `GET /api/v1/data-source`
 
 Returns backend-reported configuration and connectivity for the upstream market-data service.
@@ -201,3 +195,43 @@ Validates an experiment configuration without executing it.
 ### `POST /api/v1/forecasting/experiment/run`
 
 Executes a forecasting experiment and returns fold, model, comparison, aggregate, warning and limitation data. Experiment results may include `data_source`, `synthetic` and `data_provenance`.
+
+### `POST /api/v1/historical-replay/run`
+
+Runs the point-in-time historical replay described in
+[`historical-replay.md`](historical-replay.md). The request supplies 40–2,000
+chronologically ordered observations (the actual minimum is derived from the
+lookback, training minimum, horizon, and embargo), each with a timezone-aware
+`timestamp`, `available_at`, OHLCV values, and `source_record_id`; it also
+supplies instrument, timeframe, source dataset ID, and a forecasting problem.
+
+The response contains the ordered out-of-sample predictions, baseline and
+model-family metrics, regime-conditioned summaries, classification
+calibration diagnostics where applicable, block-bootstrap comparison,
+supplementary White's Reality Check / PBO diagnostics, dataset fingerprint,
+and explicit warnings/limitations. `available_at` and provenance identity are
+caller-supplied and unverified. Results are not persisted. No trades, costs,
+or profitability are simulated.
+
+The API rejects records whose availability precedes their observation,
+non-chronological/duplicate observation timestamps, or availability order
+that moves backward. CPU-bound replay runs in a worker thread; request-body
+size remains bounded by `MAX_REQUEST_BODY_BYTES`.
+
+### `POST /api/v1/historical-replay/run-from-market-data`
+
+Accepts the same replay options with provider ID, instrument, timeframe, price
+basis, date range, and source dataset ID instead of an observations array.
+Service 2 retrieves validated candles through the configured Service 1 client.
+Only a configured real provider with an available connection and historical
+candle capability is accepted. Partial/incomplete coverage, invalid candles,
+or truncated responses are rejected.
+
+The endpoint requires `UPSTREAM_REPLAY_AVAILABILITY_DELAY_SECONDS` and derives
+each `available_at` from `close_time + delay`. The current Service 1 contract
+does not provide original publication timestamps, so the resulting evidence
+is always marked `provider_asserted_unverified`; it is not proof of historical
+information availability. See [`historical-replay.md`](historical-replay.md)
+for configuration and limitations.
+
+No broker, execution, or order endpoints are exposed.

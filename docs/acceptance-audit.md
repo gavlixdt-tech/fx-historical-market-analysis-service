@@ -1,7 +1,8 @@
-# Acceptance Audit — Foundation Phase
+# Acceptance Audit — Foundation Phase and Phase 4.5 Addendum
 
-This document records the acceptance criteria for the foundation phase, the
-evidence for each, and any blocked or unverified item.
+Sections 1–5 preserve the original foundation-phase record. Section 6 records
+the current Phase 4.5 historical-replay implementation and supersedes
+foundation-era statements that the service has no analytical endpoints.
 
 **Scope reminder:** this phase delivers the service *foundation*. The
 historical analysis engine is **not** implemented.
@@ -23,8 +24,7 @@ historical analysis engine is **not** implemented.
 | 9 | Tests and CI are configured, with actual execution results reported honestly. | **MET** | See sections 2 and 4 below. |
 | 10 | Documentation and architecture diagrams are present. | **MET** | `README.md`, `docs/architecture.md` (with Mermaid diagrams), `docs/api.md`, `docs/security.md`, `docs/development.md`, `docs/deployment.md`, `docs/acceptance-audit.md`, `contracts/upstream-market-data-contract.md`. |
 | 11 | The service remains independently deployable. | **MET** | No build-time or run-time dependency on Service 1. Two standalone Dockerfiles and a Compose stack. |
-| 12 | No trading, prediction,
- or strategy capabilities have been added. | **MET** | No trading, prediction, or strategy code exists. `ENABLE_LIVE_TRADING=true` refuses to start. The dashboard exposes no trading controls, and a test asserts their absence. |
+| 12 | No trading, live model-serving, or autonomous strategy capabilities have been added. | **MET** | Research replay is retrospective and caller-data-driven. No live model-serving, trading, execution or broker integration is exposed. |
 
 ---
 
@@ -122,10 +122,10 @@ recorded in `docs/architecture.md` section 9.
 
 ---
 
-## 5. Phase boundary
+## 5. Original foundation-phase boundary
 
-This phase deliberately stops at the foundation. The following are **not**
-implemented and require explicit authorisation before any work begins:
+At the time of the original foundation acceptance, the following were not
+implemented:
 
 - historical statistics and descriptive measures,
 - pattern and relationship discovery,
@@ -134,3 +134,33 @@ implemented and require explicit authorisation before any work begins:
 - reproducible analytical results with provenance,
 - any persistence of analytical results,
 - any trading, prediction, or strategy capability.
+
+## 6. Phase 4.5 — historical replay addendum
+
+The current implementation adds `POST /api/v1/historical-replay/run` and the
+Historical Replay workbench. Its tests are in
+`backend/tests/integration/test_historical_replay.py` and
+`frontend/src/tests/historicalReplay.test.tsx`.
+
+The replay performs a reconstructed chronological walk-forward run using
+explicit observation `available_at` values, target-maturity purging,
+expanding/rolling training history, optional embargo, out-of-sample metrics,
+classification calibration diagnostics, causal heuristic-regime slices,
+block-bootstrap model comparisons, a supplementary White's Reality Check
+approximation, and supplementary PBO diagnostics. The workbench accepts a
+caller-supplied JSON file and generates no market observations.
+
+The additional `POST /api/v1/historical-replay/run-from-market-data` path checks
+the configured real provider through Service 1, fetches validated candles, and
+runs the same replay. It requires an explicit `UPSTREAM_REPLAY_AVAILABILITY_DELAY_SECONDS`
+assumption and marks provider provenance unverified because Service 1 does not
+provide historical publication timestamps. It is not a continuous market
+stream.
+
+This is not whole-platform production readiness. No live upstream connection
+was verified in this environment; source authenticity and actual historical
+availability remain unverified; historical prediction outputs and
+service-level ablations are not integrated; results/artifacts are not
+persisted; and retrospective data cannot establish an untouched future period.
+No forecast superiority, 80% accuracy, or profitability is asserted. See
+[`historical-replay.md`](historical-replay.md) for the API contract and limits.

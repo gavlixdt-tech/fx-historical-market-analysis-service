@@ -7,10 +7,11 @@ observations in order to discover statistically defensible historical
 patterns, market regimes, temporal relationships, and other evidence-supported
 findings.
 
-> **Status:** Foundation plus forecasting research/simulation capabilities are implemented.
-> Historical statistical pattern discovery, regime characterisation, and persistence
-> remain deferred. No live prediction, signal, trading, or production model serving
-> is provided.
+> **Status:** Foundation, forecasting research, and historical replay are
+> implemented for research/simulation. Replay may fetch from a configured real
+> historical-data provider, but source provenance and derived publication times
+> are not independently verified; results are not persisted. No live prediction,
+> signal, trading, or production model serving is provided.
 
 Private research system. Research / simulation mode only.
 
@@ -30,8 +31,9 @@ microservice's directory.
 | Provenance, freshness, source quality | `fx-market-data-service` |
 | Historical dataset requests | **this service** (via the upstream contract) |
 | Analytical input validation | **this service** (rejects unsuitable input) |
-| Historical statistics and patterns | **this service** (deferred to a later phase) |
-| Regime and volatility characterisation | **this service** (deferred to a later phase) |
+| Historical statistics and patterns | **this service** (research APIs; see limitations) |
+| Replay and predictive validation | **this service** (caller records or configured provider retrieval with declared availability assumptions) |
+| Authoritative service outputs / lineage | **not integrated** |
 
 This service consumes Service 1's data through a documented contract and does
 **not** duplicate any provider, collection, or source-quality logic.
@@ -45,6 +47,10 @@ This service consumes Service 1's data through a documented contract and does
   envelopes, structured JSON logging, Prometheus metrics, optional
   OpenTelemetry tracing, health/readiness/status/version endpoints, and a
   typed read-only upstream client.
+- **Provider-sourced replay** — optional replay route reads complete historical
+  candles from a configured real provider through Service 1, requires an explicit
+  publication-lag assumption, and records the source/coverage/availability policy
+  in the replay fingerprint report. It is not a continuous live feed.
 - **Frontend** — a dedicated React + TypeScript + Vite dashboard with a typed
   API client, runtime response validation, and accurate loading, empty,
   unavailable, and error states.
@@ -71,13 +77,26 @@ This service consumes Service 1's data through a documented contract and does
 - Integrated frontend workspace for experiment configuration and results.
 - No live prediction, signals, trading, or production model serving.
 
-## Deferred to a later phase (requires authorisation)
+## Historical replay and predictive robustness (Phase 4.5)
 
-Historical statistics and descriptive measures, pattern and relationship
-discovery, market regime and volatility characterisation, statistical
-significance evaluation, persistence of analytical results, and anything
-resembling trading, prediction, or strategy. Reproducible forecasting
-experiment metadata and dataset fingerprints are implemented in-memory.
+- Chronological rolling-origin replay with explicit `available_at` timestamps.
+- Expanding/rolling training windows, target-maturity purging, and optional
+  embargo; preprocessing is fitted only on each origin's training data.
+- Baselines, out-of-sample prediction records, class-wise calibration
+  diagnostics, causal heuristic-regime slices, and model-family comparisons.
+- Supplementary block-bootstrap White's Reality Check approximation and
+  combinatorial Probability of Backtest Overfitting diagnostic.
+- Dataset fingerprints and replay configuration are returned for
+  reproducibility; historical source availability is caller-asserted and
+  results are not persisted.
+- The dedicated workbench accepts a caller's JSON dataset; it does not create
+  demo historical observations.
+
+See [docs/historical-replay.md](docs/historical-replay.md) for the contract and
+limits. GFX service-output ingestion, service ablations, signed provenance,
+durable replay artifacts, and a verifiably untouched future evaluation remain
+outside this implementation. No profitability or production-readiness claim is
+made.
 
 ---
 
@@ -124,6 +143,7 @@ Set `VITE_API_BASE_URL` if the backend is not on the same origin.
 | --- | --- |
 | [`docs/architecture.md`](docs/architecture.md) | System context, module responsibilities, boundaries, diagrams. |
 | [`docs/api.md`](docs/api.md) | Endpoint reference, envelopes, error codes, auth. |
+| [`docs/historical-replay.md`](docs/historical-replay.md) | Point-in-time replay contract, methodology, reproducibility, and limits. |
 | [`docs/security.md`](docs/security.md) | Implemented controls, secret handling, known limitations. |
 | [`docs/development.md`](docs/development.md) | Local setup, checks, how to extend. |
 | [`docs/deployment.md`](docs/deployment.md) | Images, production configuration, probes, rollback. |

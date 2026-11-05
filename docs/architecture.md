@@ -8,9 +8,10 @@ foreign-exchange market observations in order to discover statistically
 defensible historical patterns, market regimes, temporal relationships, and
 other evidence-supported findings.
 
-**This repository is the foundation phase.** The historical analysis engine is
-**not implemented**. See [Current capabilities](#6-current-capabilities) and
-[Deferred capabilities](#7-deferred-capabilities).
+**This repository provides research/simulation capabilities, including
+availability-aware historical replay and an optional provider-sourced replay
+path.** It does not provide production model serving, authenticated cross-service
+prediction ingestion, or trading.
 
 ---
 
@@ -27,7 +28,7 @@ graph TB
         Client["MarketDataClient<br/>(typed upstream client)"]
     end
 
-    Gateway["Platform API Gateway<br/>(NOT IMPLEMENTED HERE)"]
+    Gateway["Platform API Gateway<br/>(separate service)"]
     Service1["fx-market-data-service<br/>(Service 1, external repo)"]
     Provider["External market-data providers<br/>(Service 1's responsibility)"]
 
@@ -47,9 +48,10 @@ graph TB
 | Rule | Enforcement |
 | --- | --- |
 | The browser never calls Service 1 | The dashboard only knows `VITE_API_BASE_URL`, which points at this service's own backend. `frontend/nginx.conf` proxies only `/api/` to `backend:8000`. |
-| This service never integrates a provider | There is no provider SDK, provider credential, or feed code in this repository. |
-| This service never re-validates market data | The upstream client validates *shape* only. Coverage and validation metadata come from Service 1. |
-| No gateway is implemented here | Only the outbound client boundary and the documentation of the expected contract exist. |
+| This service never owns provider credentials or feed code | Provider credentials and provider calls remain inside Service 1. Service 2 uses only its server-side Service 1 credential. |
+| Provider-sourced replay requires an explicit availability assumption | Current Service 1 candles contain close times but no original publication timestamps; Service 2 records `close_time + configured lag` as assumed availability and does not claim point-in-time proof. |
+| Market data quality authority remains Service 1 | The upstream client validates contract shape and checks coverage, while source validation metadata is retained from Service 1. |
+| The gateway remains a separate service | The gateway can route Service 63; Service 2 is not itself an API gateway or browser identity authority. |
 
 ---
 
@@ -64,9 +66,10 @@ fx-historical-market-analysis-service/
 │   │   │   └── routes/        # health.py, status.py, version.py
 │   │   ├── core/              # config.py, errors.py, logging.py
 │   │   ├── middleware/        # auth, correlation, request_logging, security
-│   │   ├── schemas/           # Request/response contracts (incl. upstream.py)
+│   │   ├── schemas/           # Request/response contracts (incl. upstream.py, replay.py)
 │   │   ├── clients/           # market_data.py: typed upstream client
-│   │   ├── services/          # health_service.py: operational truth
+│   │   ├── services/          # forecasting_service.py, health_service.py
+│   │   ├── analysis/          # point-in-time features, models, replay, metrics
 │   │   ├── observability/     # metrics.py, tracing.py
 │   │   └── main.py            # create_app() factory + entrypoint
 │   │                          (no repositories/ package: nothing is persisted)
@@ -81,7 +84,7 @@ fx-historical-market-analysis-service/
 │   ├── src/
 │   │   ├── app/               # App shell, data hook, styles
 │   │   ├── components/        # Reusable presentation components
-│   │   ├── features/          # Overview, Workspace, Integration, Diagnostics
+│   │   ├── features/          # Overview, replay, forecasting, integration, diagnostics
 │   │   ├── schemas/           # Zod runtime validation schemas
 │   │   ├── services/api/      # Typed API client
 │   │   └── tests/             # Vitest suites
@@ -159,23 +162,33 @@ Implemented in this phase:
 - Structured JSON logging, OpenTelemetry tracing (opt-in).
 - Consistent error envelopes and request correlation IDs.
 - A typed, read-only upstream client with the verified Service 1 contract.
+- Forecasting research experiments using chronological walk-forward evaluation.
+- Historical replay at successive point-in-time origins using explicit
+  observation-availability timestamps, target-maturity purging and optional
+  embargo.
+- Reproducibility fingerprints, out-of-sample metrics, calibration summaries,
+  heuristic regime slices, and supplementary selection-bias diagnostics.
+- A workbench that consumes caller-provided JSON observations and displays
+  replay evidence and its limitations.
 - A dedicated React/TypeScript dashboard with validated loading, empty,
   unavailable, and error states.
 
-## 7. Deferred capabilities
+## 7. Remaining limitations
 
-**Deliberately not implemented in this phase:**
+The replay and research endpoints do not provide:
 
-- historical statistics and descriptive measures,
-- pattern and relationship discovery,
-- market regime and volatility characterisation,
-- statistical strength and limitation evaluation,
-- reproducible analytical results with provenance,
-- any persistence of analytical results.
+- independent verification of data provenance and availability timestamps,
+- historical revisions/correction event reconstruction,
+- immutable durable replay and model-artifact persistence,
+- point-in-time outputs from other GFX services and service-level ablation,
+- authenticated inter-service replay coordination,
+- integrity controls proving that a declared final holdout was never inspected,
+- evaluation on future data not used in the replay,
+- broker, execution, transaction-cost, and trading simulation.
 
-The `status` endpoint reports each of these with `implemented: false`, and the
-dashboard renders them as deferred. No endpoint returns fabricated analytical
-results.
+The replay returns only results calculated from submitted observations and
+marks synthetic fixtures or caller-asserted provenance explicitly. It does not
+assert that a replayed model was the model used by GFX at the historical time.
 
 ---
 
@@ -202,7 +215,7 @@ The design keeps the gateway concern at the edge:
 
 ## 9. Persistence
 
-No database is provisioned. Nothing in this phase stores analytical results,
+No database is provisioned. Replay reports and model artifacts are not stored,
 and Service 1 remains the owner of the source data. `DATABASE_URL` exists in
 the configuration only so that a later, separately justified phase can add
 persistence without changing the configuration shape. See

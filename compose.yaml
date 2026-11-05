@@ -28,6 +28,7 @@ services:
       # Upstream market-data service (optional). Leave empty to run without it.
       UPSTREAM_MARKET_DATA_BASE_URL: ${UPSTREAM_MARKET_DATA_BASE_URL:-}
       UPSTREAM_API_KEY: ${UPSTREAM_API_KEY:-}
+      UPSTREAM_REPLAY_AVAILABILITY_DELAY_SECONDS: ${UPSTREAM_REPLAY_AVAILABILITY_DELAY_SECONDS:-}
       UPSTREAM_TIMEOUT_SECONDS: "5"
       OTEL_ENABLED: "false"
       METRICS_ENABLED: "true"

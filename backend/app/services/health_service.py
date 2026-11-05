@@ -72,6 +72,23 @@ IMPLEMENTED_CAPABILITIES: tuple[CapabilityStatus, ...] = (
         implemented=True,
         detail="Forecasting datasets, targets, splits, manifests, and baselines (no trained model).",
     ),
+    CapabilityStatus(
+        name="historical_replay",
+        implemented=True,
+        detail=(
+            "Research-only chronological replay from caller-supplied observations; "
+            "availability provenance is unverified and results are not persisted."
+        ),
+    ),
+    CapabilityStatus(
+        name="market_data_sourced_replay",
+        implemented=True,
+        detail=(
+            "Optional read-only replay path via a configured, connection-tested real "
+            "market-data provider; publication lag is an explicit assumption, not a "
+            "provider-supplied point-in-time timestamp."
+        ),
+    ),
 )
 
 # No capabilities are deferred in this phase.

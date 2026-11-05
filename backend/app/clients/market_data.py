@@ -20,6 +20,7 @@ import logging
 import time
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -30,6 +31,7 @@ from backend.app.clients.base import (
 )
 from backend.app.core.errors import UpstreamError
 from backend.app.schemas.upstream import (
+    UpstreamConnectionTestResponse,
     UpstreamHistoricalCandleData,
     UpstreamHistoricalResponse,
     UpstreamProviderListResponse,
@@ -40,6 +42,7 @@ logger = logging.getLogger("fx-historical-market-analysis-service.upstream")
 # Verified Service 1 route paths (Service 1 mounts its v1 router at /api/v1).
 UPSTREAM_HISTORY_PATH = "/api/v1/market-data/history/{instrument}"
 UPSTREAM_PROVIDERS_PATH = "/api/v1/market-data/providers"
+UPSTREAM_PROVIDER_TEST_PATH = "/api/v1/market-data/providers/{provider_id}/test-connection"
 UPSTREAM_LIVE_PATH = "/api/v1/health/live"
 
 # Verified Service 1 query parameter names.
@@ -411,6 +414,60 @@ class MarketDataClient:
                 "Upstream market-data service returned an unexpected payload shape.",
                 details={"dependency": "fx-market-data-service"},
             ) from exc
+
+    async def test_provider_connection(
+        self,
+        provider_id: str,
+        *,
+        request_id: str | None = None,
+    ) -> bool:
+        """Perform the upstream's real-provider connectivity test."""
+        self._require_configured()
+        if not provider_id.strip():
+            raise UpstreamError("A provider identifier is required.")
+        path = UPSTREAM_PROVIDER_TEST_PATH.format(
+            provider_id=quote(provider_id, safe=""),
+        )
+        try:
+            response = await self._request(
+                "POST",
+                path,
+                headers=self._build_headers(request_id),
+            )
+        except httpx.TimeoutException as exc:
+            raise UpstreamError(
+                "Upstream market-data provider connection test timed out.",
+                details={"dependency": "fx-market-data-service", "error_type": "timeout"},
+            ) from exc
+        except httpx.HTTPError as exc:
+            raise UpstreamError(
+                "Upstream market-data provider connection test failed.",
+                details={"dependency": "fx-market-data-service", "error_type": "connection_error"},
+            ) from exc
+
+        if response.status_code >= 400:
+            raise UpstreamError(
+                "Upstream market-data provider connection test was rejected.",
+                upstream_status=response.status_code,
+                details={"dependency": "fx-market-data-service"},
+            )
+        try:
+            parsed = UpstreamConnectionTestResponse.model_validate(response.json())
+        except (ValueError, TypeError) as exc:
+            raise UpstreamError(
+                "Upstream market-data service returned an invalid connection-test response.",
+                details={"dependency": "fx-market-data-service"},
+            ) from exc
+        if (
+            parsed.errors
+            or parsed.data is None
+            or parsed.data.provider_id != provider_id
+        ):
+            raise UpstreamError(
+                "Upstream market-data service returned an inconsistent connection-test result.",
+                details={"dependency": "fx-market-data-service"},
+            )
+        return parsed.data.success
 
 
 def _utc_now() -> str:

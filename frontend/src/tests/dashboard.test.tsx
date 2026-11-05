@@ -104,6 +104,7 @@ describe("dashboard", () => {
       expect(screen.getByTestId("implemented-capabilities")).toBeInTheDocument();
     });
     expect(screen.getByText(/historical statistics/i)).toBeInTheDocument();
+    expect(screen.getByText("historical replay")).toBeInTheDocument();
   });
 
   it("presents no fabricated market statistics or analysis scores", async () => {

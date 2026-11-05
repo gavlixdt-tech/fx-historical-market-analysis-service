@@ -245,6 +245,74 @@ export type ExperimentRunResponseData = z.infer<
   typeof ExperimentRunResponseDataSchema
 >;
 
+export const ReplayObservationSchema = z.object({
+  timestamp: z.string().datetime({ offset: true }),
+  available_at: z.string().datetime({ offset: true }),
+  open: z.number().positive(),
+  high: z.number().positive(),
+  low: z.number().positive(),
+  close: z.number().positive(),
+  volume: z.number().nonnegative().nullable().optional(),
+  source_record_id: z.string().min(1),
+});
+
+export type ReplayObservation = z.infer<typeof ReplayObservationSchema>;
+
+export const HistoricalReplayResponseDataSchema = z.object({
+  replay_id: z.string(),
+  status: z.string(),
+  instrument: z.string(),
+  timeframe: z.string(),
+  target_type: z.string(),
+  dataset_fingerprint: z.string(),
+  source_dataset_id: z.string(),
+  provenance_status: z.string(),
+  synthetic: z.boolean(),
+  n_observations: z.number(),
+  n_predictions: z.number(),
+  validation_mode: z.string(),
+  predictions: z.array(
+    z.object({
+      reference_timestamp: z.string(),
+      information_cutoff: z.string(),
+      training_information_cutoff: z.string(),
+      target_timestamp: z.string(),
+      target_available_at: z.string(),
+      training_samples: z.number(),
+      training_reference_end: z.string(),
+      training_target_end: z.string(),
+      training_outcomes_available_by_cutoff: z.boolean(),
+      regime: z.string(),
+      actual: z.number(),
+      forecasts: z.record(
+        z.object({
+          prediction: z.number(),
+          class_probabilities: z.record(z.number()),
+        }),
+      ),
+    }),
+  ),
+  models: z.array(
+    z.object({
+      model_family: z.string(),
+      n_predictions: z.number(),
+      primary_metric: z.string(),
+      out_of_sample_metrics: z.record(z.unknown()),
+      regime_metrics: z.record(z.unknown()),
+      declared_holdout: z.record(z.unknown()),
+      vs_baseline: z.record(z.unknown()),
+    }),
+  ),
+  robustness: z.record(z.unknown()),
+  reproducibility: z.record(z.unknown()),
+  warnings: z.array(z.string()),
+  limitations: z.array(z.string()),
+});
+
+export type HistoricalReplayResponseData = z.infer<
+  typeof HistoricalReplayResponseDataSchema
+>;
+
 /** Envelope schemas for the new endpoints. */
 export const DataSourceEnvelopeSchema = ApiEnvelopeSchema.extend({
   data: DataSourceResponseDataSchema,
@@ -268,4 +336,8 @@ export const ExperimentValidationEnvelopeSchema = ApiEnvelopeSchema.extend({
 
 export const ExperimentRunEnvelopeSchema = ApiEnvelopeSchema.extend({
   data: ExperimentRunResponseDataSchema,
+});
+
+export const HistoricalReplayEnvelopeSchema = ApiEnvelopeSchema.extend({
+  data: HistoricalReplayResponseDataSchema,
 });

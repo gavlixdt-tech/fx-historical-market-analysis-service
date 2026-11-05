@@ -48,6 +48,7 @@ reachable from the browser at all.
 | `LOG_FORMAT` | `json` | Structured logs for the shipper. |
 | `UPSTREAM_MARKET_DATA_BASE_URL` | the in-cluster address or gateway route | Server-side only. |
 | `UPSTREAM_API_KEY` | secret, injected at runtime | **Unverified mechanism — see below.** |
+| `UPSTREAM_REPLAY_AVAILABILITY_DELAY_SECONDS` | provider-specific publication-lag assumption | Required only for Service 63 / provider-sourced replay; minimum 1 second, no provider timestamp is currently available. |
 
 Secrets must be injected by the platform's secret manager. They must not be
 baked into an image, committed to the repository, or passed on the command

@@ -63,6 +63,64 @@ describe("api client", () => {
     expect(version.service_mode).toBe("research-simulation");
   });
 
+  it("uses and validates the historical replay API contract", async () => {
+    const replay = {
+      replay_id: "replay-test",
+      status: "completed",
+      instrument: "EURUSD",
+      timeframe: "D1",
+      target_type: "future_return",
+      dataset_fingerprint: "sha256",
+      source_dataset_id: "dataset-v1",
+      provenance_status: "caller_asserted_unverified",
+      synthetic: false,
+      n_observations: 40,
+      n_predictions: 1,
+      validation_mode: "expanding",
+      predictions: [
+        {
+          reference_timestamp: "2024-01-01T00:00:00Z",
+          information_cutoff: "2024-01-01T00:02:00Z",
+          training_information_cutoff: "2024-01-01T00:02:00Z",
+          target_timestamp: "2024-01-02T00:00:00Z",
+          target_available_at: "2024-01-02T00:02:00Z",
+          training_samples: 20,
+          training_reference_end: "2023-12-30T00:00:00Z",
+          training_target_end: "2023-12-31T00:00:00Z",
+          training_outcomes_available_by_cutoff: true,
+          regime: "range_or_unclear",
+          actual: 0.001,
+          forecasts: {
+            ridge_regression: {
+              prediction: 0.0005,
+              class_probabilities: {},
+            },
+          },
+        },
+      ],
+      models: [],
+      robustness: {},
+      reproducibility: {},
+      warnings: [],
+      limitations: [],
+    };
+    const spy = mockFetch((url, init) => {
+      expect(url).toContain("/api/v1/historical-replay/run");
+      expect(init?.method).toBe("POST");
+      expect(JSON.parse(String(init?.body))).toEqual({
+        source_dataset_id: "dataset-v1",
+      });
+      return jsonResponse(envelope(replay));
+    });
+
+    const result = await api.runHistoricalReplay({
+      source_dataset_id: "dataset-v1",
+    });
+
+    expect(result.replay_id).toBe("replay-test");
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
   it("raises a validation error for a malformed payload", async () => {
     mockFetch(() => jsonResponse({ data: { unexpected: true }, meta: {} }));
 

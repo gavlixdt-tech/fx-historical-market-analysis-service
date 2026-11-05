@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Request
+from starlette.concurrency import run_in_threadpool
 
 from backend.app.schemas.common import ApiResponse
 from backend.app.schemas.forecasting import (
@@ -26,14 +27,61 @@ from backend.app.schemas.forecasting import (
     SplitRequest,
     SplitResponseData,
 )
+from backend.app.schemas.replay import (
+    HistoricalReplayRequest,
+    HistoricalReplayResponseData,
+)
+from backend.app.schemas.replay_market_data import HistoricalReplayMarketDataRequest
 from backend.app.services.forecasting_service import ForecastingService as AnalysisService
 from backend.app.services.health_service import build_meta
+from backend.app.services.replay_market_data import run_market_data_replay
 
 router = APIRouter()
 
 
 def get_service(request: Request) -> AnalysisService:
     return request.app.state.analysis_service
+
+
+@router.post(
+    "/historical-replay/run",
+    response_model=ApiResponse[HistoricalReplayResponseData],
+)
+async def run_historical_replay(request: Request, payload: HistoricalReplayRequest):
+    from backend.app.analysis.replay import run_historical_replay as execute_replay
+    from backend.app.core.errors import ValidationError as AppValidationError
+
+    rid = getattr(request.state, "request_id", "unknown")
+    try:
+        result = await run_in_threadpool(execute_replay, payload)
+    except ValueError as exc:
+        raise AppValidationError(str(exc)) from exc
+    data = HistoricalReplayResponseData(**result)
+    return ApiResponse(data=data, meta=build_meta(request.app.state.settings, rid))
+
+
+@router.post(
+    "/historical-replay/run-from-market-data",
+    response_model=ApiResponse[HistoricalReplayResponseData],
+)
+async def run_historical_replay_from_market_data(
+    request: Request,
+    payload: HistoricalReplayMarketDataRequest,
+):
+    from backend.app.core.errors import ValidationError as AppValidationError
+
+    rid = getattr(request.state, "request_id", "unknown")
+    try:
+        result = await run_market_data_replay(
+            payload,
+            settings=request.app.state.settings,
+            upstream=request.app.state.upstream_client,
+            request_id=rid,
+        )
+    except ValueError as exc:
+        raise AppValidationError(str(exc)) from exc
+    data = HistoricalReplayResponseData(**result)
+    return ApiResponse(data=data, meta=build_meta(request.app.state.settings, rid))
 
 
 @router.get("/forecasting/targets", response_model=ApiResponse[ForecastingTargetsResponseData])

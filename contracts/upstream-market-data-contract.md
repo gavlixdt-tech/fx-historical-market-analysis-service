@@ -42,6 +42,7 @@ The following were read directly from the Service 1 source:
 | Correlation ID handling | `backend/middleware/correlation.py` |
 | API key header handling | `backend/middleware/auth.py` |
 | Timeframe / price basis enums | `backend/domain/market_data.py` |
+| Provider connectivity test route and result | `backend/app/api/v1/routes/market_data.py`, `backend/schemas/market_data.py` |
 
 ### What could NOT be verified
 
@@ -186,10 +187,22 @@ re-validates that property in a contract test.
 > Service 1 providers response. The correction is covered by a regression
 > test that asserts the obsolete object shape is now rejected.
 
-### 4.3 Liveness probe — `GET /api/v1/health/live`
+### 4.3 Provider connectivity test — `POST /api/v1/market-data/providers/{provider_id}/test-connection`
+
+**Verified.** Service 2 calls this endpoint only after confirming the selected
+provider is configured, is of type `real`, and advertises historical-candle
+capability. It requires a successful response whose `data.provider_id` matches
+the requested provider and whose `data.success` is true before fetching data.
+The response carries provider ID, success, latency, start/completion times,
+message, and request ID. This is an active provider connectivity test and may
+update Service 1's provider test status; it is not merely a Service 1 liveness
+probe.
+
+### 4.4 Liveness probe — `GET /api/v1/health/live`
 
 **Verified.** Used by this service only as a connectivity check for the
-upstream integration. It is a liveness probe, not a data request.
+upstream service. It is a liveness probe, not a data request or a substitute
+for the selected provider's active connection test.
 
 ---
 

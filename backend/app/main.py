@@ -5,8 +5,8 @@ validated settings. Tests construct their own instance through the factory,
 which keeps every layer (routing, middleware, exception handlers) testable
 without global state.
 
-This module intentionally exposes NO analytical endpoints. The historical
-analysis engine is not implemented in this foundation phase.
+The application exposes research-only historical analysis and forecasting
+endpoints. It does not provide production model serving or trading.
 """
 
 from __future__ import annotations
@@ -99,8 +99,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         version=resolved.service_version,
         description=(
             "Forex AI Platform - Historical Market Analysis Service. "
-            "Research/simulation only. The historical analysis engine is not "
-            "implemented in this foundation phase."
+            "Research/simulation only. Includes point-in-time historical replay; "
+            "not a live prediction or trading service."
         ),
         docs_url=None
         if resolved.is_production and not resolved.docs_enabled_in_production
@@ -223,10 +223,11 @@ def _register_operational_routes(application: FastAPI, settings: Settings) -> No
                 "version": settings.service_version,
                 "api_version": settings.api_version,
                 "mode": settings.service_mode,
-                "status": "foundation",
+                "status": "research",
                 "note": (
-                    "Service foundation only - the historical analysis engine is "
-                    "not implemented in this phase."
+                    "Research and point-in-time replay APIs are available. "
+                    "Replay provenance is caller-asserted; no live trading or "
+                    "production model serving is provided."
                 ),
                 "docs": "/docs",
             }

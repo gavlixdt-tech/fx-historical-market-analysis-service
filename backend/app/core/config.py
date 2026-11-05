@@ -145,6 +145,15 @@ class Settings(BaseSettings):
         default="test-adapter",
         description="Default upstream provider id used when querying historical data",
     )
+    upstream_replay_availability_delay_seconds: int | None = Field(
+        default=None,
+        description=(
+            "Required publication-lag assumption for provider candles without "
+            "point-in-time availability timestamps"
+        ),
+        ge=1,
+        le=86_400,
+    )
     upstream_max_history_limit: int = Field(
         default=5000,
         description="Maximum permitted historical request limit",
@@ -189,6 +198,11 @@ class Settings(BaseSettings):
         if value not in {"json", "console"}:
             raise ValueError("log_format must be 'json' or 'console'")
         return value
+
+    @field_validator("upstream_replay_availability_delay_seconds", mode="before")
+    @classmethod
+    def _empty_replay_availability_delay_is_unset(cls, value: object) -> object:
+        return None if value == "" else value
 
     @field_validator("service_mode")
     @classmethod
