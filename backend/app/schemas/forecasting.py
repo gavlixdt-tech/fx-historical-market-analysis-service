@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from backend.app.schemas.analysis import ObservationInput
 
@@ -297,14 +297,43 @@ class HistoricalDatasetRequest(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     observations: list[ObservationInput] | None = None
-    instrument: str
+    instrument: str = Field(min_length=3, max_length=20)
     timeframe: str | None = None
     start: datetime | None = None
     end: datetime | None = None
-    provider_id: str | None = None
+    provider_id: str = Field(min_length=1, max_length=100)
     price_basis: str | None = None
     limit: int | None = Field(default=None, ge=1, le=5000)
     problem: ForecastingProblemInput | None = None
+
+    @model_validator(mode="after")
+    def validate_historical_request(self) -> HistoricalDatasetRequest:
+        if not self.instrument.strip() or not self.provider_id.strip():
+            raise ValueError("instrument and provider_id must not be blank")
+        if self.timeframe is not None and self.timeframe not in {
+            "M1",
+            "M5",
+            "M15",
+            "M30",
+            "H1",
+            "H4",
+            "D1",
+            "W1",
+            "MN1",
+        }:
+            raise ValueError("timeframe is not supported")
+        if self.price_basis is not None and self.price_basis not in {"bid", "ask", "midpoint"}:
+            raise ValueError("price_basis is not supported")
+        for field_name in ("start", "end"):
+            value = getattr(self, field_name)
+            if value is not None and (value.tzinfo is None or value.utcoffset() is None):
+                raise ValueError(f"{field_name} must include a timezone")
+        if self.start is not None and self.end is not None:
+            if self.start >= self.end:
+                raise ValueError("start must precede end")
+            if self.end - self.start > timedelta(days=366):
+                raise ValueError("history range exceeds the supported window")
+        return self
 
 
 class HistoricalDatasetResponseData(BaseModel):
@@ -322,6 +351,25 @@ class HistoricalDatasetResponseData(BaseModel):
     provenance: dict[str, Any]
     dataset_fingerprint: str
     partial: bool = False
+
+
+class HistoricalProviderSummary(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    provider_id: str
+    provider_type: str
+    configured: bool
+    connection_status: str
+    historical_candles_supported: bool
+    connection_test_succeeded: bool | None = None
+
+
+class HistoricalProviderInventoryData(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    status: str
+    providers: list[HistoricalProviderSummary]
+    limitations: list[str] = Field(default_factory=list)
 
 
 class DataSourceResponseData(BaseModel):

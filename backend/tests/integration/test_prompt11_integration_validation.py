@@ -12,7 +12,10 @@ import pytest
 from backend.app.clients.base import UpstreamState
 from backend.app.clients.market_data import MarketDataClient
 from backend.app.core.config import Settings
-from backend.app.core.errors import UpstreamError, ValidationError
+from backend.app.core.errors import (
+    DependencyUnavailableError,
+    UpstreamError,
+)
 from backend.app.services.forecasting_service import ForecastingService
 
 FIXTURES = Path(__file__).parent.parent / "contract" / "fixtures"
@@ -36,7 +39,7 @@ async def test_missing_configuration_fails_clearly():
     client = MarketDataClient(base_url=None)
     assert not client.is_configured
     with pytest.raises(UpstreamError):
-        await client.fetch_historical_candles("EURUSD")
+        await client.fetch_historical_candles("EURUSD", provider_id="real-provider")
 
 
 @pytest.mark.asyncio
@@ -48,7 +51,7 @@ async def test_connection_timeout_is_reported():
     result = await client.check_connectivity()
     assert result.state == UpstreamState.UNAVAILABLE
     with pytest.raises(UpstreamError) as exc:
-        await client.fetch_historical_candles("EURUSD")
+        await client.fetch_historical_candles("EURUSD", provider_id="real-provider")
     assert exc.value.details.get("error_type") == "timeout"
 
 
@@ -61,7 +64,7 @@ async def test_connection_refusal_is_reported():
     result = await client.check_connectivity()
     assert result.state == UpstreamState.UNAVAILABLE
     with pytest.raises(UpstreamError):
-        await client.fetch_historical_candles("EURUSD")
+        await client.fetch_historical_candles("EURUSD", provider_id="real-provider")
 
 
 @pytest.mark.asyncio
@@ -71,7 +74,7 @@ async def test_upstream_error_is_sanitised():
 
     client = _client(httpx.MockTransport(handler))
     with pytest.raises(UpstreamError) as exc:
-        await client.fetch_historical_candles("EURUSD")
+        await client.fetch_historical_candles("EURUSD", provider_id="real-provider")
     assert exc.value.status_code == 502
     assert "secret" not in str(exc.value)
 
@@ -83,7 +86,7 @@ async def test_malformed_payload_is_rejected():
 
     client = _client(httpx.MockTransport(handler))
     with pytest.raises(UpstreamError):
-        await client.fetch_historical_candles("EURUSD")
+        await client.fetch_historical_candles("EURUSD", provider_id="real-provider")
 
 
 @pytest.mark.asyncio
@@ -95,7 +98,11 @@ async def test_correlation_id_is_propagated():
         return httpx.Response(200, json=_fixture("upstream_history_synthetic.json"))
 
     client = _client(httpx.MockTransport(handler))
-    await client.fetch_historical_candles("SYNTH/USD", request_id="corr-123")
+    await client.fetch_historical_candles(
+        "SYNTH/USD",
+        provider_id="synthetic-test-adapter",
+        request_id="corr-123",
+    )
     assert captured["h"]["x-request-id"] == "corr-123"
 
 
@@ -123,7 +130,7 @@ async def test_retrieve_does_not_silently_fallback():
         provider_id="test-adapter",
         limit=5,
     )
-    with pytest.raises((UpstreamError, ValidationError)):
+    with pytest.raises(DependencyUnavailableError):
         await service.retrieve_historical_dataset(req, "req-1")
 
 
@@ -137,6 +144,11 @@ async def test_empty_response_quality():
     payload["data"]["validation_summary"]["total_received"] = 0
 
     def handler(request):
+        if request.url.path == "/api/v1/market-data/providers":
+            return httpx.Response(
+                200,
+                json=_fixture("upstream_providers_synthetic.json"),
+            )
         return httpx.Response(200, json=payload)
 
     client = _client(httpx.MockTransport(handler))

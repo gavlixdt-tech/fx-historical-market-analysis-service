@@ -56,8 +56,9 @@ mypy app                      # strict type check
 pytest tests -q               # tests
 ```
 
-Run them from the **repository root** with `backend/.venv/Scripts/python.exe -m
-pytest backend/tests -q` if your working directory is the root.
+Run pytest from `backend/` so `backend/pyproject.toml` enables async auto mode.
+Running from the repository root without explicitly selecting that
+configuration can misclassify unmarked async tests.
 
 ## 4. Frontend setup
 
@@ -157,7 +158,10 @@ cd frontend && npx tsc --noEmit && npm run test && npm run build
 
 All of these run in CI on every push and pull request.
 
-## 10. Real market data workflow (Prompt 8)
+See [`testing/integration-verification.md`](testing/integration-verification.md)
+for the distinction between synthetic contract tests and live-service evidence.
+
+## 11. Real market data workflow
 
 The dashboard integrates the verified backend workflow:
 

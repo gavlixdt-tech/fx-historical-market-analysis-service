@@ -143,7 +143,7 @@ correlation ID.
 | `app/useServiceStatus.ts` | Loads status, readiness, and version independently so one failure does not hide the others. |
 | `components/` | Reusable presentation: badges, panels, loading, empty, error states. |
 | `features/ServiceOverview.tsx` | Service identity, version, connectivity, readiness. |
-| `features/AnalysisWorkspace.tsx` | The reserved workspace; states that the engine is not implemented. |
+| `features/AnalysisWorkspace.tsx` | Historical-analysis and replay workspaces. |
 | `features/DataSourceIntegration.tsx` | Upstream identity and the real connection state. |
 | `features/OperationalDiagnostics.tsx` | Safe diagnostics, correlation IDs, refresh time. |
 | `schemas/api.ts` | Zod schemas mirroring the backend contracts. |
@@ -161,7 +161,10 @@ Implemented in this phase:
 - Prometheus metrics at `/metrics`.
 - Structured JSON logging, OpenTelemetry tracing (opt-in).
 - Consistent error envelopes and request correlation IDs.
-- A typed, read-only upstream client with the verified Service 1 contract.
+- A typed, read-only upstream client for the source-verified Service 1 route
+  and payload shapes; production authentication remains unverified.
+- Explicit provider inventory and selection; synthetic test providers are
+  restricted to development/testing and labeled synthetic.
 - Forecasting research experiments using chronological walk-forward evaluation.
 - Historical replay at successive point-in-time origins using explicit
   observation-availability timestamps, target-maturity purging and optional
@@ -220,3 +223,17 @@ and Service 1 remains the owner of the source data. `DATABASE_URL` exists in
 the configuration only so that a later, separately justified phase can add
 persistence without changing the configuration shape. See
 `docs/acceptance-audit.md` for the justification required before that phase.
+
+## 10. Current integration boundary
+
+Service 2 rejects real-provider reads in production until an approved Service
+64 workload identity/grant is available. Service 1's production authentication
+contract is also unverified. Provider-retrieved replay derives availability
+from candle close plus a configured lag and labels it `availability_assumed`;
+this is not historical publication-time proof.
+
+Service 2 has no Service 60 persistence, Service 61 feature-service adapter,
+Services 21/49/50 dataset handoff, Service 62 publisher, or Service 66 recovery
+integration. Local metrics and optional OpenTelemetry are not evidence of
+central Service 65 ingestion. See the
+[`current ecosystem audit`](integration/service2-ecosystem-integration-audit.md).

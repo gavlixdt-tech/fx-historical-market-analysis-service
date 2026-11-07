@@ -18,7 +18,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import quote
 
@@ -31,6 +31,8 @@ from backend.app.clients.base import (
 )
 from backend.app.core.errors import UpstreamError
 from backend.app.schemas.upstream import (
+    PriceBasis,
+    Timeframe,
     UpstreamConnectionTestResponse,
     UpstreamHistoricalCandleData,
     UpstreamHistoricalResponse,
@@ -80,7 +82,13 @@ class MarketDataClient:
         retry_max_duration_seconds: float = 10.0,
         connect_timeout_seconds: float | None = None,
         read_timeout_seconds: float | None = None,
+        max_concurrent_requests: int = 4,
+        max_response_bytes: int = 16_777_216,
     ) -> None:
+        if max_concurrent_requests < 1:
+            raise ValueError("max_concurrent_requests must be positive")
+        if max_response_bytes < 1024:
+            raise ValueError("max_response_bytes must be at least 1024")
         self._base_url = base_url.rstrip("/") if base_url else None
         self._api_key = api_key
         self._timeout_seconds = timeout_seconds
@@ -98,6 +106,8 @@ class MarketDataClient:
         )
         self._max_retries = max(0, int(max_retries))
         self._retry_max_duration_seconds = max(1.0, float(retry_max_duration_seconds))
+        self._request_semaphore = asyncio.Semaphore(max_concurrent_requests)
+        self._max_response_bytes = max_response_bytes
         self._transport = transport
         self._client = client
         self._owns_client = client is None
@@ -163,29 +173,67 @@ class MarketDataClient:
         client = await self._get_client()
         started = time.perf_counter()
         attempt = 0
-        while True:
-            try:
-                response = await client.request(method, path, params=params, headers=headers)
-            except (httpx.TimeoutException, httpx.HTTPError):
+        async with self._request_semaphore:
+            while True:
+                try:
+                    async with client.stream(
+                        method, path, params=params, headers=headers
+                    ) as streamed_response:
+                        content_length = streamed_response.headers.get("content-length")
+                        if content_length is not None:
+                            try:
+                                declared_size = int(content_length)
+                            except ValueError as exc:
+                                raise UpstreamError(
+                                    "Upstream market-data service returned invalid response metadata.",
+                                    details={"dependency": "fx-market-data-service"},
+                                ) from exc
+                            if declared_size > self._max_response_bytes:
+                                raise UpstreamError(
+                                    "Upstream market-data service response exceeded the configured size limit.",
+                                    details={
+                                        "dependency": "fx-market-data-service",
+                                        "error_type": "response_too_large",
+                                    },
+                                )
+
+                        content = bytearray()
+                        async for chunk in streamed_response.aiter_bytes():
+                            if len(content) + len(chunk) > self._max_response_bytes:
+                                raise UpstreamError(
+                                    "Upstream market-data service response exceeded the configured size limit.",
+                                    details={
+                                        "dependency": "fx-market-data-service",
+                                        "error_type": "response_too_large",
+                                    },
+                                )
+                            content.extend(chunk)
+                        response = httpx.Response(
+                            streamed_response.status_code,
+                            headers=streamed_response.headers,
+                            content=bytes(content),
+                            request=streamed_response.request,
+                        )
+                except (httpx.TimeoutException, httpx.HTTPError):
+                    if (
+                        attempt < self._max_retries
+                        and (time.perf_counter() - started) < self._retry_max_duration_seconds
+                    ):
+                        attempt += 1
+                        await asyncio.sleep(min(0.25 * attempt, 1.0))
+                        continue
+                    raise
+
+                retryable_status = response.status_code in {408, 500, 502, 503, 504}
                 if (
-                    attempt < self._max_retries
+                    retryable_status
+                    and attempt < self._max_retries
                     and (time.perf_counter() - started) < self._retry_max_duration_seconds
                 ):
                     attempt += 1
                     await asyncio.sleep(min(0.25 * attempt, 1.0))
                     continue
-                raise
-
-            retryable_status = response.status_code in {408, 500, 502, 503, 504}
-            if (
-                retryable_status
-                and attempt < self._max_retries
-                and (time.perf_counter() - started) < self._retry_max_duration_seconds
-            ):
-                attempt += 1
-                await asyncio.sleep(min(0.25 * attempt, 1.0))
-                continue
-            return response
+                return response
 
     def _require_configured(self) -> str:
         if not self._base_url:
@@ -206,7 +254,7 @@ class MarketDataClient:
             return UpstreamCheckResult(
                 state=UpstreamState.UNCONFIGURED,
                 message="No upstream base URL is configured.",
-                contract_status=UpstreamContractStatus.VERIFIED,
+                contract_status=UpstreamContractStatus.PROPOSED_NOT_YET_VERIFIED,
             )
 
         started = time.perf_counter()
@@ -219,7 +267,7 @@ class MarketDataClient:
                 state=UpstreamState.UNAVAILABLE,
                 message=f"Upstream did not respond within {self._connect_timeout:g}s.",
                 checked_at=_utc_now(),
-                contract_status=UpstreamContractStatus.VERIFIED,
+                contract_status=UpstreamContractStatus.PROPOSED_NOT_YET_VERIFIED,
             )
         except httpx.HTTPError as exc:
             logger.warning("upstream_connectivity_failed", extra={"reason": type(exc).__name__})
@@ -227,7 +275,7 @@ class MarketDataClient:
                 state=UpstreamState.UNAVAILABLE,
                 message="Upstream service could not be reached.",
                 checked_at=_utc_now(),
-                contract_status=UpstreamContractStatus.VERIFIED,
+                contract_status=UpstreamContractStatus.PROPOSED_NOT_YET_VERIFIED,
             )
 
         latency_ms = round((time.perf_counter() - started) * 1000, 2)
@@ -238,7 +286,7 @@ class MarketDataClient:
                 message="Upstream rate limited the connectivity probe.",
                 latency_ms=latency_ms,
                 checked_at=_utc_now(),
-                contract_status=UpstreamContractStatus.VERIFIED,
+                contract_status=UpstreamContractStatus.PROPOSED_NOT_YET_VERIFIED,
             )
         if response.status_code == 401 or response.status_code == 403:
             return UpstreamCheckResult(
@@ -246,7 +294,7 @@ class MarketDataClient:
                 message="Upstream rejected the configured credential.",
                 latency_ms=latency_ms,
                 checked_at=_utc_now(),
-                contract_status=UpstreamContractStatus.VERIFIED,
+                contract_status=UpstreamContractStatus.PROPOSED_NOT_YET_VERIFIED,
             )
         if response.status_code >= 500:
             return UpstreamCheckResult(
@@ -254,7 +302,7 @@ class MarketDataClient:
                 message="Upstream service reported an internal error.",
                 latency_ms=latency_ms,
                 checked_at=_utc_now(),
-                contract_status=UpstreamContractStatus.VERIFIED,
+                contract_status=UpstreamContractStatus.PROPOSED_NOT_YET_VERIFIED,
             )
         if response.status_code >= 400:
             return UpstreamCheckResult(
@@ -262,7 +310,7 @@ class MarketDataClient:
                 message="Upstream service rejected the connectivity probe.",
                 latency_ms=latency_ms,
                 checked_at=_utc_now(),
-                contract_status=UpstreamContractStatus.VERIFIED,
+                contract_status=UpstreamContractStatus.PROPOSED_NOT_YET_VERIFIED,
             )
 
         return UpstreamCheckResult(
@@ -270,14 +318,14 @@ class MarketDataClient:
             message="Upstream service responded successfully.",
             latency_ms=latency_ms,
             checked_at=_utc_now(),
-            contract_status=UpstreamContractStatus.VERIFIED,
+            contract_status=UpstreamContractStatus.PROPOSED_NOT_YET_VERIFIED,
         )
 
     async def fetch_historical_candles(
         self,
         instrument: str,
         *,
-        provider_id: str = "test-adapter",
+        provider_id: str,
         start: datetime | None = None,
         end: datetime | None = None,
         timeframe: str = "D1",
@@ -300,12 +348,29 @@ class MarketDataClient:
 
         if not instrument or not instrument.strip():
             raise UpstreamError("An instrument identifier is required.")
+        if not provider_id.strip():
+            raise UpstreamError("A provider identifier must be explicitly selected.")
 
         if limit < MIN_HISTORY_LIMIT or limit > MAX_HISTORY_LIMIT:
             raise UpstreamError(
                 f"limit must be between {MIN_HISTORY_LIMIT} and {MAX_HISTORY_LIMIT}.",
                 details={"limit": limit},
             )
+        try:
+            Timeframe(timeframe)
+        except ValueError as exc:
+            raise UpstreamError("The requested timeframe is not supported.") from exc
+        if price_basis not in {PriceBasis.BID, PriceBasis.ASK, PriceBasis.MIDPOINT}:
+            raise UpstreamError("The requested price basis is not supported.")
+        if start is not None and (start.tzinfo is None or start.utcoffset() is None):
+            raise UpstreamError("The requested start timestamp must include a timezone.")
+        if end is not None and (end.tzinfo is None or end.utcoffset() is None):
+            raise UpstreamError("The requested end timestamp must include a timezone.")
+        if start is not None and end is not None:
+            if start >= end:
+                raise UpstreamError("The requested start must precede the end.")
+            if end.astimezone(UTC) - start.astimezone(UTC) > timedelta(days=365):
+                raise UpstreamError("The requested history range exceeds the supported window.")
 
         params: dict[str, Any] = {
             "provider_id": provider_id,
@@ -318,7 +383,7 @@ class MarketDataClient:
         if end is not None:
             params["end"] = _to_iso(end)
 
-        path_instrument = instrument.strip().replace("/", "_")
+        path_instrument = quote(instrument.strip().replace("/", "_"), safe="")
         path = UPSTREAM_HISTORY_PATH.format(instrument=path_instrument)
 
         try:
@@ -368,6 +433,18 @@ class MarketDataClient:
                 "Upstream market-data service returned an empty payload.",
                 details={"dependency": "fx-market-data-service"},
             )
+        if (
+            parsed.data.provider_id != provider_id
+            or parsed.data.timeframe != Timeframe(timeframe)
+            or parsed.data.price_basis != PriceBasis(price_basis)
+        ):
+            raise UpstreamError(
+                "Upstream market-data response identity does not match the request.",
+                details={
+                    "dependency": "fx-market-data-service",
+                    "error_type": "identity_mismatch",
+                },
+            )
 
         return parsed.data
 
@@ -383,9 +460,9 @@ class MarketDataClient:
         """
         self._require_configured()
 
-        client = await self._get_client()
         try:
-            response = await client.get(
+            response = await self._request(
+                "GET",
                 UPSTREAM_PROVIDERS_PATH,
                 headers=self._build_headers(request_id),
             )
@@ -458,11 +535,7 @@ class MarketDataClient:
                 "Upstream market-data service returned an invalid connection-test response.",
                 details={"dependency": "fx-market-data-service"},
             ) from exc
-        if (
-            parsed.errors
-            or parsed.data is None
-            or parsed.data.provider_id != provider_id
-        ):
+        if parsed.errors or parsed.data is None or parsed.data.provider_id != provider_id:
             raise UpstreamError(
                 "Upstream market-data service returned an inconsistent connection-test result.",
                 details={"dependency": "fx-market-data-service"},
@@ -479,8 +552,8 @@ def _to_iso(value: datetime) -> str:
     """Render a datetime as an ISO-8601 UTC string.
 
     Service 1 documents its `start`/`end` parameters as ISO-8601 UTC
-    timestamps. A naive datetime is assumed to be UTC.
+    timestamps. Naive datetimes are rejected rather than guessed.
     """
-    if value.tzinfo is None:
-        value = value.replace(tzinfo=UTC)
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise UpstreamError("Historical request timestamps must include a timezone.")
     return value.astimezone(UTC).isoformat().replace("+00:00", "Z")

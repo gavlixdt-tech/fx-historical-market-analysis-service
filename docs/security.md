@@ -87,13 +87,19 @@ because no gateway repository was available to inspect.
 ## 6. Known limitations
 
 1. **Upstream authentication is unverified.** See section 3.
-2. **No rate limiting.** The gateway is expected to provide it. Nothing in
-   this repository throttles inbound requests.
-3. **No audit log of privileged actions.** There are no privileged actions in
+2. **Approved Service 64 workload identity is unavailable.** Real-provider
+   requests are blocked in `ENVIRONMENT=production`; the local `X-API-Key`
+   header is not treated as production workload authorization.
+3. **No approved production destination allowlist is configured here.** The
+   client validates the upstream URL shape and disables redirects, but
+   production egress restrictions remain deployment-owned.
+4. **No inbound rate limiting.** The gateway is expected to provide it. Nothing
+   in this repository throttles inbound requests.
+5. **No audit log of privileged actions.** There are no privileged actions in
    this phase: the API is read-only.
-4. **No dependency pinning by hash.** Python dependencies are pinned to version
+6. **No dependency pinning by hash.** Python dependencies are pinned to version
    ranges rather than exact hashes. The npm lockfile pins exact versions.
-5. **No SAST/DAST stage.** CI runs `pip-audit` and `npm audit`, but neither
+7. **No SAST/DAST stage.** CI runs `pip-audit` and `npm audit`, but neither
    result currently fails the build; they are advisory only.
 
 ## 7. Reporting a vulnerability

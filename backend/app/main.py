@@ -123,6 +123,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         read_timeout_seconds=resolved.upstream_read_timeout_seconds,
         max_retries=resolved.upstream_max_retries,
         retry_max_duration_seconds=resolved.upstream_retry_max_duration_seconds,
+        max_concurrent_requests=resolved.upstream_max_concurrent_requests,
+        max_response_bytes=resolved.upstream_max_response_bytes,
     )
 
     _register_middleware(application, resolved)

@@ -4,6 +4,7 @@ import { api, ApiError } from "@/services/api";
 import type {
   DataSourceResponseData,
   HistoricalDatasetResponseData,
+  HistoricalProviderInventory,
   ResearchReadinessResponseData,
   ExperimentRunResponseData,
 } from "@/schemas/api";
@@ -16,7 +17,12 @@ export function RealMarketDataWorkspace() {
   const [dataSourceLoading, setDataSourceLoading] = useState(false);
   const [dataSourceError, setDataSourceError] = useState<ApiError | null>(null);
 
-  const [instrument, setInstrument] = useState("EURUSD");
+  const [providerInventory, setProviderInventory] = useState<HistoricalProviderInventory | null>(null);
+  const [providerInventoryLoading, setProviderInventoryLoading] = useState(false);
+  const [providerInventoryError, setProviderInventoryError] = useState<ApiError | null>(null);
+  const [providerId, setProviderId] = useState("");
+
+  const [instrument, setInstrument] = useState("EUR/USD");
   const [timeframe, setTimeframe] = useState("D1");
   const [priceBasis, setPriceBasis] = useState("bid");
   const [start, setStart] = useState("");
@@ -37,6 +43,7 @@ export function RealMarketDataWorkspace() {
 
   useEffect(() => {
     void refreshDataSource();
+    void refreshProviderInventory();
   }, []);
 
   async function refreshDataSource() {
@@ -56,7 +63,25 @@ export function RealMarketDataWorkspace() {
     }
   }
 
+  async function refreshProviderInventory() {
+    setProviderInventoryLoading(true);
+    setProviderInventoryError(null);
+    try {
+      const data = await api.listHistoricalProviders();
+      setProviderInventory(data);
+    } catch (caught) {
+      setProviderInventoryError(
+        caught instanceof ApiError
+          ? caught
+          : new ApiError("Unable to load provider inventory.", 0, "UNEXPECTED", null),
+      );
+    } finally {
+      setProviderInventoryLoading(false);
+    }
+  }
+
   function validateForm(): string | null {
+    if (!providerId) return "Select a historical provider explicitly.";
     if (!instrument.trim()) return "Instrument is required.";
     const numericLimit = Number(limit);
     if (!Number.isFinite(numericLimit) || numericLimit < 1 || numericLimit > 5000) {
@@ -84,6 +109,7 @@ async function handleRetrieve(event: FormEvent) {
     setExperiment(null);
     try {
       const data = await api.retrieveHistoricalDataset({
+        provider_id: providerId,
         instrument: instrument.trim(),
         timeframe,
         start: start ? new Date(start).toISOString() : null,
@@ -133,8 +159,14 @@ async function handleRetrieve(event: FormEvent) {
       const data = await api.assessResearchReadiness({
         instrument: dataset.instrument,
         timeframe: dataset.timeframe,
-        start: (dataset.provenance.requested_start as string | null) ?? null,
-        end: (dataset.provenance.requested_end as string | null) ?? null,
+        start:
+          typeof dataset.provenance.requested_start === "string"
+            ? dataset.provenance.requested_start
+            : null,
+        end:
+          typeof dataset.provenance.requested_end === "string"
+            ? dataset.provenance.requested_end
+            : null,
         price_basis: dataset.price_basis,
         provider_id: dataset.provider_id,
         limit: dataset.observations.length,
@@ -210,13 +242,16 @@ async function handleRetrieve(event: FormEvent) {
     }
   }
 
-  const connectivity = (dataSource?.connectivity ?? {}) as Record<string, unknown>;
-  const configuration = (dataSource?.configuration ?? {}) as Record<string, unknown>;
+  const connectivity = dataSource?.connectivity ?? {};
+  const configuration = dataSource?.configuration ?? {};
+  const selectedProvider = providerInventory?.providers.find(
+    (provider) => provider.provider_id === providerId,
+  );
 
   return (
     <Panel
       title="Real Market Data Research"
-      subtitle="Verified backend workflow for historical data, quality, readiness and experiments."
+      subtitle="Backend-mediated historical data and exploratory research, with provider and provenance limitations shown explicitly."
     >
       <section>
         <h3 className="section-subtitle">Data source status</h3>
@@ -228,6 +263,15 @@ async function handleRetrieve(event: FormEvent) {
           data-testid="refresh-data-source"
         >
           {dataSourceLoading ? "Checking..." : "Refresh status"}
+        </button>
+        <button
+          type="button"
+          className="button"
+          onClick={() => void refreshProviderInventory()}
+          disabled={providerInventoryLoading}
+          data-testid="refresh-provider-inventory"
+        >
+          {providerInventoryLoading ? "Loading providers..." : "Refresh providers"}
         </button>
         {dataSourceLoading && !dataSource ? <LoadingState label="Loading data source status..." /> : null}
         {dataSourceError ? (
@@ -262,35 +306,106 @@ async function handleRetrieve(event: FormEvent) {
         {!dataSourceLoading && !dataSource && !dataSourceError ? (
           <EmptyState title="No data source status" message="Refresh to load backend-reported status." />
         ) : null}
+        {providerInventoryError ? (
+          <ErrorNotice
+            title="Provider inventory unavailable"
+            message={providerInventoryError.message}
+            code={providerInventoryError.code}
+            requestId={providerInventoryError.requestId}
+            testId="provider-inventory-error"
+          />
+        ) : null}
+        {providerInventory ? (
+          <p data-testid="provider-inventory-status">
+            Provider inventory: {providerInventory.status}. A real provider remains
+            provider-asserted; source entitlement and historical publication time are
+            not independently verified.
+          </p>
+        ) : null}
       </section>
 
       <section>
         <h3 className="section-subtitle">Historical data request</h3>
         <form onSubmit={handleRetrieve}>
           <label>
+            Provider
+            <select
+              value={providerId}
+              onChange={(event) => setProviderId(event.currentTarget.value)}
+              data-testid="historical-provider"
+              required
+            >
+              <option value="">Select a provider</option>
+              {(providerInventory?.providers ?? [])
+                .filter(
+                  (provider) =>
+                    provider.historical_candles_supported && provider.configured,
+                )
+                .map((provider) => (
+                  <option key={provider.provider_id} value={provider.provider_id}>
+                    {provider.provider_id} ({provider.provider_type}
+                    {provider.provider_type === "test" ? " fixture" : ""})
+                  </option>
+                ))}
+            </select>
+          </label>
+          <label>
             Instrument
-            <input
+            <select
               value={instrument}
-              onChange={(e) => setInstrument(e.target.value)}
+              onChange={(e) => setInstrument(e.currentTarget.value)}
               data-testid="historical-instrument"
-            />
+            >
+              {[
+                "XAU/USD",
+                "EUR/USD",
+                "GBP/USD",
+                "USD/JPY",
+                "USD/CHF",
+                "USD/CAD",
+                "AUD/USD",
+                "NZD/USD",
+              ].map((value) => (
+                <option key={value} value={value}>{value}</option>
+              ))}
+            </select>
           </label>
           <label>
             Timeframe
-            <input
+            <select
               value={timeframe}
-              onChange={(e) => setTimeframe(e.target.value)}
+              onChange={(e) => setTimeframe(e.currentTarget.value)}
               data-testid="historical-timeframe"
-            />
+            >
+              {["M1", "M5", "M15", "M30", "H1", "H4", "D1", "W1", "MN1"].map(
+                (value) => <option key={value} value={value}>{value}</option>,
+              )}
+            </select>
           </label>
           <label>
             Price basis
-            <input
+            <select
               value={priceBasis}
-              onChange={(e) => setPriceBasis(e.target.value)}
+              onChange={(e) => setPriceBasis(e.currentTarget.value)}
               data-testid="historical-price-basis"
-            />
+            >
+              {["bid", "ask", "midpoint"].map(
+                (value) => <option key={value} value={value}>{value}</option>,
+              )}
+            </select>
           </label>
+          {selectedProvider?.provider_type === "test" ? (
+            <p className="muted" data-testid="selected-provider-fixture-warning">
+              This explicit test provider returns synthetic fixture data and cannot
+              support real-market research.
+            </p>
+          ) : null}
+          {selectedProvider?.provider_type === "real" ? (
+            <p className="muted" data-testid="selected-provider-real-limitations">
+              Provider selection and connection testing do not prove source entitlement,
+              independently authenticated observations, or historical availability.
+            </p>
+          ) : null}
           <label>
             Start
             <input
@@ -320,7 +435,7 @@ async function handleRetrieve(event: FormEvent) {
           <button
             type="submit"
             className="button"
-            disabled={retrieving}
+            disabled={retrieving || providerInventoryLoading || !selectedProvider}
             data-testid="retrieve-historical-data"
           >
             {retrieving ? "Retrieving..." : "Retrieve historical data"}
@@ -362,8 +477,8 @@ async function handleRetrieve(event: FormEvent) {
             <dd className="data-row__value" data-testid="dataset-provider-type">
               {dataset.provenance?.provider_type === "test"
                 ? "test adapter (synthetic)"
-                : dataset.provenance?.provider_type === "genuine"
-                  ? "genuine (unverified)"
+                : dataset.provenance?.provider_type === "real"
+                  ? "real provider (provider-asserted; unverified)"
                   : "unknown"}
             </dd>
             <dt className="data-row__label">Real-market research</dt>
@@ -383,6 +498,11 @@ async function handleRetrieve(event: FormEvent) {
           </dl>
           <p className="muted small">Quality findings: {JSON.stringify(dataset.quality)}</p>
           <p className="muted small">Provenance: {JSON.stringify(dataset.provenance)}</p>
+          <p className="muted">
+            Experiments submitted from this workspace receive caller-supplied observations.
+            Their provider, original availability time, and source-record lineage are not
+            independently verified by the experiment endpoint.
+          </p>
           <button
             type="button"
             className="button"
@@ -456,6 +576,7 @@ async function handleRetrieve(event: FormEvent) {
               : experiment.synthetic
                 ? "Yes"
                 : "No"}
+            ; provenance: {String(experiment.data_provenance?.provenance_status ?? "unknown")}
           </p>
           <table>
             <thead>

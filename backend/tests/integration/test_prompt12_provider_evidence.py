@@ -20,11 +20,41 @@ def _fixture(name):
     return json.loads((FIXTURES / name).read_text(encoding="utf-8"))
 
 
-def _client(handler, **kwargs):
+def _client(handler, *, provider_id="synthetic-test-adapter", provider_type="test", **kwargs):
+    provider_payload = _fixture("upstream_providers_synthetic.json")
+    provider = provider_payload["data"][0]
+    provider["provider_id"] = provider_id
+    provider["provider_type"] = provider_type
+
+    def route(request):
+        if request.url.path == "/api/v1/market-data/providers":
+            return httpx.Response(200, json=provider_payload)
+        if request.url.path.endswith("/test-connection"):
+            selected_provider = request.url.path.split("/")[-2]
+            request_id = request.headers.get("x-request-id", "test-request")
+            return httpx.Response(
+                200,
+                json={
+                    "data": {
+                        "provider_id": selected_provider,
+                        "success": True,
+                        "message": "fixture connection test",
+                        "request_id": request_id,
+                    },
+                    "meta": {
+                        "api_version": "v1",
+                        "request_id": request_id,
+                        "timestamp_utc": "2026-01-01T00:00:00Z",
+                    },
+                    "errors": [],
+                },
+            )
+        return handler(request)
+
     return MarketDataClient(
         base_url="https://upstream.test.invalid",
         api_key=kwargs.pop("api_key", "test-upstream-key"),
-        transport=handler,
+        transport=httpx.MockTransport(route),
         **kwargs,
     )
 
@@ -36,7 +66,7 @@ async def test_test_adapter_is_classified_as_synthetic():
     def handler(request):
         return httpx.Response(200, json=payload)
 
-    client = _client(httpx.MockTransport(handler))
+    client = _client(handler)
     settings = Settings(
         environment="testing",
         log_format="console",
@@ -65,7 +95,11 @@ async def test_test_adapter_is_classified_as_synthetic():
 async def test_non_test_provider_is_not_verified_real_data():
     payload = _fixture("upstream_history_synthetic.json")
     payload["data"]["provider_id"] = "candidate-provider"
+    payload["data"]["canonical_instrument"] = "EUR/USD"
     for candle in payload["data"]["candles"]:
+        candle["instrument"] = "EUR/USD"
+        candle["base_currency"] = "EUR"
+        candle["quote_currency"] = "USD"
         candle["source"] = "candidate-provider"
         candle["metadata"]["fixture"] = False
         candle["metadata"].setdefault("source_metadata", {})["fixture"] = False
@@ -73,7 +107,11 @@ async def test_non_test_provider_is_not_verified_real_data():
     def handler(request):
         return httpx.Response(200, json=payload)
 
-    client = _client(httpx.MockTransport(handler))
+    client = _client(
+        handler,
+        provider_id="candidate-provider",
+        provider_type="real",
+    )
     settings = Settings(
         environment="testing",
         log_format="console",
@@ -92,8 +130,8 @@ async def test_non_test_provider_is_not_verified_real_data():
     )
     result = await service.retrieve_historical_dataset(req, "prompt12-candidate")
     assert result["synthetic"] is False
-    assert result["provenance"]["provider_type"] == "genuine"
-    assert result["provenance"]["provenance_status"] == "genuine_source_unverified"
+    assert result["provenance"]["provider_type"] == "real"
+    assert result["provenance"]["provenance_status"] == "provider_asserted_unverified"
     assert result["provenance"]["verified_real_market_data"] is False
 
 
@@ -104,7 +142,7 @@ async def test_research_readiness_blocks_synthetic_provider():
     def handler(request):
         return httpx.Response(200, json=payload)
 
-    client = _client(httpx.MockTransport(handler))
+    client = _client(handler)
     settings = Settings(
         environment="testing",
         log_format="console",

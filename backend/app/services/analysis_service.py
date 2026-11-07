@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import time
 import uuid
+from datetime import UTC
 from typing import Any
 
 from backend.app.analysis.change_points import detect_change_points_combined
+from backend.app.analysis.data_quality import validate_historical_payload
 from backend.app.analysis.observations import (
     Observation,
     ensure_sorted,
@@ -30,6 +34,7 @@ from backend.app.core.config import Settings
 from backend.app.core.errors import ValidationError
 from backend.app.schemas.analysis import (
     CapabilityDiscoveryData,
+    ObservationInput,
     PatternConfigInput,
     PatternResearchRequest,
     PatternResearchResponseData,
@@ -42,6 +47,10 @@ from backend.app.schemas.analysis import (
     ResearchSummaryData,
     ResearchSummaryRequest,
 )
+from backend.app.services.market_data_policy import (
+    require_approved_real_instrument,
+    require_historical_provider,
+)
 
 
 def _obs_from_input(obs: Any) -> Observation:
@@ -49,6 +58,84 @@ def _obs_from_input(obs: Any) -> Observation:
         return from_mapping(obs)
     # pydantic model
     return from_mapping(obs.model_dump())
+
+
+def _dataset_fingerprint(
+    observations: list[Observation], instrument: str | None, timeframe: str | None
+) -> str:
+    payload = {
+        "instrument": instrument,
+        "timeframe": timeframe,
+        "observations": [
+            {
+                "timestamp": observation.timestamp.astimezone(UTC).isoformat(),
+                "open": observation.open,
+                "high": observation.high,
+                "low": observation.low,
+                "close": observation.close,
+                "volume": observation.volume,
+            }
+            for observation in observations
+        ],
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+    ).hexdigest()
+
+
+def _data_provenance(source_quality: dict[str, Any] | None) -> dict[str, Any]:
+    if source_quality is None:
+        return {
+            "provenance_status": "user_supplied_unverified",
+            "availability_provenance": "availability_assumed",
+            "limitations": [
+                "Caller-supplied observations and their timestamps are not independently verified."
+            ],
+        }
+    provider_type = source_quality.get("provider_type")
+    return {
+        "provenance_status": (
+            "synthetic_fixture" if provider_type == "test" else "provider_asserted_unverified"
+        ),
+        "availability_provenance": "availability_assumed",
+        "provider_id": source_quality.get("provider_id"),
+        "retrieved_at": source_quality.get("retrieved_at"),
+        "limitations": source_quality.get("limitations", []),
+    }
+
+
+def _pattern_definition(pattern_id: str) -> str:
+    definitions = {
+        "volatility_compression_expansion": (
+            "Short-window return volatility is below a configured fraction of "
+            "the lookback-window return volatility."
+        ),
+        "directional_persistence": (
+            "All simple returns in the configured lookback window have the same non-zero sign."
+        ),
+        "reversal_after_large_move": (
+            "A return exceeds the configured multiple of lookback volatility and "
+            "the preceding cumulative return has the opposite sign."
+        ),
+    }
+    return definitions.get(pattern_id, "No supported definition is registered for this pattern.")
+
+
+def _pattern_methodology(pattern_id: str, lookback: int) -> str:
+    definitions = {
+        "volatility_compression_expansion": (
+            f"Rolling sample standard deviations of simple close returns; "
+            f"short window=min({lookback}, 10), long window={lookback}."
+        ),
+        "directional_persistence": (
+            f"Checks the signs of each of the {lookback} simple close returns."
+        ),
+        "reversal_after_large_move": (
+            f"Compares the latest simple close return with {lookback}-period "
+            "sample volatility and the preceding cumulative return."
+        ),
+    }
+    return definitions.get(pattern_id, "No supported detection method is registered.")
 
 
 class AnalysisService:
@@ -63,7 +150,11 @@ class AnalysisService:
         if getattr(request, "observations", None):
             for raw in request.observations:
                 observations.append(_obs_from_input(raw))
-            observations = ensure_sorted(observations)
+            timestamps = [observation.timestamp for observation in observations]
+            if any(right <= left for left, right in zip(timestamps, timestamps[1:], strict=False)):
+                raise ValidationError(
+                    "Caller-supplied observations must be strictly chronological and unique."
+                )
             return observations, request.instrument, request.timeframe, None
         # upstream fetch
         instrument = request.instrument
@@ -71,9 +162,18 @@ class AnalysisService:
             raise ValidationError("Either observations or instrument must be provided.")
         if not self._upstream.is_configured:
             raise ValidationError("Upstream market-data service is not configured.")
+        provider_id = getattr(request, "provider_id", None)
+        provider = await require_historical_provider(
+            self._upstream,
+            provider_id,
+            request_id=request_id,
+            environment=self._settings.environment,
+        )
+        if provider.provider_type.value == "real":
+            require_approved_real_instrument(instrument)
         data = await self._upstream.fetch_historical_candles(
             instrument,
-            provider_id=request.provider_id or "test-adapter",
+            provider_id=provider.provider_id,
             start=request.start,
             end=request.end,
             timeframe=request.timeframe or "D1",
@@ -81,13 +181,43 @@ class AnalysisService:
             limit=request.limit or 500,
             request_id=request_id,
         )
+        if data.provider_id != provider.provider_id:
+            raise ValidationError("Market-data response provider does not match the selection.")
+        source_quality = validate_historical_payload(
+            data,
+            expected_timeframe=request.timeframe or "D1",
+            expected_price_basis=request.price_basis or "bid",
+        )
+        if (
+            not source_quality["valid"]
+            or not data.coverage.complete
+            or data.coverage.rejected_count
+            or data.coverage.duplicate_count
+            or data.pagination.has_more
+        ):
+            raise ValidationError(
+                "Historical analysis requires complete, untruncated source coverage "
+                "without rejected or duplicate observations."
+            )
         for c in data.candles:
-            if c.open is None or c.high is None or c.low is None or c.close is None:
-                continue
+            if (
+                not c.valid
+                or c.completeness != "complete"
+                or c.open is None
+                or c.high is None
+                or c.low is None
+                or c.close is None
+                or c.close_time is None
+            ):
+                raise ValidationError(
+                    "Historical analysis received an invalid or incomplete candle."
+                )
             try:
+                if c.open_time.tzinfo is None or c.close_time.tzinfo is None:
+                    raise ValueError("naive timestamp")
                 observations.append(
                     Observation(
-                        timestamp=c.open_time,
+                        timestamp=c.open_time.astimezone(UTC),
                         open=float(c.open),
                         high=float(c.high),
                         low=float(c.low),
@@ -95,12 +225,23 @@ class AnalysisService:
                         volume=float(c.volume) if c.volume is not None else None,
                     )
                 )
-            except (TypeError, ValueError):
-                continue
+            except (TypeError, ValueError, OverflowError) as exc:
+                raise ValidationError(
+                    "Historical analysis received an invalid candle value."
+                ) from exc
         observations = ensure_sorted(observations)
         upstream_quality = {
+            "provider_id": data.provider_id,
+            "provider_type": provider.provider_type.value,
+            "retrieved_at": data.retrieved_at.isoformat(),
+            "availability_provenance": "availability_assumed",
+            "availability_assumption": (
+                "Service 1 does not provide original historical publication timestamps."
+            ),
+            "data_quality": source_quality,
             "validation_summary": data.validation_summary.model_dump(),
             "coverage": data.coverage.model_dump(),
+            "limitations": list(data.limitations),
             "row_count": len(data.candles),
         }
         return observations, data.canonical_instrument, str(data.timeframe), upstream_quality
@@ -115,7 +256,7 @@ class AnalysisService:
             "Regime labels are descriptive model outputs, not ground truth.",
             "Change-point detection is retrospective and may not be knowable in real time.",
         ]
-        observations, instrument, timeframe, _ = await self._resolve_observations(
+        observations, instrument, timeframe, source_quality = await self._resolve_observations(
             request, request_id
         )
         cfg_in: RegimeConfigInput = request.config
@@ -232,8 +373,8 @@ class AnalysisService:
             alt = classify_regimes(observations, cfg2)
             same = sum(1 for a, b in zip(regime_obs, alt, strict=False) if a.regime == b.regime)
             agreement = same / len(regime_obs) if regime_obs else None
-        except Exception:  # noqa: BLE001
-            agreement = None
+        except (ValueError, ArithmeticError) as exc:
+            warnings.append(f"Sensitivity comparison was unavailable ({type(exc).__name__}).")
 
         split = len(observations) // 2
         first_counts: dict[str, int] = {}
@@ -286,6 +427,9 @@ class AnalysisService:
             short_segment_count=short_segments,
             sensitivity_agreement=agreement,
             chronological_validation=chrono,
+            dataset_fingerprint=_dataset_fingerprint(observations, instrument, timeframe),
+            data_provenance=_data_provenance(source_quality),
+            source_quality=source_quality,
             warnings=warnings,
             limitations=limitations,
             duration_ms=duration_ms,
@@ -301,9 +445,10 @@ class AnalysisService:
             "Pattern outcomes are retrospective evaluation labels, not real-time signals.",
             "Overlapping windows are not independent samples.",
         ]
-        observations, instrument, timeframe, _ = await self._resolve_observations(
+        observations, instrument, timeframe, source_quality = await self._resolve_observations(
             request, request_id
         )
+        dataset_fingerprint = _dataset_fingerprint(observations, instrument, timeframe)
         cfg_in: PatternConfigInput = request.config
         validate_minimum(observations, cfg_in.lookback + cfg_in.outcome_horizon + 5)
 
@@ -423,6 +568,39 @@ class AnalysisService:
                     warnings=[]
                     if len(outcome_values) >= spec.min_events
                     else ["insufficient_events"],
+                    instrument=instrument,
+                    timeframe=timeframe,
+                    historical_interval={
+                        "start": observations[0].timestamp.isoformat() if observations else None,
+                        "end": observations[-1].timestamp.isoformat() if observations else None,
+                    },
+                    pattern_definition=_pattern_definition(spec.pattern_id),
+                    detection_methodology=_pattern_methodology(spec.pattern_id, cfg_in.lookback),
+                    outcome_definition=(
+                        "Close-to-close simple return from the pattern observation "
+                        "through the configured evaluation horizon."
+                    ),
+                    evaluation_horizon=cfg_in.outcome_horizon,
+                    baseline_comparison={
+                        "method": "mean eligible non-pattern close-to-close return",
+                        "sample_count": len(base),
+                        "mean_outcome": baseline_mean,
+                        "effect_size_difference": effect_size,
+                    },
+                    statistical_uncertainty={
+                        "interval_method": "moving_block_bootstrap",
+                        "confidence_level": 1.0 - cfg_in.alpha,
+                        "ci_lower": ci_lower,
+                        "ci_upper": ci_upper,
+                        "permutation_p_value": p_val,
+                        "multiple_testing_method": "benjamini_hochberg",
+                    },
+                    data_quality_restrictions={
+                        "source_quality": source_quality,
+                        "source_identity_verified": False,
+                        "availability_verified": False,
+                    },
+                    dataset_fingerprint=dataset_fingerprint,
                 )
             )
 
@@ -442,6 +620,13 @@ class AnalysisService:
             instrument=instrument,
             timeframe=timeframe,
             observation_count=len(observations),
+            historical_interval={
+                "start": observations[0].timestamp.isoformat() if observations else None,
+                "end": observations[-1].timestamp.isoformat() if observations else None,
+            },
+            dataset_fingerprint=dataset_fingerprint,
+            data_provenance=_data_provenance(source_quality),
+            source_quality=source_quality,
             feature_set_version="1.0.0",
             algorithm_id="bounded_pattern_research",
             algorithm_version="1.0.0",
@@ -459,36 +644,64 @@ class AnalysisService:
     ) -> ResearchSummaryData:
         started = time.perf_counter()
         analysis_id = str(uuid.uuid4())
-
+        observations, instrument, timeframe, source_quality = await self._resolve_observations(
+            request, request_id
+        )
+        dataset_fingerprint = _dataset_fingerprint(observations, instrument, timeframe)
+        observation_inputs = [
+            ObservationInput(
+                timestamp=observation.timestamp,
+                open=observation.open,
+                high=observation.high,
+                low=observation.low,
+                close=observation.close,
+                volume=observation.volume,
+            )
+            for observation in observations
+        ]
         regime_config: ResearchSummaryConfigInput = request.config
         regime_request = RegimeAnalysisRequest(
-            observations=request.observations,
-            instrument=request.instrument,
-            timeframe=request.timeframe,
-            start=request.start,
-            end=request.end,
-            provider_id=request.provider_id,
-            price_basis=request.price_basis,
-            limit=request.limit,
+            observations=observation_inputs,
+            instrument=instrument,
+            timeframe=timeframe,
             config=regime_config.regime,
         )
         pattern_request = PatternResearchRequest(
-            observations=request.observations,
-            instrument=request.instrument,
-            timeframe=request.timeframe,
-            start=request.start,
-            end=request.end,
-            provider_id=request.provider_id,
-            price_basis=request.price_basis,
-            limit=request.limit,
+            observations=observation_inputs,
+            instrument=instrument,
+            timeframe=timeframe,
             config=regime_config.pattern,
         )
 
         regime_result = await self.analyze_regimes(regime_request, request_id=request_id)
         pattern_result = await self.research_patterns(pattern_request, request_id=request_id)
-
-        observations, instrument, timeframe, _ = await self._resolve_observations(
-            request, request_id
+        provenance = _data_provenance(source_quality)
+        regime_result = regime_result.model_copy(
+            update={
+                "dataset_fingerprint": dataset_fingerprint,
+                "data_provenance": provenance,
+                "source_quality": source_quality,
+            }
+        )
+        pattern_result = pattern_result.model_copy(
+            update={
+                "dataset_fingerprint": dataset_fingerprint,
+                "data_provenance": provenance,
+                "source_quality": source_quality,
+                "patterns": [
+                    pattern.model_copy(
+                        update={
+                            "dataset_fingerprint": dataset_fingerprint,
+                            "data_quality_restrictions": {
+                                "source_quality": source_quality,
+                                "source_identity_verified": False,
+                                "availability_verified": False,
+                            },
+                        }
+                    )
+                    for pattern in pattern_result.patterns
+                ],
+            }
         )
 
         dominant_regime = "unknown"
@@ -542,58 +755,36 @@ class AnalysisService:
         pattern_effect_size = best_pattern.effect_size if best_pattern else None
         pattern_significance = bool(best_pattern and best_pattern.significant)
 
-        confidence = min(
-            0.99,
-            max(
-                0.05,
-                regime_share * 0.65
-                + (0.25 if pattern_significance else 0.05)
-                + (0.15 if pattern_effect_size is not None else 0.0),
-            ),
-        )
-
         effect_text = (
-            f"with effect size {pattern_effect_size:.4f}"
+            f"with observed effect size {pattern_effect_size:.4f}"
             if pattern_effect_size is not None
-            else "with no stable effect estimate"
+            else "with no estimable effect"
         )
+        interval_start = observations[0].timestamp.isoformat() if observations else None
+        interval_end = observations[-1].timestamp.isoformat() if observations else None
         narrative = (
-            f"{instrument or 'The instrument'} is currently dominated by a {dominant_regime} "
-            f"regime with {volatility_state} volatility and a {trend_state} bias. "
-            f"The strongest research signal is {pattern_id or 'no stable pattern'} {effect_text}."
+            f"Across the analyzed historical interval ({interval_start} to {interval_end}), "
+            f"the descriptive regime heuristic most often labelled {dominant_regime} "
+            f"({regime_share:.3f} of observations); mean segment volatility was "
+            f"{volatility_state} and the recent-window descriptor was {trend_state}. "
+            f"The largest tested historical pattern effect was "
+            f"{pattern_id or 'not estimable'} {effect_text}. These are retrospective "
+            "descriptions, not forecasts."
         )
-
-        recommendations: list[str] = []
-        if dominant_regime in {"trend_up", "trend_down"}:
-            recommendations.append(
-                "Prioritize continuation research while preserving strict risk control."
-            )
-        elif dominant_regime == "range":
-            recommendations.append(
-                "Lean into range-mean-reversion tests and refine support/resistance overlays."
-            )
-        else:
-            recommendations.append(
-                "Collect more history before turning the regime into a trading conclusion."
-            )
-
-        if volatility_state == "elevated":
-            recommendations.append(
-                "Tighten drawdown monitoring and require more confirmation before interpreting a move."
-            )
-        elif volatility_state == "contained":
-            recommendations.append(
-                "Use tighter entries to harvest stable structure while monitoring for regime shifts."
-            )
-
-        if pattern_significance:
-            recommendations.append(
-                "Use the significant pattern as a directional research lens rather than a production signal."
-            )
-        else:
-            recommendations.append(
-                "Collect more qualifying events so pattern evidence becomes less fragile."
-            )
+        recommendations = [
+            "Prespecify a separate chronological holdout before testing whether these historical descriptions replicate.",
+            "Treat pattern significance as exploratory and retain the reported sample counts and multiple-testing correction.",
+            "Do not interpret this retrospective summary as a forecast or trading instruction.",
+        ]
+        limitations = [
+            "Historical regime labels are heuristic descriptions, not ground truth or future regime forecasts.",
+            "Pattern effects and significance are exploratory and do not establish predictive value.",
+            "No calibrated confidence or probability is produced.",
+            "Source identity and historical availability are not independently verified.",
+        ]
+        warnings = list(regime_result.warnings) + list(pattern_result.warnings)
+        if source_quality:
+            warnings.extend(source_quality.get("data_quality", {}).get("warnings", []))
 
         duration_ms = (time.perf_counter() - started) * 1000
         return ResearchSummaryData(
@@ -609,11 +800,18 @@ class AnalysisService:
             pattern_id=pattern_id,
             pattern_effect_size=pattern_effect_size,
             pattern_significance=pattern_significance,
-            confidence=float(confidence),
+            confidence=None,
+            confidence_status="not_calculated",
             narrative=narrative,
             recommendations=recommendations,
             regime_summary=regime_result.model_dump(mode="json"),
             pattern_summary=pattern_result.model_dump(mode="json"),
+            historical_interval={"start": interval_start, "end": interval_end},
+            dataset_fingerprint=dataset_fingerprint,
+            data_provenance=provenance,
+            source_quality=source_quality,
+            warnings=warnings,
+            limitations=limitations,
             duration_ms=duration_ms,
         )
 

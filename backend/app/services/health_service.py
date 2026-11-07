@@ -10,7 +10,7 @@ from __future__ import annotations
 import time
 from datetime import UTC, datetime
 
-from backend.app.clients.base import UpstreamCheckResult, UpstreamState
+from backend.app.clients.base import UpstreamCheckResult, UpstreamContractStatus, UpstreamState
 from backend.app.clients.market_data import MarketDataClient
 from backend.app.core.config import Settings
 from backend.app.schemas.common import ApiResponse, ResponseMeta
@@ -33,8 +33,8 @@ IMPLEMENTED_CAPABILITIES: tuple[CapabilityStatus, ...] = (
         name="upstream_integration_contract",
         implemented=True,
         detail=(
-            "Typed client for the fx-market-data-service historical and provider "
-            "contracts, with timeouts and sanitised error handling."
+            "Historical/provider request and response shapes are verified; production "
+            "authentication and Service 64 workload authorization are not verified."
         ),
     ),
     CapabilityStatus(
@@ -65,7 +65,10 @@ IMPLEMENTED_CAPABILITIES: tuple[CapabilityStatus, ...] = (
     CapabilityStatus(
         name="reproducible_results",
         implemented=True,
-        detail="Reproducible analytical results with provenance.",
+        detail=(
+            "Content fingerprints and run parameters are reported; source identity, "
+            "historical availability, and durable artifact lineage remain unverified."
+        ),
     ),
     CapabilityStatus(
         name="forecasting_readiness",
@@ -152,7 +155,11 @@ class HealthService:
                 check.state == UpstreamState.CONNECTED if check is not None else None
             ),
             last_check_message=check.message if check else None,
-            contract_status=check.contract_status.value if check else "verified",
+            contract_status=(
+                check.contract_status.value
+                if check
+                else UpstreamContractStatus.PROPOSED_NOT_YET_VERIFIED.value
+            ),
             latency_ms=check.latency_ms if check else None,
         )
 
@@ -173,10 +180,9 @@ class HealthService:
     async def readiness(self, request_id: str) -> ApiResponse[ReadyResponseData]:
         """Confirm the service can accept traffic.
 
-        The upstream market-data service is treated as an optional dependency in
-        this foundation phase: an unreachable upstream degrades readiness but
-        does not make the service unready, because no analytical capability
-        depends on it yet.
+        The upstream market-data service is optional when unconfigured. If
+        configured and enabled for checking, an unreachable upstream degrades
+        readiness; provider-dependent retrieval then cannot run.
         """
         dependencies: list[DependencyHealth] = []
 

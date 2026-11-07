@@ -83,7 +83,7 @@ export const statusData = {
     last_checked_at: null,
     last_check_succeeded: null,
     last_check_message: null,
-    contract_status: "verified",
+    contract_status: "proposed-not-yet-verified",
     latency_ms: null,
   },
   timestamp_utc: "2024-01-04T00:00:00Z",
@@ -104,5 +104,5 @@ export const dataSourceData = {
     latency_ms: 12,
     checked_at: "2024-01-04T00:00:00Z",
   },
-  contract_status: "verified",
+  contract_status: "proposed-not-yet-verified",
 };

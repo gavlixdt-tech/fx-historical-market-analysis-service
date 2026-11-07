@@ -84,6 +84,7 @@ def test_status_reports_unconfigured_upstream_truthfully(client: TestClient) -> 
     assert upstream["state"] == "unconfigured"
     assert upstream["base_url_configured"] is False
     assert upstream["credential_configured"] is False
+    assert upstream["contract_status"] == "proposed-not-yet-verified"
     assert upstream["last_checked_at"] is None
     assert upstream["last_check_succeeded"] is None
 

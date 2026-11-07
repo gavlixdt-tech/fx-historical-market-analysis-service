@@ -77,6 +77,8 @@ def test_experiment_validation(client):
 def test_experiment_run_and_retrieval(client):
     body = {
         "observations": _observations(120),
+        "instrument": "EURUSD",
+        "timeframe": "D1",
         "problem": _problem(),
         "lookback": 20,
         "n_folds": 3,
@@ -85,11 +87,18 @@ def test_experiment_run_and_retrieval(client):
         "embargo_periods": 1,
         "model_families": ["ridge_regression"],
         "random_seed": 1,
+        "data_source": "upstream_historical",
+        "synthetic": False,
     }
     r = client.post("/api/v1/forecasting/experiment/run", json=body)
     assert r.status_code == 200
     data = r.json()["data"]
     assert data["status"] in {"completed", "completed_with_warnings"}
+    assert data["data_source"] == "user_supplied_observations"
+    assert data["synthetic"] is None
+    assert data["data_provenance"]["provenance_status"] == "user_supplied_unverified"
+    assert data["data_provenance"]["caller_declared_data_source"] == "upstream_historical"
+    assert data["data_provenance"]["real_market_research_accepted"] is False
     eid = data["experiment_id"]
     r2 = client.get(f"/api/v1/forecasting/experiment/{eid}")
     assert r2.status_code == 200

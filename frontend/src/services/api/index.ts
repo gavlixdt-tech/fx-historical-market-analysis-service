@@ -19,6 +19,7 @@ export type {
   HealthResponseData,
   DataSourceResponseData,
   HistoricalDatasetResponseData,
+  HistoricalProviderInventory,
   ResearchReadinessResponseData,
   ModelFamiliesResponseData,
   ExperimentValidationResponseData,

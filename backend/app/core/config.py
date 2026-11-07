@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from functools import lru_cache
+from urllib.parse import urlsplit, urlunsplit
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -137,13 +138,21 @@ class Settings(BaseSettings):
         ge=1.0,
         le=60.0,
     )
+    upstream_max_concurrent_requests: int = Field(
+        default=4,
+        description="Maximum concurrent requests to the historical market-data service",
+        ge=1,
+        le=32,
+    )
+    upstream_max_response_bytes: int = Field(
+        default=16_777_216,
+        description="Maximum decompressed response size accepted from the market-data service",
+        ge=1024,
+        le=67_108_864,
+    )
     upstream_connectivity_check_enabled: bool = Field(
         default=True,
         description="Allow the readiness probe to perform a live upstream check",
-    )
-    upstream_default_provider_id: str = Field(
-        default="test-adapter",
-        description="Default upstream provider id used when querying historical data",
     )
     upstream_replay_availability_delay_seconds: int | None = Field(
         default=None,
@@ -178,8 +187,8 @@ class Settings(BaseSettings):
     metrics_enabled: bool = Field(default=True, description="Expose Prometheus metrics")
 
     # ---- Persistence ----
-    # No database is provisioned in this foundation phase. The field exists so
-    # that a later phase can add persistence without changing the config shape.
+    # No database is provisioned. The field is reserved for a future,
+    # separately approved persistence integration.
     database_url: str | None = Field(
         default=None, description="Database connection string (unused)"
     )
@@ -216,20 +225,20 @@ class Settings(BaseSettings):
     def _validate_upstream_base_url(cls, value: str | None) -> str | None:
         if value is None or value == "":
             return None
-        normalised = value.strip().rstrip("/")
-        if not normalised.startswith(("http://", "https://")):
-            raise ValueError("upstream_market_data_base_url must be an http(s) URL")
-        # Reject embedded credentials and fragments in the configured origin.
-        from urllib.parse import urlparse
-
-        parsed = urlparse(normalised)
-        if not parsed.hostname:
-            raise ValueError("upstream_market_data_base_url must include a host")
+        parsed = urlsplit(value.strip())
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc or not parsed.hostname:
+            raise ValueError("upstream_market_data_base_url must be an http(s) origin")
         if parsed.username or parsed.password:
             raise ValueError("upstream_market_data_base_url must not contain credentials")
-        if parsed.fragment:
-            raise ValueError("upstream_market_data_base_url must not contain a fragment")
-        return normalised
+        if parsed.path not in {"", "/"} or parsed.query or parsed.fragment:
+            raise ValueError(
+                "upstream_market_data_base_url must be an origin without path, query, or fragment"
+            )
+        try:
+            _ = parsed.port
+        except ValueError as exc:
+            raise ValueError("upstream_market_data_base_url contains an invalid port") from exc
+        return urlunsplit((parsed.scheme, parsed.netloc, "", "", ""))
 
     @model_validator(mode="after")
     def _validate_security_invariants(self) -> Settings:

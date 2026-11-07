@@ -40,7 +40,9 @@ class UpstreamCheckResult:
         message: str,
         latency_ms: float | None = None,
         checked_at: str | None = None,
-        contract_status: UpstreamContractStatus = UpstreamContractStatus.VERIFIED,
+        contract_status: UpstreamContractStatus = (
+            UpstreamContractStatus.PROPOSED_NOT_YET_VERIFIED
+        ),
     ) -> None:
         self.state = state
         self.message = message

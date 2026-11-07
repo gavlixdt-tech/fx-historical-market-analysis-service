@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -20,9 +20,9 @@ from backend.app.core.errors import (
 )
 from backend.app.schemas.replay import HistoricalReplayRequest, ReplayObservationInput
 from backend.app.schemas.replay_market_data import HistoricalReplayMarketDataRequest
-from backend.app.schemas.upstream import (
-    ProviderCapability,
-    ProviderType,
+from backend.app.services.market_data_policy import (
+    require_approved_real_instrument,
+    require_historical_provider,
 )
 
 
@@ -50,37 +50,18 @@ async def run_market_data_replay(
             "because the market-data contract has no historical publication timestamp."
         )
 
-    providers = await upstream.list_providers(request_id=request_id)
-    if providers.errors or providers.data is None:
-        raise DependencyUnavailableError(
-            "fx-market-data-service",
-            "Provider inventory is unavailable or invalid.",
-        )
-    provider = next(
-        (item for item in providers.data if item.provider_id == payload.provider_id),
-        None,
-    )
-    if (
-        provider is None
-        or provider.provider_type != ProviderType.REAL
-        or not provider.configured
-        or ProviderCapability.HISTORICAL_CANDLES not in provider.capabilities
-    ):
-        raise ValidationError(
-            "The selected provider must be configured as a real historical-candle provider."
-        )
-    if not await upstream.test_provider_connection(
+    provider = await require_historical_provider(
+        upstream,
         payload.provider_id,
         request_id=request_id,
-    ):
-        raise DependencyUnavailableError(
-            "fx-market-data-service",
-            "The selected real market-data provider failed its live connection test.",
-        )
+        environment=settings.environment,
+        real_only=True,
+    )
+    expected_instrument = require_approved_real_instrument(payload.instrument)
 
     data = await upstream.fetch_historical_candles(
         payload.instrument,
-        provider_id=payload.provider_id,
+        provider_id=provider.provider_id,
         start=payload.start,
         end=payload.end,
         timeframe=payload.timeframe,
@@ -88,9 +69,10 @@ async def run_market_data_replay(
         limit=payload.limit,
         request_id=request_id,
     )
+    service2_received_at = datetime.now(UTC).isoformat()
     if (
-        data.provider_id != payload.provider_id
-        or data.canonical_instrument != payload.instrument
+        data.provider_id != provider.provider_id
+        or data.canonical_instrument != expected_instrument
         or data.timeframe.value != payload.timeframe
         or data.price_basis.value != payload.price_basis
     ):
@@ -100,9 +82,7 @@ async def run_market_data_replay(
             "Market-data coverage is incomplete; replay requires a complete validated interval."
         )
     if data.coverage.rejected_count or data.coverage.duplicate_count:
-        raise ValidationError(
-            "Market-data response contains rejected or duplicate observations."
-        )
+        raise ValidationError("Market-data response contains rejected or duplicate observations.")
     if data.pagination.has_more:
         raise ValidationError(
             "Market-data response is truncated; reduce the date range before replay."
@@ -190,9 +170,19 @@ async def run_market_data_replay(
         "provider_id": payload.provider_id,
         "price_basis": payload.price_basis,
         "retrieved_at": data.retrieved_at.isoformat(),
+        "service2_received_at": service2_received_at,
+        "observation_timestamp_semantics": "candle_close_time",
         "availability_policy": "candle_close_plus_configured_publication_lag",
         "availability_delay_seconds": availability_delay,
-        "availability_provenance": "assumption_not_provider_timestamp",
+        "availability_provenance": "availability_assumed",
+        "availability_assumption": (
+            "available_at is candle close time plus the configured delay; "
+            "Service 1 does not provide original historical publication timestamps."
+        ),
+        "source_record_identity": (
+            "Derived SHA-256 identity from provider, instrument, timeframe, price basis, "
+            "candle open time, and source label; Service 1 supplies no stable source-record ID."
+        ),
         "coverage": data.coverage.model_dump(mode="json"),
         "validation_summary": data.validation_summary.model_dump(mode="json"),
     }

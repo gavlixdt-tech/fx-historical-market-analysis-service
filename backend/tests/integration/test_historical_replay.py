@@ -97,11 +97,16 @@ def test_provider_sourced_replay_fails_closed_when_upstream_is_unconfigured(
     body = _body()
     body.pop("synthetic")
     body.pop("observations")
+    body["instrument"] = "EUR/USD"
     body["price_basis"] = "midpoint"
     body["provider_id"] = "real-provider"
     body["start"] = "2023-01-01T00:00:00Z"
     body["end"] = "2023-05-01T00:00:00Z"
     body["limit"] = 1000
+    problem = body["problem"]
+    assert isinstance(problem, dict)
+    problem["instrument_scope"] = ["EUR/USD"]
+    problem["price_basis"] = "midpoint"
 
     response = client.post(
         "/api/v1/historical-replay/run-from-market-data",

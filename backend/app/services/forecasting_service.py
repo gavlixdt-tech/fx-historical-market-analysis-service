@@ -7,7 +7,13 @@ import uuid
 from typing import Any, cast
 
 from backend.app.analysis.observations import coerce_timestamp
+from backend.app.core.errors import DependencyUnavailableError
+from backend.app.schemas.upstream import ProviderType
 from backend.app.services.analysis_service import AnalysisService
+from backend.app.services.market_data_policy import (
+    require_approved_real_instrument,
+    require_historical_provider,
+)
 
 
 class ForecastingService(AnalysisService):
@@ -80,7 +86,9 @@ class ForecastingService(AnalysisService):
         errors = spec.validate()
         return len(errors) == 0, errors, dataclasses.asdict(spec)
 
-    async def construct_features(self, request: Any, request_id: str):
+    async def construct_features(
+        self, request: Any, request_id: str
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], int, str | None, str | None]:
         from backend.app.analysis.forecasting import (
             FEATURE_SPECS,
             ForecastingProblemSpec,
@@ -123,7 +131,9 @@ class ForecastingService(AnalysisService):
         valid_rows = [r for r in rows if r is not None]
         return valid_rows, feature_specs, excluded, instrument, timeframe
 
-    async def generate_forecasting_labels(self, request: Any, request_id: str):
+    async def generate_forecasting_labels(
+        self, request: Any, request_id: str
+    ) -> tuple[list[dict[str, Any]], int, int, str | None, str | None]:
         from backend.app.analysis.forecasting import ForecastingProblemSpec, generate_labels
 
         observations, instrument, timeframe, _upstream_quality = await self._resolve_observations(
@@ -164,7 +174,7 @@ class ForecastingService(AnalysisService):
             timeframe,
         )
 
-    async def build_forecasting_dataset(self, request: Any, request_id: str):
+    async def build_forecasting_dataset(self, request: Any, request_id: str) -> dict[str, Any]:
         from backend.app.analysis.forecasting import (
             ForecastingProblemSpec,
             SplitConfig,
@@ -315,7 +325,7 @@ class ForecastingService(AnalysisService):
             "limitations": quality.limitations,
         }
 
-    async def compute_forecasting_baselines(self, request: Any, request_id: str):
+    async def compute_forecasting_baselines(self, request: Any, request_id: str) -> dict[str, Any]:
         from backend.app.analysis.forecasting import (
             baseline_historical_mean,
             baseline_majority_class,
@@ -384,7 +394,10 @@ class ForecastingService(AnalysisService):
         if _min_train_samples is not None and _min_train_samples < 10:
             errors.append("min_train_samples must be >= 10")
         # resource limits
-        if getattr(request, "limit", None) is not None and cast(int, getattr(request, "limit", None)) > 2000:
+        if (
+            getattr(request, "limit", None) is not None
+            and cast(int, getattr(request, "limit", None)) > 2000
+        ):
             errors.append("limit exceeds experiment resource cap (2000)")
         if getattr(request, "calibration", False):
             errors.append("calibration is not implemented in the current evaluation path")
@@ -427,8 +440,13 @@ class ForecastingService(AnalysisService):
         )
 
         started_at = datetime.now(UTC).isoformat()
-        valid, errors, config = await self.validate_experiment(request)
         from backend.app.core.errors import ValidationError as AppValidationError
+
+        if self._settings.is_production and getattr(request, "synthetic", None) is True:
+            raise AppValidationError(
+                "Synthetic experiment fixtures are not accepted in production."
+            )
+        valid, errors, config = await self.validate_experiment(request)
 
         if not valid:
             raise AppValidationError("; ".join(errors))
@@ -437,32 +455,20 @@ class ForecastingService(AnalysisService):
             request, request_id
         )
         request_observations = getattr(request, "observations", None)
-        if request_observations is None and getattr(request, "instrument", None):
+        if request_observations is not None:
+            resolved_data_source = "user_supplied_observations"
+            resolved_synthetic = True if getattr(request, "synthetic", None) is True else None
+            resolved_provenance_status = (
+                "synthetic_unverified" if resolved_synthetic is True else "user_supplied_unverified"
+            )
+        else:
             resolved_data_source = "upstream_historical"
-            provider_id = getattr(request, "provider_id", None) or getattr(
-                self._settings, "upstream_default_provider_id", "test-adapter"
-            )
-            resolved_synthetic = (
-                provider_id == "test-adapter"
-                or str(provider_id).startswith("synthetic-")
-            )
+            provider_type = (_upstream_quality or {}).get("provider_type")
+            resolved_synthetic = provider_type == ProviderType.TEST.value
             if resolved_synthetic:
                 resolved_provenance_status = "synthetic_fixture"
             else:
-                resolved_provenance_status = "genuine_source_unverified"
-        else:
-            resolved_data_source = (
-                getattr(request, "data_source", None) or "user_supplied_observations"
-            )
-            resolved_synthetic = getattr(request, "synthetic", None)
-            if resolved_synthetic is None:
-                resolved_synthetic = resolved_data_source != "upstream_historical"
-            if resolved_synthetic:
-                resolved_provenance_status = "synthetic_unverified"
-            elif resolved_data_source == "upstream_historical":
-                resolved_provenance_status = "genuine_source_unverified"
-            else:
-                resolved_provenance_status = "user_supplied_unverified"
+                resolved_provenance_status = "provider_asserted_unverified"
         spec = ForecastingProblemSpec(
             problem_id=request.problem.problem_id,
             version=request.problem.version,
@@ -565,6 +571,14 @@ class ForecastingService(AnalysisService):
 
         warnings: list[str] = []
         limitations: list[str] = list(spec.known_limitations)
+        if request_observations is not None:
+            warnings.append(
+                "Caller-supplied source labels are not treated as provider verification."
+            )
+            limitations.append(
+                "Caller-supplied observations have no independently verified provider, "
+                "availability timestamp, or source-record lineage."
+            )
         if not folds:
             warnings.append("insufficient data for walk-forward evaluation")
         if len(y_vals) < 100:
@@ -917,22 +931,37 @@ class ForecastingService(AnalysisService):
             "problem": dataclasses.asdict(spec),
             "dataset_fingerprint": dataset_fingerprint,
             "data_source": resolved_data_source,
-            "synthetic": bool(resolved_synthetic),
+            "synthetic": resolved_synthetic,
             "data_provenance": {
                 "instrument": instrument,
                 "timeframe": timeframe,
                 "user_supplied_observations": bool(
                     getattr(request, "observations", None) is not None
                 ),
+                "caller_declared_data_source": (
+                    getattr(request, "data_source", None)
+                    if request_observations is not None
+                    else None
+                ),
+                "caller_declared_synthetic": (
+                    getattr(request, "synthetic", None)
+                    if request_observations is not None
+                    else None
+                ),
                 "provenance_status": resolved_provenance_status,
+                "availability_provenance": (
+                    "unavailable_for_user_supplied_observations"
+                    if request_observations is not None
+                    else "availability_assumed"
+                ),
                 "real_market_research_accepted": False,
                 "synthetic_classification": (
-                    "synthetic_fixture"
-                    if resolved_synthetic
+                    ("synthetic_fixture" if resolved_synthetic else "upstream_source_unverified")
+                    if request_observations is None
                     else (
-                        "user_supplied_unverified"
-                        if getattr(request, "observations", None) is not None
-                        else "upstream_source_unverified"
+                        "synthetic_unverified"
+                        if resolved_synthetic is True
+                        else "user_supplied_unverified"
                     )
                 ),
             },
@@ -1010,6 +1039,30 @@ class ForecastingService(AnalysisService):
             "contract_status": result.contract_status.value,
         }
 
+    async def list_historical_providers(self, request_id: str) -> dict[str, Any]:
+        """Return a credential-free provider inventory for explicit operator selection."""
+        if not self._upstream.is_configured:
+            return {"status": "unconfigured", "providers": []}
+        inventory = await self._upstream.list_providers(request_id=request_id)
+        if inventory.errors or inventory.data is None:
+            raise DependencyUnavailableError(
+                "fx-market-data-service", "The provider inventory is unavailable or invalid."
+            )
+        return {
+            "status": "available",
+            "providers": [
+                {
+                    "provider_id": provider.provider_id,
+                    "provider_type": provider.provider_type.value,
+                    "configured": provider.configured,
+                    "connection_status": provider.connection_status.value,
+                    "capabilities": [capability.value for capability in provider.capabilities],
+                    "last_connection_test_success": provider.last_connection_test_success,
+                }
+                for provider in inventory.data
+            ],
+        }
+
     async def retrieve_historical_dataset(self, request: Any, request_id: str) -> dict[str, Any]:
         """Retrieve and validate a historical dataset through the verified upstream client."""
         import hashlib
@@ -1032,9 +1085,16 @@ class ForecastingService(AnalysisService):
         end = getattr(request, "end", None)
         timeframe = getattr(request, "timeframe", None) or "D1"
         price_basis = getattr(request, "price_basis", None) or "bid"
-        provider_id = (
-            getattr(request, "provider_id", None) or self._settings.upstream_default_provider_id
+        provider_id = getattr(request, "provider_id", None)
+        provider = await require_historical_provider(
+            self._upstream,
+            provider_id,
+            request_id=request_id,
+            environment=self._settings.environment,
         )
+        expected_instrument = None
+        if provider.provider_type == ProviderType.REAL:
+            expected_instrument = require_approved_real_instrument(instrument)
         limit = getattr(request, "limit", None)
         if limit is None:
             limit = 500
@@ -1056,7 +1116,7 @@ class ForecastingService(AnalysisService):
 
         data = await self._upstream.fetch_historical_candles(
             instrument,
-            provider_id=provider_id,
+            provider_id=provider.provider_id,
             start=start,
             end=end,
             timeframe=timeframe,
@@ -1064,12 +1124,24 @@ class ForecastingService(AnalysisService):
             limit=limit,
             request_id=request_id,
         )
+        if data.provider_id != provider.provider_id:
+            raise DependencyUnavailableError(
+                "fx-market-data-service", "The response provider did not match the selection."
+            )
+        if expected_instrument is not None and data.canonical_instrument != expected_instrument:
+            raise DependencyUnavailableError(
+                "fx-market-data-service", "The response instrument did not match the selection."
+            )
 
         quality = validate_historical_payload(
             data,
             expected_timeframe=timeframe,
             expected_price_basis=price_basis,
         )
+        if data.coverage.rejected_count != data.validation_summary.rejected:
+            raise DependencyUnavailableError(
+                "fx-market-data-service", "Coverage and validation counts are inconsistent."
+            )
 
         observations: list[Observation] = []
         for candle in data.candles:
@@ -1134,6 +1206,12 @@ class ForecastingService(AnalysisService):
             "actual_start": data.effective_start.isoformat() if data.effective_start else None,
             "actual_end": data.effective_end.isoformat() if data.effective_end else None,
             "retrieved_at": data.retrieved_at.isoformat(),
+            "availability_provenance": "availability_assumed",
+            "availability_assumption": (
+                "Service 1 provides retrieval time but no original historical publication time."
+            ),
+            "provider_type": provider.provider_type.value,
+            "provider_connection_tested": provider.provider_type.value == "real",
             "row_count": len(data.candles),
             "request_or_correlation_id": request_id,
             "response_schema_version": "verified-service1-historical-v1",
@@ -1146,9 +1224,9 @@ class ForecastingService(AnalysisService):
 
         is_synthetic_fixture = (
             # Check provider_id: "test-adapter" or anything starting with "synthetic-"
-            provider_id == "test-adapter"
+            provider.provider_type.value == "test"
             or data.provider_id == "test-adapter"
-            or provider_id.startswith("synthetic-")
+            or data.provider_id.startswith("synthetic-")
             or (
                 len(data.candles) > 0
                 and any(
@@ -1160,15 +1238,12 @@ class ForecastingService(AnalysisService):
             )
         )
 
-        # Conservative provider classification: only the deterministic test
-        # adapter is labelled as test data. Any other upstream provider is a
-        # candidate source whose credentials/authenticity remain unverified.
         if is_synthetic_fixture:
             provider_type = "test"
             provenance_status = "synthetic_fixture"
         else:
-            provider_type = "genuine"
-            provenance_status = "genuine_source_unverified"
+            provider_type = "real"
+            provenance_status = "provider_asserted_unverified"
 
         provenance["provider_type"] = provider_type
         provenance["provenance_status"] = provenance_status
@@ -1257,10 +1332,6 @@ class ForecastingService(AnalysisService):
                         }
                     )
             except AppValidationError as exc:
-                findings.append(
-                    {"severity": "error", "code": "dataset_retrieval", "message": str(exc)}
-                )
-            except Exception as exc:  # noqa: BLE001
                 findings.append(
                     {"severity": "error", "code": "dataset_retrieval", "message": str(exc)}
                 )

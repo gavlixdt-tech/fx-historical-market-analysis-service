@@ -160,6 +160,13 @@ def _settings(delay: int | None = 60) -> Settings:
     )
 
 
+def test_market_data_replay_requires_canonical_instrument() -> None:
+    body = _request().model_dump()
+    body["instrument"] = "EURUSD"
+    with pytest.raises(ValueError, match="canonical slash-delimited"):
+        HistoricalReplayMarketDataRequest.model_validate(body)
+
+
 @pytest.mark.asyncio
 async def test_market_data_replay_derives_and_reports_availability_assumption(
     monkeypatch: pytest.MonkeyPatch,
@@ -194,7 +201,7 @@ async def test_market_data_replay_derives_and_reports_availability_assumption(
     assert result["status"] == "completed_with_warnings"
     assert (
         result["reproducibility"]["data_source"]["availability_provenance"]
-        == "assumption_not_provider_timestamp"
+        == "availability_assumed"
     )
 
 
@@ -211,7 +218,7 @@ async def test_market_data_replay_requires_availability_lag_configuration() -> N
 
 @pytest.mark.asyncio
 async def test_market_data_replay_rejects_test_providers() -> None:
-    with pytest.raises(AppValidationError, match="real historical-candle provider"):
+    with pytest.raises(AppValidationError, match="Test providers are permitted"):
         await run_market_data_replay(
             _request(),
             settings=_settings(),
@@ -227,6 +234,25 @@ async def test_market_data_replay_requires_successful_live_provider_test() -> No
             _request(),
             settings=_settings(),
             upstream=_FakeMarketDataClient(connection_success=False),
+            request_id="request-1",
+        )
+
+
+@pytest.mark.asyncio
+async def test_market_data_replay_blocks_unapproved_production_workload_identity() -> None:
+    settings = Settings(
+        environment="production",
+        require_auth=True,
+        api_key="test-inbound-key",
+        upstream_market_data_base_url="https://market-data.example",
+        upstream_api_key="test-upstream-key",
+        upstream_replay_availability_delay_seconds=60,
+    )
+    with pytest.raises(DependencyUnavailableError, match="fx-security-access-service"):
+        await run_market_data_replay(
+            _request(),
+            settings=settings,
+            upstream=_FakeMarketDataClient(),
             request_id="request-1",
         )
 

@@ -22,6 +22,24 @@ describe("real market data workspace", () => {
       Promise.resolve(
         String(input).includes("/data-source")
           ? jsonResponse(envelope(dataSourceData))
+          : String(input).includes("/historical-data/providers")
+            ? jsonResponse(
+                envelope({
+                  status: "available",
+                  providers: [
+                    {
+                      provider_id: "provider-live",
+                      provider_type: "real",
+                      configured: true,
+                      connection_status: "configured_not_tested",
+                      historical_candles_supported: true,
+                    },
+                  ],
+                  limitations: [
+                    "Provider assertion does not verify original publication timestamps.",
+                  ],
+                }),
+              )
           : jsonResponse({ error: { code: "HTTP_404", message: "not found" } }, 404),
       ),
     ) as unknown as typeof global.fetch;
@@ -31,6 +49,11 @@ describe("real market data workspace", () => {
     await waitFor(() => {
       expect(screen.getByTestId("data-source-state")).toHaveTextContent(
         "connected",
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("historical-provider")).toHaveTextContent(
+        "provider-live (real)",
       );
     });
   });

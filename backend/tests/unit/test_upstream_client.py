@@ -119,14 +119,21 @@ async def test_fetch_historical_candles_rejects_out_of_range_limit() -> None:
     client = MarketDataClient(base_url="https://upstream.test.invalid")
 
     with pytest.raises(UpstreamError):
-        await client.fetch_historical_candles("SYNTH/USD", limit=99999)
+        await client.fetch_historical_candles(
+            "SYNTH/USD",
+            provider_id="synthetic-test-adapter",
+            limit=99999,
+        )
 
 
 async def test_fetch_historical_candles_requires_configuration() -> None:
     client = MarketDataClient(base_url=None)
 
     with pytest.raises(UpstreamError):
-        await client.fetch_historical_candles("SYNTH/USD")
+        await client.fetch_historical_candles(
+            "SYNTH/USD",
+            provider_id="synthetic-test-adapter",
+        )
 
 
 async def test_upstream_error_body_is_not_echoed() -> None:
@@ -144,7 +151,10 @@ async def test_upstream_error_body_is_not_echoed() -> None:
     client = _client(httpx.MockTransport(handler))
 
     with pytest.raises(UpstreamError) as excinfo:
-        await client.fetch_historical_candles("SYNTH/USD")
+        await client.fetch_historical_candles(
+            "SYNTH/USD",
+            provider_id="synthetic-test-adapter",
+        )
 
     assert "abc123" not in excinfo.value.message
     assert excinfo.value.status_code == 502
@@ -157,7 +167,10 @@ async def test_malformed_upstream_payload_is_rejected() -> None:
     client = _client(httpx.MockTransport(handler))
 
     with pytest.raises(UpstreamError):
-        await client.fetch_historical_candles("SYNTH/USD")
+        await client.fetch_historical_candles(
+            "SYNTH/USD",
+            provider_id="synthetic-test-adapter",
+        )
 
 
 async def test_list_providers_returns_validated_payload() -> None:
@@ -203,9 +216,7 @@ async def test_list_providers_rejects_an_unknown_provider_type() -> None:
 async def test_provider_connection_test_forwards_auth_and_validates_identity() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.method == "POST"
-        assert request.url.path == (
-            "/api/v1/market-data/providers/real-provider/test-connection"
-        )
+        assert request.url.path == ("/api/v1/market-data/providers/real-provider/test-connection")
         assert request.headers["x-api-key"] == "test-upstream-key"
         return httpx.Response(
             200,

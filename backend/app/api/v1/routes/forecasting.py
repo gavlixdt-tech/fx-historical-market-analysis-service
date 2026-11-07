@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any, cast
+
 from fastapi import APIRouter, Request
 from starlette.concurrency import run_in_threadpool
 
@@ -20,6 +22,7 @@ from backend.app.schemas.forecasting import (
     ForecastingTargetsResponseData,
     HistoricalDatasetRequest,
     HistoricalDatasetResponseData,
+    HistoricalProviderInventoryData,
     LabelGenerationRequest,
     LabelGenerationResponseData,
     ModelFamiliesResponseData,
@@ -40,18 +43,22 @@ router = APIRouter()
 
 
 def get_service(request: Request) -> AnalysisService:
-    return request.app.state.analysis_service
+    return cast(AnalysisService, request.app.state.analysis_service)
 
 
 @router.post(
     "/historical-replay/run",
     response_model=ApiResponse[HistoricalReplayResponseData],
 )
-async def run_historical_replay(request: Request, payload: HistoricalReplayRequest):
+async def run_historical_replay(
+    request: Request, payload: HistoricalReplayRequest
+) -> ApiResponse[HistoricalReplayResponseData]:
     from backend.app.analysis.replay import run_historical_replay as execute_replay
     from backend.app.core.errors import ValidationError as AppValidationError
 
     rid = getattr(request.state, "request_id", "unknown")
+    if payload.synthetic and request.app.state.settings.is_production:
+        raise AppValidationError("Synthetic replay fixtures are not accepted in production.")
     try:
         result = await run_in_threadpool(execute_replay, payload)
     except ValueError as exc:
@@ -67,7 +74,7 @@ async def run_historical_replay(request: Request, payload: HistoricalReplayReque
 async def run_historical_replay_from_market_data(
     request: Request,
     payload: HistoricalReplayMarketDataRequest,
-):
+) -> ApiResponse[HistoricalReplayResponseData]:
     from backend.app.core.errors import ValidationError as AppValidationError
 
     rid = getattr(request.state, "request_id", "unknown")
@@ -85,7 +92,7 @@ async def run_historical_replay_from_market_data(
 
 
 @router.get("/forecasting/targets", response_model=ApiResponse[ForecastingTargetsResponseData])
-async def list_targets(request: Request):
+async def list_targets(request: Request) -> ApiResponse[ForecastingTargetsResponseData]:
     service = get_service(request)
     rid = getattr(request.state, "request_id", "unknown")
     targets = await service.list_forecasting_targets()
@@ -109,7 +116,9 @@ async def list_targets(request: Request):
     "/forecasting/problem/validate",
     response_model=ApiResponse[ForecastingProblemValidationResponseData],
 )
-async def validate_problem(request: Request, payload: ForecastingProblemInput):
+async def validate_problem(
+    request: Request, payload: ForecastingProblemInput
+) -> ApiResponse[ForecastingProblemValidationResponseData]:
     rid = getattr(request.state, "request_id", "unknown")
     service = get_service(request)
     valid, errors, spec = await service.validate_forecasting_problem(payload)
@@ -118,7 +127,9 @@ async def validate_problem(request: Request, payload: ForecastingProblemInput):
 
 
 @router.post("/forecasting/features", response_model=ApiResponse[FeatureDatasetResponseData])
-async def construct_features(request: Request, payload: FeatureConstructionRequest):
+async def construct_features(
+    request: Request, payload: FeatureConstructionRequest
+) -> ApiResponse[FeatureDatasetResponseData]:
     rid = getattr(request.state, "request_id", "unknown")
     service = get_service(request)
     valid_rows, feature_specs, excluded, instrument, timeframe = await service.construct_features(
@@ -135,7 +146,9 @@ async def construct_features(request: Request, payload: FeatureConstructionReque
 
 
 @router.post("/forecasting/labels", response_model=ApiResponse[LabelGenerationResponseData])
-async def generate_labels(request: Request, payload: LabelGenerationRequest):
+async def generate_labels(
+    request: Request, payload: LabelGenerationRequest
+) -> ApiResponse[LabelGenerationResponseData]:
     rid = getattr(request.state, "request_id", "unknown")
     service = get_service(request)
     (
@@ -155,7 +168,7 @@ async def generate_labels(request: Request, payload: LabelGenerationRequest):
 
 
 @router.post("/forecasting/splits", response_model=ApiResponse[SplitResponseData])
-async def create_splits(request: Request, payload: SplitRequest):
+async def create_splits(request: Request, payload: SplitRequest) -> ApiResponse[SplitResponseData]:
     rid = getattr(request.state, "request_id", "unknown")
     service = get_service(request)
     result = await service.build_forecasting_dataset(payload, rid)
@@ -177,7 +190,9 @@ async def create_splits(request: Request, payload: SplitRequest):
 
 
 @router.post("/forecasting/dataset", response_model=ApiResponse[DatasetBuildResponseData])
-async def build_dataset(request: Request, payload: DatasetBuildRequest):
+async def build_dataset(
+    request: Request, payload: DatasetBuildRequest
+) -> ApiResponse[DatasetBuildResponseData]:
     rid = getattr(request.state, "request_id", "unknown")
     service = get_service(request)
     result = await service.build_forecasting_dataset(payload, rid)
@@ -197,7 +212,9 @@ async def build_dataset(request: Request, payload: DatasetBuildRequest):
 
 
 @router.post("/forecasting/baselines", response_model=ApiResponse[BaselineResponseData])
-async def compute_baselines(request: Request, payload: BaselineRequest):
+async def compute_baselines(
+    request: Request, payload: BaselineRequest
+) -> ApiResponse[BaselineResponseData]:
     rid = getattr(request.state, "request_id", "unknown")
     service = get_service(request)
     metrics = await service.compute_forecasting_baselines(payload, rid)
@@ -206,7 +223,9 @@ async def compute_baselines(request: Request, payload: BaselineRequest):
 
 
 @router.get("/forecasting/models", response_model=ApiResponse[ModelFamiliesResponseData])
-async def list_model_families(request: Request, task_type: str | None = None):
+async def list_model_families(
+    request: Request, task_type: str | None = None
+) -> ApiResponse[ModelFamiliesResponseData]:
     rid = getattr(request.state, "request_id", "unknown")
     service = get_service(request)
     families = await service.list_model_families(task_type)
@@ -217,7 +236,9 @@ async def list_model_families(request: Request, task_type: str | None = None):
 @router.post(
     "/forecasting/experiment/validate", response_model=ApiResponse[ExperimentValidationResponseData]
 )
-async def validate_experiment(request: Request, payload: ExperimentRunRequest):
+async def validate_experiment(
+    request: Request, payload: ExperimentRunRequest
+) -> ApiResponse[ExperimentValidationResponseData]:
     rid = getattr(request.state, "request_id", "unknown")
     service = get_service(request)
     valid, errors, config = await service.validate_experiment(payload)
@@ -226,7 +247,9 @@ async def validate_experiment(request: Request, payload: ExperimentRunRequest):
 
 
 @router.post("/forecasting/experiment/run", response_model=ApiResponse[ExperimentRunResponseData])
-async def run_experiment(request: Request, payload: ExperimentRunRequest):
+async def run_experiment(
+    request: Request, payload: ExperimentRunRequest
+) -> ApiResponse[ExperimentRunResponseData]:
     rid = getattr(request.state, "request_id", "unknown")
     service = get_service(request)
     result = await service.run_experiment(payload, rid)
@@ -269,7 +292,9 @@ async def run_experiment(request: Request, payload: ExperimentRunRequest):
 @router.get(
     "/forecasting/experiment/{experiment_id}", response_model=ApiResponse[ExperimentRunResponseData]
 )
-async def get_experiment(request: Request, experiment_id: str):
+async def get_experiment(
+    request: Request, experiment_id: str
+) -> ApiResponse[ExperimentRunResponseData]:
     rid = getattr(request.state, "request_id", "unknown")
     service = get_service(request)
     result = service.get_experiment(experiment_id)
@@ -314,7 +339,7 @@ async def get_experiment(request: Request, experiment_id: str):
 
 
 @router.get("/forecasting/experiment/{experiment_id}/folds")
-async def get_experiment_folds(request: Request, experiment_id: str):
+async def get_experiment_folds(request: Request, experiment_id: str) -> ApiResponse[dict[str, Any]]:
     rid = getattr(request.state, "request_id", "unknown")
     service = get_service(request)
     result = service.get_experiment(experiment_id)
@@ -329,7 +354,9 @@ async def get_experiment_folds(request: Request, experiment_id: str):
 
 
 @router.get("/forecasting/experiment/{experiment_id}/comparison")
-async def get_experiment_comparison(request: Request, experiment_id: str):
+async def get_experiment_comparison(
+    request: Request, experiment_id: str
+) -> ApiResponse[dict[str, Any]]:
     rid = getattr(request.state, "request_id", "unknown")
     service = get_service(request)
     result = service.get_experiment(experiment_id)
@@ -344,7 +371,9 @@ async def get_experiment_comparison(request: Request, experiment_id: str):
 
 
 @router.get("/forecasting/experiment/{experiment_id}/limitations")
-async def get_experiment_limitations(request: Request, experiment_id: str):
+async def get_experiment_limitations(
+    request: Request, experiment_id: str
+) -> ApiResponse[dict[str, Any]]:
     rid = getattr(request.state, "request_id", "unknown")
     service = get_service(request)
     result = service.get_experiment(experiment_id)
@@ -363,7 +392,7 @@ async def get_experiment_limitations(request: Request, experiment_id: str):
 
 
 @router.get("/data-source", response_model=ApiResponse[DataSourceResponseData])
-async def data_source(request: Request):
+async def data_source(request: Request) -> ApiResponse[DataSourceResponseData]:
     rid = getattr(request.state, "request_id", "unknown")
     service = get_service(request)
     result = await service.check_data_source(rid)
@@ -375,8 +404,24 @@ async def data_source(request: Request):
     return ApiResponse(data=data, meta=build_meta(request.app.state.settings, rid))
 
 
+@router.get(
+    "/historical-data/providers",
+    response_model=ApiResponse[HistoricalProviderInventoryData],
+)
+async def historical_providers(
+    request: Request,
+) -> ApiResponse[HistoricalProviderInventoryData]:
+    rid = getattr(request.state, "request_id", "unknown")
+    service = get_service(request)
+    result = await service.list_historical_providers(rid)
+    data = HistoricalProviderInventoryData(**result)
+    return ApiResponse(data=data, meta=build_meta(request.app.state.settings, rid))
+
+
 @router.post("/historical-data/retrieve", response_model=ApiResponse[HistoricalDatasetResponseData])
-async def retrieve_historical_data(request: Request, payload: HistoricalDatasetRequest):
+async def retrieve_historical_data(
+    request: Request, payload: HistoricalDatasetRequest
+) -> ApiResponse[HistoricalDatasetResponseData]:
     rid = getattr(request.state, "request_id", "unknown")
     service = get_service(request)
     result = await service.retrieve_historical_dataset(payload, rid)
@@ -398,7 +443,9 @@ async def retrieve_historical_data(request: Request, payload: HistoricalDatasetR
 
 
 @router.post("/research/readiness", response_model=ApiResponse[ResearchReadinessResponseData])
-async def research_readiness(request: Request, payload: ExperimentRunRequest):
+async def research_readiness(
+    request: Request, payload: ExperimentRunRequest
+) -> ApiResponse[ResearchReadinessResponseData]:
     rid = getattr(request.state, "request_id", "unknown")
     service = get_service(request)
     result = await service.assess_research_readiness(payload, rid)

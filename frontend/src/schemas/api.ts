@@ -172,6 +172,30 @@ export type HistoricalDatasetResponseData = z.infer<
   typeof HistoricalDatasetResponseDataSchema
 >;
 
+export const HistoricalProviderInventorySchema = z.object({
+  status: z.string(),
+  providers: z.array(
+    z.object({
+      provider_id: z.string(),
+      provider_type: z.enum(["real", "test"]),
+      configured: z.boolean(),
+      connection_status: z.string(),
+      historical_candles_supported: z.boolean(),
+      connection_test_succeeded: z.boolean().nullable().optional(),
+    }),
+  ),
+  limitations: z.array(z.string()),
+});
+
+export type HistoricalProviderInventory = z.infer<
+  typeof HistoricalProviderInventorySchema
+>;
+
+export const HistoricalProviderInventoryEnvelopeSchema =
+  ApiEnvelopeSchema.extend({
+    data: HistoricalProviderInventorySchema,
+  });
+
 /** Research readiness returned by POST /api/v1/research/readiness. */
 export const ResearchReadinessResponseDataSchema = z.object({
   ready: z.boolean(),

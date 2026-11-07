@@ -1,4 +1,9 @@
-# Production-Readiness Scorecard
+# Historical Production-Readiness Scorecard (Superseded)
+
+> Findings below are retained as a historical assessment and include outdated
+> assumptions and test counts. Use the current
+> [`production-readiness assessment`](operations/production-readiness.md) and
+> [`acceptance report`](acceptance/service2-integration-acceptance-report.md).
 
 ## Evaluated Categories
 

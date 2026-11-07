@@ -53,10 +53,10 @@ request must include enough history for its lookback, training minimum, target
 horizon, and embargo. With the workbench defaults, that minimum is 52.
 
 The request also requires an instrument, timeframe, source dataset ID, and
-validated forecasting problem. `synthetic=true` is accepted only so tests or
-explicitly labelled research fixtures cannot masquerade as real evidence; the
-response labels them `synthetic_fixture` and warns against predictive use.
-There is no synthetic demo data in the workbench.
+validated forecasting problem. Synthetic data is restricted to
+development/testing; the production configuration rejects an explicitly
+synthetic replay. Responses label synthetic fixtures and warn against
+predictive use. There is no synthetic demo data in the workbench.
 
 ## Evaluation protocol
 

@@ -17,12 +17,12 @@ See `contracts/upstream-market-data-contract.md` for the full analysis.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class Timeframe(StrEnum):
@@ -120,6 +120,13 @@ class UpstreamHistoricalCandle(BaseModel):
     validation_error: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
+    @field_validator("open_time", "close_time", "retrieved_at")
+    @classmethod
+    def require_utc_timestamp(cls, value: datetime | None) -> datetime | None:
+        if value is not None and (value.tzinfo is None or value.utcoffset() != timedelta(0)):
+            raise ValueError("upstream candle timestamps must be UTC-aware")
+        return value
+
 
 class UpstreamCoverageReport(BaseModel):
     """Coverage report for a historical request.
@@ -144,6 +151,13 @@ class UpstreamCoverageReport(BaseModel):
     complete: bool
     provider_limited: bool = False
     notes: list[str] = Field(default_factory=list)
+
+    @field_validator("requested_start", "requested_end", "actual_start", "actual_end")
+    @classmethod
+    def require_utc_timestamp(cls, value: datetime | None) -> datetime | None:
+        if value is not None and (value.tzinfo is None or value.utcoffset() != timedelta(0)):
+            raise ValueError("upstream coverage timestamps must be UTC-aware")
+        return value
 
 
 class UpstreamValidationSummary(BaseModel):
@@ -195,6 +209,15 @@ class UpstreamHistoricalCandleData(BaseModel):
     pagination: UpstreamPaginationMetadata
     retrieved_at: datetime
     limitations: list[str] = Field(default_factory=list)
+
+    @field_validator(
+        "requested_start", "requested_end", "effective_start", "effective_end", "retrieved_at"
+    )
+    @classmethod
+    def require_utc_timestamp(cls, value: datetime | None) -> datetime | None:
+        if value is not None and (value.tzinfo is None or value.utcoffset() != timedelta(0)):
+            raise ValueError("upstream dataset timestamps must be UTC-aware")
+        return value
 
 
 class UpstreamHistoricalResponse(BaseModel):

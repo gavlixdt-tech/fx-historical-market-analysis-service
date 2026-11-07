@@ -1,8 +1,9 @@
-# Acceptance Audit — Foundation Phase and Phase 4.5 Addendum
+# Acceptance Audit — Historical Record
 
-Sections 1–5 preserve the original foundation-phase record. Section 6 records
-the current Phase 4.5 historical-replay implementation and supersedes
-foundation-era statements that the service has no analytical endpoints.
+> **Superseded for current integration acceptance:** the foundation/Phase 4.5
+> assessment below is historical. Current status and evidence are in the
+> [`current acceptance report`](acceptance/service2-integration-acceptance-report.md)
+> and [`ecosystem audit`](integration/service2-ecosystem-integration-audit.md).
 
 **Scope reminder:** this phase delivers the service *foundation*. The
 historical analysis engine is **not** implemented.

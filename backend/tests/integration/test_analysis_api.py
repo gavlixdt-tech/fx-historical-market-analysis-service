@@ -50,9 +50,10 @@ def test_research_summary_endpoint(client) -> None:
     data = response.json()["data"]
     assert data["status"] == "completed"
     assert data["observation_count"] == 120
-    assert 0.0 <= data["confidence"] <= 1.0
+    assert data["confidence"] is None
+    assert data["confidence_status"] == "not_calculated"
     assert data["narrative"]
-    assert data["recommendations"]
+    assert any("trading instruction" in item.lower() for item in data["recommendations"])
     assert data["regime_summary"]["status"] == "completed"
 
 

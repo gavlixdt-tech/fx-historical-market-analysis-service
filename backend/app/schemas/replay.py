@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from backend.app.schemas.forecasting import ForecastingProblemInput
+from backend.app.schemas.instruments import canonicalize_gfx_instrument
+from backend.app.schemas.upstream import Timeframe
 
 
 class ReplayObservationInput(BaseModel):
@@ -30,6 +32,11 @@ class ReplayObservationInput(BaseModel):
                 raise ValueError(f"{field_name} must include a timezone")
         if self.available_at < self.timestamp:
             raise ValueError("available_at cannot precede timestamp")
+        now = datetime.now(UTC)
+        if self.timestamp.astimezone(UTC) > now or self.available_at.astimezone(UTC) > now:
+            raise ValueError(
+                "historical observation and availability timestamps cannot be in the future"
+            )
         if self.high < max(self.open, self.close, self.low):
             raise ValueError("high must be >= open, close and low")
         if self.low > min(self.open, self.close):
@@ -60,9 +67,18 @@ class HistoricalReplayRequest(BaseModel):
     def validate_replay_contract(self) -> HistoricalReplayRequest:
         if not self.instrument.strip() or not self.source_dataset_id.strip():
             raise ValueError("instrument and source_dataset_id must not be blank")
+        canonical_instrument = canonicalize_gfx_instrument(self.instrument)
+        if not self.synthetic and canonical_instrument is None:
+            raise ValueError("instrument is outside the approved GFX instrument scope")
+        if self.timeframe not in {timeframe.value for timeframe in Timeframe}:
+            raise ValueError("timeframe is not supported")
         if self.timeframe != self.problem.input_timeframe:
             raise ValueError("timeframe must match problem.input_timeframe")
-        if self.instrument not in self.problem.instrument_scope:
+        canonical_scope = {
+            canonicalize_gfx_instrument(item) or item for item in self.problem.instrument_scope
+        }
+        expected_scope_value = canonical_instrument or self.instrument
+        if expected_scope_value not in canonical_scope:
             raise ValueError("instrument must be included in problem.instrument_scope")
         if self.validation_mode == "rolling" and self.rolling_window is None:
             raise ValueError("rolling_window is required for rolling validation")

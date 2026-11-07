@@ -76,8 +76,9 @@ visibly instead of serving traffic unsafely.
 | Container | `/api/v1/health/live` | HTTP 200 |
 
 Readiness returns 503 when the upstream market-data service is unreachable.
-In this foundation phase that only degrades the service; it does not make it
-unready, because no analytical capability depends on the upstream yet.
+Provider-dependent retrieval and replay cannot run when the upstream is
+unavailable. Caller-supplied research may still be available, but its
+provenance is not upgraded by that fact.
 
 ## 6. Observability
 
@@ -145,3 +146,16 @@ because no database is provisioned in this phase.
 - [ ] The gateway route for this service confirmed.
 - [ ] Monitoring and alerting on `/api/v1/health/ready` and
       `fx_hma_upstream_last_check_succeeded`.
+
+## 11. Current production blockers
+
+The checklist above is not sufficient for production approval. Production
+provider access is intentionally rejected until the approved Service 64
+workload identity and outbound grant exist. Service 1's production
+authentication contract is also unverified. Durable Service 60 artifact
+storage, tested Service 66 recovery, central Service 65 ingestion, and an
+authenticated Service 63 → Service 2 runtime smoke test are not implemented
+or verified. A local build or health check is not evidence of deployment.
+
+See [`operations/production-readiness.md`](operations/production-readiness.md)
+for the current acceptance decision.

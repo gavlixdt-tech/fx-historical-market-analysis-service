@@ -115,7 +115,7 @@ integration state.
     "uptime_seconds": 1234.5,
     "capabilities": [
       { "name": "service_health", "implemented": true, "detail": "..." },
-      { "name": "historical_statistics", "implemented": false, "detail": "Deferred: ..." }
+      { "name": "historical_statistics", "implemented": true, "detail": "Descriptive statistics over historical observations." }
     ],
     "dependencies": [ { "name": "fx-market-data-service", "healthy": false, "state": "unconfigured" } ],
     "upstream_integration": {
@@ -127,7 +127,7 @@ integration state.
       "last_checked_at": null,
       "last_check_succeeded": null,
       "last_check_message": null,
-      "contract_status": "verified",
+      "contract_status": "proposed-not-yet-verified",
       "latency_ms": null
     },
     "timestamp_utc": "2026-01-01T00:00:00Z"
@@ -174,11 +174,25 @@ OpenAPI document.
 
 ### `GET /api/v1/data-source`
 
-Returns backend-reported configuration and connectivity for the upstream market-data service.
+Returns backend-reported configuration and connectivity for the upstream
+market-data service. An unset connectivity result reports the contract as
+`proposed-not-yet-verified`; successful reachability does not verify the
+production authentication contract.
+
+### `GET /api/v1/historical-data/providers`
+
+Returns the Service 1 provider inventory without credentials. A provider must
+be explicitly selected for retrieval. The inventory reports provider type,
+configuration, connection status, and historical-candle capability; it is
+not evidence of market-data entitlement.
 
 ### `POST /api/v1/historical-data/retrieve`
 
-Retrieves a bounded historical dataset through the verified Service 2 client. Returns observations, quality findings, provenance and a dataset fingerprint. `synthetic` is `false` for upstream data.
+Retrieves a bounded historical dataset through Service 1. `provider_id` is
+required. Returns observations, source-quality evidence, provenance, and a
+dataset fingerprint. Test providers are explicitly synthetic and available
+only in development/testing. A provider type of `real` is not proof of
+entitlement or signed source data.
 
 ### `POST /api/v1/research/readiness`
 
@@ -194,7 +208,12 @@ Validates an experiment configuration without executing it.
 
 ### `POST /api/v1/forecasting/experiment/run`
 
-Executes a forecasting experiment and returns fold, model, comparison, aggregate, warning and limitation data. Experiment results may include `data_source`, `synthetic` and `data_provenance`.
+Executes a forecasting experiment and returns fold, model, comparison,
+aggregate, warning and limitation data. Caller-supplied `data_source` and
+`synthetic` fields are recorded only as declarations; they cannot establish
+provider origin. Caller-supplied observations are returned as
+`user_supplied_unverified`, with unknown synthetic status unless explicitly
+declared synthetic.
 
 ### `POST /api/v1/historical-replay/run`
 

@@ -5,6 +5,9 @@ from __future__ import annotations
 import math
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from typing import Any
+
+from backend.app.schemas.upstream import UpstreamHistoricalCandle, UpstreamHistoricalCandleData
 
 _TIMEFRAME_DELTAS = {
     "M1": timedelta(minutes=1),
@@ -18,28 +21,26 @@ _TIMEFRAME_DELTAS = {
 }
 
 
-def _to_float(value):
+def _to_float(value: object) -> float | None:
     if value is None:
         return None
     if isinstance(value, bool):
         return None
-    if isinstance(value, int | float):
-        value = float(value)
-    elif isinstance(value, Decimal):
-        value = float(value)
+    if isinstance(value, int | float | Decimal):
+        parsed = float(value)
     elif isinstance(value, str):
         try:
-            value = float(value)
+            parsed = float(value)
         except ValueError:
             return None
     else:
         return None
-    if not math.isfinite(value):
+    if not math.isfinite(parsed):
         return None
-    return value
+    return parsed
 
 
-def _parse_ts(value):
+def _parse_ts(value: object) -> datetime | None:
     if isinstance(value, datetime):
         if value.tzinfo is None:
             return value.replace(tzinfo=UTC)
@@ -58,7 +59,7 @@ def _parse_ts(value):
     return parsed.astimezone(UTC)
 
 
-def _is_weekend_gap(start, end, delta):
+def _is_weekend_gap(start: datetime, end: datetime, delta: timedelta) -> bool:
     if delta < timedelta(days=1):
         return False
     if start.weekday() >= 4 and end.weekday() <= 1 and (end - start).days >= 2:
@@ -67,15 +68,15 @@ def _is_weekend_gap(start, end, delta):
 
 
 def validate_historical_payload(
-    data,
+    data: UpstreamHistoricalCandleData,
     *,
-    expected_instrument=None,
-    expected_timeframe=None,
-    expected_price_basis=None,
-):
-    blocking = []
-    warnings = []
-    info = []
+    expected_instrument: str | None = None,
+    expected_timeframe: str | None = None,
+    expected_price_basis: str | None = None,
+) -> dict[str, Any]:
+    blocking: list[str] = []
+    warnings: list[str] = []
+    info: list[str] = []
 
     timeframe = str(data.timeframe)
     price_basis = str(data.price_basis)
@@ -118,7 +119,7 @@ def validate_historical_payload(
         partial = True
         warnings.append("partial coverage at end of requested range")
 
-    parsed_rows = []
+    parsed_rows: list[tuple[datetime, UpstreamHistoricalCandle]] = []
     for candle in candles:
         ts = _parse_ts(candle.open_time)
         if ts is None:
@@ -133,7 +134,7 @@ def validate_historical_payload(
     if out_of_order:
         blocking.append(f"{out_of_order} out-of-order candle(s) detected")
 
-    seen = {}
+    seen: dict[str, UpstreamHistoricalCandle] = {}
     duplicate_count = 0
     conflicting_duplicates = 0
     for ts, candle in parsed_rows:
@@ -203,7 +204,7 @@ def validate_historical_payload(
         info.append(f"{precision_issues} candle(s) with sub-second timestamp precision")
 
     unique_sorted = sorted({ts for ts, _ in parsed_rows})
-    gaps = []
+    gaps: list[dict[str, Any]] = []
     missing_intervals = 0
     if delta is not None and len(unique_sorted) >= 2:
         for i in range(1, len(unique_sorted)):

@@ -8,6 +8,8 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from backend.app.schemas.forecasting import ForecastingProblemInput
+from backend.app.schemas.instruments import canonicalize_gfx_instrument
+from backend.app.schemas.upstream import Timeframe
 
 
 class HistoricalReplayMarketDataRequest(BaseModel):
@@ -35,8 +37,18 @@ class HistoricalReplayMarketDataRequest(BaseModel):
     def validate_request(self) -> HistoricalReplayMarketDataRequest:
         if not self.instrument.strip() or not self.source_dataset_id.strip():
             raise ValueError("instrument and source_dataset_id must not be blank")
-        if self.instrument not in self.problem.instrument_scope:
+        canonical_instrument = canonicalize_gfx_instrument(self.instrument)
+        if canonical_instrument is None:
+            raise ValueError("instrument is outside the approved GFX instrument scope")
+        if self.instrument != canonical_instrument:
+            raise ValueError("instrument must use the canonical slash-delimited GFX identifier")
+        canonical_scope = {
+            canonicalize_gfx_instrument(item) or item for item in self.problem.instrument_scope
+        }
+        if canonical_instrument not in canonical_scope:
             raise ValueError("instrument must be included in problem.instrument_scope")
+        if self.timeframe not in {timeframe.value for timeframe in Timeframe}:
+            raise ValueError("timeframe is not supported")
         if self.timeframe != self.problem.input_timeframe:
             raise ValueError("timeframe must match problem.input_timeframe")
         for field_name in ("start", "end"):
@@ -62,8 +74,7 @@ class HistoricalReplayMarketDataRequest(BaseModel):
         if len(set(self.model_families)) != len(self.model_families):
             raise ValueError("model_families must not contain duplicates")
         if self.final_holdout_start is not None and (
-            self.final_holdout_start.tzinfo is None
-            or self.final_holdout_start.utcoffset() is None
+            self.final_holdout_start.tzinfo is None or self.final_holdout_start.utcoffset() is None
         ):
             raise ValueError("final_holdout_start must include a timezone")
         return self

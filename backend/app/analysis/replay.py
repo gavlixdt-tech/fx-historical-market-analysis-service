@@ -84,10 +84,17 @@ def _fit_predict(
         counts: dict[float, int] = defaultdict(int)
         for target in train_targets:
             counts[target] += 1
-        probabilities = {str(label): count / len(train_targets) for label, count in counts.items()}
-        return max(counts.items(), key=lambda item: (item[1], -item[0]))[0], probabilities
+        class_probabilities = {
+            str(label): count / len(train_targets) for label, count in counts.items()
+        }
+        return (
+            max(counts.items(), key=lambda item: (item[1], -item[0]))[0],
+            class_probabilities,
+        )
+    model: RidgeLogistic | RandomForest | HistogramGradientBoosting
     if family == "ridge_regression":
-        model = RidgeRegression(alpha=1.0).fit(train_x, train_targets)
+        regression_model = RidgeRegression(alpha=1.0).fit(train_x, train_targets)
+        return regression_model.predict(current_x)[0], {}
     elif family == "ridge_logistic":
         model = RidgeLogistic(alpha=1.0).fit(train_x, train_targets)
     elif family == "random_forest":
@@ -428,41 +435,46 @@ def run_historical_replay(request: HistoricalReplayRequest) -> dict[str, Any]:
         else None
     )
     for index in range(start_index, len(observations)):
+        current_label = labels[index]
         if (
             features[index] is None
-            or labels[index].status != "valid"
-            or labels[index].value is None
+            or current_label.status != "valid"
+            or current_label.value is None
         ):
             continue
-        if labels[index].future_index is None:
+        future_index = current_label.future_index
+        if future_index is None:
             continue
         decision_time = available_at[index]
-        future_index = labels[index].future_index
         holdout = holdout_cutoff is not None and timestamps[index] >= holdout_cutoff
         training_cutoff = holdout_cutoff if holdout else decision_time
         if training_cutoff is None:
             raise RuntimeError("holdout replay is missing its training cutoff")
         if available_at[future_index] <= decision_time:
             continue
-        eligible_train = [
-            train_index
-            for train_index in range(index)
-            if features[train_index] is not None
-            and labels[train_index].status == "valid"
-            and labels[train_index].value is not None
-            and labels[train_index].future_index is not None
-            and labels[train_index].future_index < index
-            and available_at[labels[train_index].future_index] <= training_cutoff
-            and (
-                not holdout
-                or (
-                    holdout_cutoff is not None
-                    and timestamps[train_index] < holdout_cutoff
-                    and timestamps[labels[train_index].future_index] < holdout_cutoff
-                    and available_at[labels[train_index].future_index] <= holdout_cutoff
-                )
-            )
-        ]
+        eligible_train: list[int] = []
+        for train_index in range(index):
+            train_label = labels[train_index]
+            train_future_index = train_label.future_index
+            if (
+                features[train_index] is None
+                or train_label.status != "valid"
+                or train_label.value is None
+                or train_future_index is None
+            ):
+                continue
+            if train_future_index >= index or available_at[train_future_index] > training_cutoff:
+                continue
+            if holdout:
+                if holdout_cutoff is None:
+                    raise RuntimeError("holdout replay is missing its cutoff")
+                if (
+                    timestamps[train_index] >= holdout_cutoff
+                    or timestamps[train_future_index] >= holdout_cutoff
+                    or available_at[train_future_index] > holdout_cutoff
+                ):
+                    continue
+            eligible_train.append(train_index)
         if request.embargo_periods:
             eligible_train = eligible_train[: max(0, len(eligible_train) - request.embargo_periods)]
         if request.validation_mode == "rolling" and request.rolling_window is not None:
@@ -476,10 +488,23 @@ def run_historical_replay(request: HistoricalReplayRequest) -> dict[str, Any]:
             [features[train_index].get(name) for name in feature_names]  # type: ignore[union-attr]
             for train_index in eligible_train
         ]
-        train_targets = [float(labels[train_index].value) for train_index in eligible_train]
+        train_targets: list[float] = []
+        for train_index in eligible_train:
+            target_value = labels[train_index].value
+            if target_value is None:
+                raise RuntimeError("eligible training sample is missing its target value")
+            train_targets.append(float(target_value))
+        training_outcomes_available_by_cutoff = True
+        for train_index in eligible_train:
+            target_index = labels[train_index].future_index
+            if target_index is None:
+                raise RuntimeError("eligible training sample is missing its target index")
+            if available_at[target_index] > training_cutoff:
+                training_outcomes_available_by_cutoff = False
+                break
         current_features = [features[index].get(name) for name in feature_names]  # type: ignore[union-attr]
         regime = _regime_at(closes, index)
-        actual = float(labels[index].value)
+        actual = float(current_label.value)
         forecast_row: dict[str, Any] = {
             "reference_timestamp": timestamps[index].isoformat(),
             "information_cutoff": decision_time.isoformat(),
@@ -489,11 +514,7 @@ def run_historical_replay(request: HistoricalReplayRequest) -> dict[str, Any]:
             "training_samples": len(eligible_train),
             "training_reference_end": timestamps[eligible_train[-1]].isoformat(),
             "training_target_end": timestamps[training_target_end_index].isoformat(),
-            "training_outcomes_available_by_cutoff": all(
-                available_at[labels[train_index].future_index] <= training_cutoff
-                for train_index in eligible_train
-                if labels[train_index].future_index is not None
-            ),
+            "training_outcomes_available_by_cutoff": training_outcomes_available_by_cutoff,
             "regime": regime,
             "actual": actual,
             "forecasts": {},

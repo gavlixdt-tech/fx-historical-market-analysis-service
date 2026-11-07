@@ -5,18 +5,28 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ObservationInput(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     timestamp: datetime
-    open: float
-    high: float
-    low: float
-    close: float
-    volume: float | None = None
+    open: float = Field(gt=0, allow_inf_nan=False)
+    high: float = Field(gt=0, allow_inf_nan=False)
+    low: float = Field(gt=0, allow_inf_nan=False)
+    close: float = Field(gt=0, allow_inf_nan=False)
+    volume: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def validate_observation(self) -> ObservationInput:
+        if self.timestamp.tzinfo is None or self.timestamp.utcoffset() is None:
+            raise ValueError("timestamp must include a timezone")
+        if self.high < max(self.open, self.close, self.low):
+            raise ValueError("high must be >= open, close and low")
+        if self.low > min(self.open, self.close):
+            raise ValueError("low must be <= open and close")
+        return self
 
 
 class RegimeConfigInput(BaseModel):
@@ -39,7 +49,7 @@ class RegimeConfigInput(BaseModel):
 class RegimeAnalysisRequest(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    observations: list[ObservationInput] | None = None
+    observations: list[ObservationInput] | None = Field(default=None, max_length=5000)
     instrument: str | None = None
     timeframe: str | None = None
     start: datetime | None = None
@@ -88,6 +98,9 @@ class RegimeAnalysisResponseData(BaseModel):
     short_segment_count: int = 0
     sensitivity_agreement: float | None = None
     chronological_validation: dict[str, Any] | None = None
+    dataset_fingerprint: str
+    data_provenance: dict[str, Any]
+    source_quality: dict[str, Any] | None = None
     warnings: list[str] = Field(default_factory=list)
     limitations: list[str] = Field(default_factory=list)
     duration_ms: float
@@ -112,7 +125,7 @@ class PatternConfigInput(BaseModel):
 class PatternResearchRequest(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    observations: list[ObservationInput] | None = None
+    observations: list[ObservationInput] | None = Field(default=None, max_length=5000)
     instrument: str | None = None
     timeframe: str | None = None
     start: datetime | None = None
@@ -133,7 +146,7 @@ class ResearchSummaryConfigInput(BaseModel):
 class ResearchSummaryRequest(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    observations: list[ObservationInput] | None = None
+    observations: list[ObservationInput] | None = Field(default=None, max_length=5000)
     instrument: str | None = None
     timeframe: str | None = None
     start: datetime | None = None
@@ -161,6 +174,17 @@ class PatternResult(BaseModel):
     significant: bool = False
     events: list[dict[str, Any]] = Field(default_factory=list)
     walk_forward: dict[str, Any] | None = None
+    instrument: str | None = None
+    timeframe: str | None = None
+    historical_interval: dict[str, str | None] = Field(default_factory=dict)
+    pattern_definition: str
+    detection_methodology: str
+    outcome_definition: str
+    evaluation_horizon: int
+    baseline_comparison: dict[str, Any]
+    statistical_uncertainty: dict[str, Any]
+    data_quality_restrictions: dict[str, Any]
+    dataset_fingerprint: str
     warnings: list[str] = Field(default_factory=list)
 
 
@@ -172,6 +196,10 @@ class PatternResearchResponseData(BaseModel):
     instrument: str | None = None
     timeframe: str | None = None
     observation_count: int
+    historical_interval: dict[str, str | None] = Field(default_factory=dict)
+    dataset_fingerprint: str
+    data_provenance: dict[str, Any]
+    source_quality: dict[str, Any] | None = None
     feature_set_version: str
     algorithm_id: str
     algorithm_version: str
@@ -199,11 +227,18 @@ class ResearchSummaryData(BaseModel):
     pattern_id: str | None = None
     pattern_effect_size: float | None = None
     pattern_significance: bool = False
-    confidence: float = 0.0
+    confidence: float | None = None
+    confidence_status: str = "not_calculated"
     narrative: str = ""
     recommendations: list[str] = Field(default_factory=list)
     regime_summary: dict[str, Any] | None = None
     pattern_summary: dict[str, Any] | None = None
+    historical_interval: dict[str, str | None] = Field(default_factory=dict)
+    dataset_fingerprint: str | None = None
+    data_provenance: dict[str, Any] = Field(default_factory=dict)
+    source_quality: dict[str, Any] | None = None
+    warnings: list[str] = Field(default_factory=list)
+    limitations: list[str] = Field(default_factory=list)
     duration_ms: float = 0.0
 
 

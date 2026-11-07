@@ -18,6 +18,7 @@ import {
   ExperimentValidationEnvelopeSchema,
   HistoricalReplayEnvelopeSchema,
   HistoricalDatasetEnvelopeSchema,
+  HistoricalProviderInventoryEnvelopeSchema,
   LiveEnvelopeSchema,
   ModelFamiliesEnvelopeSchema,
   ReadyEnvelopeSchema,
@@ -30,6 +31,7 @@ import {
   type ExperimentValidationResponseData,
   type HistoricalReplayResponseData,
   type HistoricalDatasetResponseData,
+  type HistoricalProviderInventory,
   type ModelFamiliesResponseData,
   type ReadyResponseData,
   type ResearchReadinessResponseData,
@@ -196,6 +198,13 @@ export const api = {
   getDataSource: (options?: RequestOptions) =>
     request("/data-source", DataSourceEnvelopeSchema, options).then((r) => r.data),
 
+  listHistoricalProviders: (options?: RequestOptions) =>
+    request(
+      "/historical-data/providers",
+      HistoricalProviderInventoryEnvelopeSchema,
+      options,
+    ).then((r) => r.data),
+
   retrieveHistoricalDataset: (
     payload: unknown,
     options?: RequestOptions,
@@ -259,6 +268,7 @@ export type {
   ExperimentValidationResponseData,
   HistoricalReplayResponseData,
   HistoricalDatasetResponseData,
+  HistoricalProviderInventory,
   ModelFamiliesResponseData,
   ReadyResponseData,
   ResearchReadinessResponseData,

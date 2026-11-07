@@ -81,6 +81,7 @@ def test_retrieve_historical_unconfigured(client) -> None:
         "timeframe": "D1",
         "start": "2024-01-01T00:00:00Z",
         "end": "2024-02-01T00:00:00Z",
+        "provider_id": "real-provider",
     }
     response = client.post("/api/v1/historical-data/retrieve", json=body)
     assert response.status_code == 400

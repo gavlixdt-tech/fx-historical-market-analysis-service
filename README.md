@@ -7,11 +7,14 @@ observations in order to discover statistically defensible historical
 patterns, market regimes, temporal relationships, and other evidence-supported
 findings.
 
-> **Status:** Foundation, forecasting research, and historical replay are
-> implemented for research/simulation. Replay may fetch from a configured real
-> historical-data provider, but source provenance and derived publication times
-> are not independently verified; results are not persisted. No live prediction,
-> signal, trading, or production model serving is provided.
+> **Status:** Historical analysis, forecasting research, and historical replay
+> are implemented for research/simulation. Provider selection is explicit and
+> retrieved source-quality evidence is retained, but source entitlement and
+> historical availability are not independently verified. Durable research
+> artifacts and production workload identity are not integrated. See the
+> [current integration audit](docs/integration/service2-ecosystem-integration-audit.md)
+> and [acceptance report](docs/acceptance/service2-integration-acceptance-report.md).
+> No live prediction, signal, trading, or production model serving is provided.
 
 Private research system. Research / simulation mode only.
 
@@ -50,7 +53,12 @@ This service consumes Service 1's data through a documented contract and does
 - **Provider-sourced replay** — optional replay route reads complete historical
   candles from a configured real provider through Service 1, requires an explicit
   publication-lag assumption, and records the source/coverage/availability policy
-  in the replay fingerprint report. It is not a continuous live feed.
+  in the replay fingerprint report. Provider identity is checked, but production
+  use is blocked pending approved Service 64 identity and the Service 1 auth
+  contract. It is not a continuous live feed.
+- **Provider selection** — historical retrieval requires an explicit configured
+  provider with historical-candle capability; real providers are connection-tested.
+  No default test provider or synthetic fallback is used.
 - **Frontend** — a dedicated React + TypeScript + Vite dashboard with a typed
   API client, runtime response validation, and accurate loading, empty,
   unavailable, and error states.
@@ -148,6 +156,11 @@ Set `VITE_API_BASE_URL` if the backend is not on the same origin.
 | [`docs/development.md`](docs/development.md) | Local setup, checks, how to extend. |
 | [`docs/deployment.md`](docs/deployment.md) | Images, production configuration, probes, rollback. |
 | [`docs/acceptance-audit.md`](docs/acceptance-audit.md) | Acceptance criteria, evidence, blocked items. |
+| [`docs/integration/service2-ecosystem-integration-audit.md`](docs/integration/service2-ecosystem-integration-audit.md) | Current dependency status and integration boundaries. |
+| [`docs/operations/production-readiness.md`](docs/operations/production-readiness.md) | Current production gates and blockers. |
+| [`docs/operations/recovery-runbook.md`](docs/operations/recovery-runbook.md) | Recovery limitations and safe restart procedure. |
+| [`docs/testing/integration-verification.md`](docs/testing/integration-verification.md) | Local-test versus live-integration evidence. |
+| [`docs/acceptance/service2-integration-acceptance-report.md`](docs/acceptance/service2-integration-acceptance-report.md) | Current Service 2 acceptance matrix. |
 | [`contracts/upstream-market-data-contract.md`](contracts/upstream-market-data-contract.md) | The verified Service 1 contract and the unverified parts. |
 
 ---
@@ -171,22 +184,11 @@ pre-production checklist is in
 
 ---
 
-## Publishing this repository
+## Repository publication
 
-No remote was created or verified for this repository. To publish it:
-
-```bash
-cd "C:\Users\ian mai\fx-historical-market-analysis-service"
-
-git remote add origin https://github.com/gavlixdt-tech/fx-historical-market-analysis-service.git
-git branch -M main
-git add .
-git commit -m "feat: foundation for fx-historical-market-analysis-service"
-git push -u origin main
-```
-
-Verify the remote exists and the push succeeded before treating it as
-published.
+Before any commit or push, inspect the current branch, remote, and working-tree
+changes. A local implementation or passing test suite is not evidence that a
+change was pushed or deployed.
 
 ---
 
