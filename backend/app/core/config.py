@@ -253,11 +253,17 @@ class Settings(BaseSettings):
                 raise ValueError("Wildcard CORS origin is not permitted in production")
             if not self.require_auth:
                 raise ValueError("require_auth must be true in production")
+            if self.api_key is None or len(self.api_key) < 32:
+                raise ValueError("api_key must contain at least 32 characters in production")
             if (
                 self.upstream_market_data_base_url
                 and not self.upstream_market_data_base_url.startswith("https://")
             ):
                 raise ValueError("upstream_market_data_base_url must use https in production")
+            if self.upstream_market_data_base_url and not self.upstream_api_key:
+                raise ValueError(
+                    "upstream_api_key is required when the production market-data URL is configured"
+                )
         if (
             self.upstream_allowed_history_start is not None
             and self.upstream_allowed_history_end is not None

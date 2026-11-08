@@ -36,7 +36,7 @@ def test_production_rejects_wildcard_cors() -> None:
         Settings(
             environment="production",
             require_auth=True,
-            api_key="secret",
+            api_key="x" * 32,
             cors_allow_origins="*",
         )
 
@@ -45,11 +45,32 @@ def test_production_accepts_explicit_configuration() -> None:
     settings = Settings(
         environment="production",
         require_auth=True,
-        api_key="secret",
+        api_key="x" * 32,
         cors_allow_origins="https://dashboard.internal",
     )
     assert settings.is_production is True
     assert settings.cors_origin_list == ["https://dashboard.internal"]
+
+
+def test_production_requires_upstream_credential_when_configured() -> None:
+    with pytest.raises(PydanticValidationError, match="upstream_api_key"):
+        Settings(
+            environment="production",
+            require_auth=True,
+            api_key="x" * 32,
+            upstream_market_data_base_url="https://market-data.internal",
+        )
+
+
+def test_production_accepts_authenticated_upstream_configuration() -> None:
+    settings = Settings(
+        environment="production",
+        require_auth=True,
+        api_key="x" * 32,
+        upstream_market_data_base_url="https://market-data.internal",
+        upstream_api_key="market-data-service-key",
+    )
+    assert settings.upstream_configured is True
 
 
 def test_invalid_environment_is_rejected() -> None:
