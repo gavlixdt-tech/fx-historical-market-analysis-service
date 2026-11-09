@@ -2,11 +2,11 @@
 
 CONTRACT VERIFICATION STATUS
 ----------------------------
-The request paths, query parameters, response envelopes and payload fields
-used by this client were read from the Service 1 source tree and are
-**VERIFIED**. The authentication mechanism is **PROPOSED — NOT YET VERIFIED**
-(Service 1's `AuthMiddleware` reads `X-API-Key`, but Service 1's OpenAPI
-document is a placeholder with no declared security schemes).
+The request paths, response envelopes, payload fields, and authentication
+policy used by this client are verified against Service 1's source contract.
+Connectivity is only reported as connected after the protected provider
+inventory accepts the configured credential and an available real historical
+candle provider is present.
 
 This client is intentionally read-only: it requests historical datasets and
 provider/provenance metadata from Service 1. It performs no provider calls, no
@@ -45,7 +45,7 @@ logger = logging.getLogger("fx-historical-market-analysis-service.upstream")
 UPSTREAM_HISTORY_PATH = "/api/v1/market-data/history/{instrument}"
 UPSTREAM_PROVIDERS_PATH = "/api/v1/market-data/providers"
 UPSTREAM_PROVIDER_TEST_PATH = "/api/v1/market-data/providers/{provider_id}/test-connection"
-UPSTREAM_LIVE_PATH = "/api/v1/health/live"
+UPSTREAM_STATUS_PATH = "/api/v1/status"
 
 # Verified Service 1 query parameter names.
 HISTORY_QUERY_PARAMS = (
@@ -244,12 +244,7 @@ class MarketDataClient:
         return self._base_url
 
     async def check_connectivity(self, request_id: str | None = None) -> UpstreamCheckResult:
-        """Verify that the upstream service is reachable.
-
-        Performs a liveness probe against the upstream service. This is a
-        connectivity check only: it does not request market data and does not
-        alter any upstream state.
-        """
+        """Verify Service 1's status contract, authentication, and real provider."""
         if not self._base_url:
             return UpstreamCheckResult(
                 state=UpstreamState.UNCONFIGURED,
@@ -258,14 +253,20 @@ class MarketDataClient:
             )
 
         started = time.perf_counter()
+        status_headers = {"Accept": "application/json"}
+        if request_id:
+            status_headers["X-Request-ID"] = request_id
+            status_headers["X-Correlation-ID"] = request_id
         try:
             response = await self._request(
-                "GET", UPSTREAM_LIVE_PATH, headers=self._build_headers(request_id)
+                "GET",
+                UPSTREAM_STATUS_PATH,
+                headers=status_headers,
             )
         except httpx.TimeoutException:
             return UpstreamCheckResult(
                 state=UpstreamState.UNAVAILABLE,
-                message=f"Upstream did not respond within {self._connect_timeout:g}s.",
+                message=f"Upstream status check timed out after {self._connect_timeout:g}s.",
                 checked_at=_utc_now(),
                 contract_status=UpstreamContractStatus.PROPOSED_NOT_YET_VERIFIED,
             )
@@ -278,47 +279,197 @@ class MarketDataClient:
                 contract_status=UpstreamContractStatus.PROPOSED_NOT_YET_VERIFIED,
             )
 
-        latency_ms = round((time.perf_counter() - started) * 1000, 2)
+        auth_policy_error = self._response_failure(response.status_code, started)
+        if auth_policy_error is not None:
+            return auth_policy_error
 
-        if response.status_code == 429:
-            return UpstreamCheckResult(
-                state=UpstreamState.RATE_LIMITED,
-                message="Upstream rate limited the connectivity probe.",
-                latency_ms=latency_ms,
-                checked_at=_utc_now(),
-                contract_status=UpstreamContractStatus.PROPOSED_NOT_YET_VERIFIED,
-            )
-        if response.status_code == 401 or response.status_code == 403:
-            return UpstreamCheckResult(
-                state=UpstreamState.AUTH_FAILED,
-                message="Upstream rejected the configured credential.",
-                latency_ms=latency_ms,
-                checked_at=_utc_now(),
-                contract_status=UpstreamContractStatus.PROPOSED_NOT_YET_VERIFIED,
-            )
-        if response.status_code >= 500:
-            return UpstreamCheckResult(
-                state=UpstreamState.UNAVAILABLE,
-                message="Upstream service reported an internal error.",
-                latency_ms=latency_ms,
-                checked_at=_utc_now(),
-                contract_status=UpstreamContractStatus.PROPOSED_NOT_YET_VERIFIED,
-            )
-        if response.status_code >= 400:
-            return UpstreamCheckResult(
-                state=UpstreamState.UNAVAILABLE,
-                message="Upstream service rejected the connectivity probe.",
-                latency_ms=latency_ms,
-                checked_at=_utc_now(),
+        try:
+            status_payload = response.json()
+            status_data = status_payload["data"]
+            status_meta = status_payload["meta"]
+            if (
+                not isinstance(status_data, dict)
+                or not isinstance(status_data.get("api_key_authentication_required"), bool)
+                or not isinstance(status_meta, dict)
+                or not all(
+                    isinstance(status_meta.get(field), str) and status_meta[field]
+                    for field in ("api_version", "request_id", "timestamp_utc")
+                )
+                or status_payload.get("errors") != []
+            ):
+                raise ValueError("invalid Service 1 status contract")
+            authentication_required = status_data["api_key_authentication_required"]
+        except (ValueError, KeyError, TypeError):
+            return self._connectivity_result(
+                UpstreamState.CONTRACT_MISMATCH,
+                "Upstream status response does not match the verified contract.",
+                started,
                 contract_status=UpstreamContractStatus.PROPOSED_NOT_YET_VERIFIED,
             )
 
+        contract_status = UpstreamContractStatus.VERIFIED
+        if authentication_required and not self._api_key:
+            return self._connectivity_result(
+                UpstreamState.AUTH_FAILED,
+                "Upstream requires an API key, but no credential is configured.",
+                started,
+                contract_status=contract_status,
+                authentication_status="missing",
+            )
+
+        try:
+            providers_response = await self._request(
+                "GET",
+                UPSTREAM_PROVIDERS_PATH,
+                headers=self._build_headers(request_id),
+            )
+        except httpx.TimeoutException:
+            return self._connectivity_result(
+                UpstreamState.UNAVAILABLE,
+                f"Upstream provider check timed out after {self._connect_timeout:g}s.",
+                started,
+                contract_status=contract_status,
+                authentication_status="verified" if authentication_required else "not_required",
+            )
+        except httpx.HTTPError as exc:
+            logger.warning("upstream_provider_check_failed", extra={"reason": type(exc).__name__})
+            return self._connectivity_result(
+                UpstreamState.UNAVAILABLE,
+                "Upstream provider check could not reach the service.",
+                started,
+                contract_status=contract_status,
+                authentication_status="verified" if authentication_required else "not_required",
+            )
+
+        provider_http_failure = self._response_failure(
+            providers_response.status_code,
+            started,
+            contract_status=contract_status,
+            authentication_status="rejected" if providers_response.status_code in {401, 403}
+            else ("verified" if authentication_required else "not_required"),
+        )
+        if provider_http_failure is not None:
+            return provider_http_failure
+
+        try:
+            providers = UpstreamProviderListResponse.model_validate(providers_response.json())
+            if providers.errors or providers.data is None:
+                raise ValueError("invalid Service 1 provider inventory")
+        except (ValueError, TypeError):
+            return self._connectivity_result(
+                UpstreamState.CONTRACT_MISMATCH,
+                "Upstream provider response does not match the verified contract.",
+                started,
+                contract_status=UpstreamContractStatus.PROPOSED_NOT_YET_VERIFIED,
+                authentication_status="verified" if authentication_required else "not_required",
+            )
+
+        real_providers = [
+            provider for provider in providers.data
+            if provider.provider_type.value == "real" and provider.configured
+        ]
+        available_provider = next(
+            (
+                provider for provider in real_providers
+                if provider.connection_status.value == "available"
+                and provider.last_connection_test_success is True
+                and self._is_utc_timestamp(provider.last_connection_test_at)
+                and any(capability.value == "historical_candles" for capability in provider.capabilities)
+            ),
+            None,
+        )
+        auth_status = "verified" if authentication_required else "not_required"
+        if available_provider is not None:
+            return self._connectivity_result(
+                UpstreamState.CONNECTED,
+                "Upstream authentication, contracts, and real historical provider are verified.",
+                started,
+                contract_status=contract_status,
+                authentication_status=auth_status,
+                provider_status="available",
+                provider_tested_at=available_provider.last_connection_test_at,
+            )
+        if real_providers:
+            provider_status = (
+                "not_tested"
+                if any(
+                    provider.connection_status.value == "configured_not_tested"
+                    or provider.last_connection_test_success is None
+                    for provider in real_providers
+                )
+                else "historical_candles_unavailable"
+            )
+        elif any(provider.provider_type.value == "test" and provider.configured for provider in providers.data):
+            provider_status = "test_adapter_only"
+        else:
+            provider_status = "not_configured"
+        return self._connectivity_result(
+            UpstreamState.UNAVAILABLE,
+            "No configured real provider is verified available for historical candles.",
+            started,
+            contract_status=contract_status,
+            authentication_status=auth_status,
+            provider_status=provider_status,
+        )
+
+    def _response_failure(
+        self,
+        status_code: int,
+        started: float,
+        *,
+        contract_status: UpstreamContractStatus = (
+            UpstreamContractStatus.PROPOSED_NOT_YET_VERIFIED
+        ),
+        authentication_status: str = "unverified",
+    ) -> UpstreamCheckResult | None:
+        if status_code < 400:
+            return None
+        if status_code == 429:
+            state, message = UpstreamState.RATE_LIMITED, "Upstream rate limited the connectivity probe."
+        elif status_code in {401, 403}:
+            state, message = UpstreamState.AUTH_FAILED, "Upstream rejected the configured credential."
+        elif status_code >= 500:
+            state, message = UpstreamState.UNAVAILABLE, "Upstream service reported an internal error."
+        else:
+            state, message = UpstreamState.UNAVAILABLE, "Upstream service rejected the connectivity probe."
+        return self._connectivity_result(
+            state,
+            message,
+            started,
+            contract_status=contract_status,
+            authentication_status=authentication_status,
+        )
+
+    @staticmethod
+    def _is_utc_timestamp(value: str | None) -> bool:
+        if not value:
+            return False
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return False
+        return parsed.tzinfo is not None and parsed.utcoffset() == timedelta(0)
+
+    @staticmethod
+    def _connectivity_result(
+        state: UpstreamState,
+        message: str,
+        started: float,
+        *,
+        contract_status: UpstreamContractStatus,
+        authentication_status: str = "unverified",
+        provider_status: str = "not_checked",
+        provider_tested_at: str | None = None,
+    ) -> UpstreamCheckResult:
         return UpstreamCheckResult(
-            state=UpstreamState.CONNECTED,
-            message="Upstream service responded successfully.",
-            latency_ms=latency_ms,
+            state=state,
+            message=message,
+            latency_ms=round((time.perf_counter() - started) * 1000, 2),
             checked_at=_utc_now(),
-            contract_status=UpstreamContractStatus.PROPOSED_NOT_YET_VERIFIED,
+            contract_status=contract_status,
+            authentication_status=authentication_status,
+            provider_status=provider_status,
+            provider_tested_at=provider_tested_at,
         )
 
     async def fetch_historical_candles(

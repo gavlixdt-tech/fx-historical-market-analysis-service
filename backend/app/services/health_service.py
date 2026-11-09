@@ -155,6 +155,9 @@ class HealthService:
                 check.state == UpstreamState.CONNECTED if check is not None else None
             ),
             last_check_message=check.message if check else None,
+            authentication_status=check.authentication_status if check else "unverified",
+            provider_status=check.provider_status if check else "not_checked",
+            provider_tested_at=check.provider_tested_at if check else None,
             contract_status=(
                 check.contract_status.value
                 if check

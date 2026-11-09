@@ -1,9 +1,11 @@
 # Upstream Integration Contract: `fx-market-data-service`
 
-**Status of this document:** the request/response contract below was
-**VERIFIED** by reading the Service 1 source tree directly. The
-**authentication** contract is **PROPOSED — NOT YET VERIFIED** and is called
-out explicitly in [Authentication](#authentication--proposed--not-yet-verified).
+**Status of this document:** request/response contracts and Service 1's
+authentication-required status field were verified against the Service 1
+source tree. Service 2 now verifies the runtime status response and the
+protected provider inventory before reporting its upstream as connected.
+Production workload identity and authorization remain unverified; see
+[Authentication](#authentication-and-runtime-verification).
 
 - **Contract verified on:** 2026-10-22
 - **Verified against:** `C:\Users\ian mai\fx-market-data-service\backend\`
@@ -200,15 +202,33 @@ probe.
 
 ### 4.4 Liveness probe — `GET /api/v1/health/live`
 
-**Verified.** Used by this service only as a connectivity check for the
-upstream service. It is a liveness probe, not a data request or a substitute
-for the selected provider's active connection test.
+**Verified.** This endpoint reports process liveness only. Service 2 does not
+use it to report upstream integration readiness because it cannot prove that
+the protected contract or a real data provider is available.
+
+### 4.5 Authentication policy — `GET /api/v1/status`
+
+**Verified.** This public endpoint returns the versioned response envelope.
+Service 2 validates its `api_version`, request ID, timestamp, empty errors,
+and `data.api_key_authentication_required` boolean before using the declared
+policy to decide whether a credential is required for the protected provider
+inventory request. The status endpoint itself is called without the upstream
+API key.
 
 ---
 
-## 5. Authentication — PROPOSED — NOT YET VERIFIED
+## 5. Authentication and runtime verification
 
-**This section is explicitly unverified.**
+Service 1's public `GET /api/v1/status` response declares whether API-key
+authentication is required. Service 2 reads that policy without sending a
+credential, then requests the protected provider inventory using its
+server-side credential. An accepted provider-inventory response proves that
+the configured credential is accepted by the Service 1 instance reached by
+that check. Missing or rejected credentials are reported distinctly.
+Connectivity is reported as connected only when the inventory also includes
+a configured real historical-candle provider whose latest connection test
+succeeded and has a UTC timestamp. That upstream test timestamp is displayed
+separately from Service 2's own status-check time.
 
 Service 1's local `backend/middleware/auth.py` reads the **`X-API-Key`**
 request header and compares it to the configured `api_key` using
@@ -218,34 +238,36 @@ is required on all paths except the public set
 `/api/v1/version`, `/metrics`, `/api/v1/openapi.json`, `/docs`, `/redoc`,
 `/health`).
 
-However:
+However, a successful local check does not establish deployed workload
+identity or production authorization. In particular:
 
 - Service 1's OpenAPI document declares **no** security scheme.
 - Service 1's *deployed* authentication middleware comes from the unvendored
   `Pipline` package, whose behaviour could not be inspected.
-- A shared static API key is a plausible local-development mechanism but is
-  **not** an acceptable production design for service-to-service traffic.
+- The deployed middleware's behavior and production identity grants remain
+  unverified because the shared middleware package is not vendored here.
 
 ### What this service does about it
 
-1. The client sends the credential in the `X-API-Key` header **only when a
-   credential is configured**. When none is configured, no header is sent and
-   the request is simply sent unauthenticated.
+1. The client reads the public auth policy first and does not send its
+   credential to the public status endpoint. It sends `X-API-Key` only on the
+   protected provider-inventory call.
 2. The credential is read from `UPSTREAM_API_KEY`, is **server-side only**,
    is never returned by any endpoint, and is never sent to the browser.
 3. The credential is presented by the **backend only**. The dashboard never
    contacts Service 1.
-4. The status endpoint reports `contract_status` so an operator can see
-   whether the contract in use is verified.
+4. The connectivity report identifies authentication, contract, and real
+   provider evidence separately, including the upstream provider-test time.
+   A configured test adapter, a merely configured real provider, or liveness
+   alone does not produce a connected status.
 
 ### Required before production
 
 Before this integration is used in production, the following must be
 confirmed and this document updated:
 
-- [ ] Service 1's **real** authentication contract (mTLS, signed service
-      token, OAuth2 client credentials, or the platform's chosen
-      mechanism).
+- [ ] Service 1's deployed authentication middleware and workload identity
+      grants, beyond successful local API-key acceptance.
 - [ ] Whether the platform gateway terminates authentication on behalf of
       downstream services, in which case this client would present a
       gateway-scoped credential instead.
@@ -253,8 +275,8 @@ confirmed and this document updated:
 - [ ] Per-service authorisation scope (which instruments/providers this
       service may read).
 
-Until those are confirmed, the authentication mechanism in this repository is
-**PROPOSED — NOT YET VERIFIED** and must not be treated as final.
+Until those are confirmed, local authentication evidence must not be
+represented as proof of production/deployed identity or authorization.
 
 ---
 

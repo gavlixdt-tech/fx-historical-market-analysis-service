@@ -8,7 +8,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-from backend.app.clients.base import UpstreamState
+from backend.app.clients.base import UpstreamContractStatus, UpstreamState
 from backend.app.clients.market_data import MarketDataClient
 from backend.app.core.errors import UpstreamError
 
@@ -28,6 +28,47 @@ def _client(handler: httpx.MockTransport, **kwargs: object) -> MarketDataClient:
     )
 
 
+def _status_payload(*, authentication_required: bool = True) -> dict:
+    return {
+        "data": {"api_key_authentication_required": authentication_required},
+        "meta": {
+            "api_version": "v1",
+            "request_id": "status-check",
+            "timestamp_utc": "2026-01-01T00:00:00Z",
+        },
+        "errors": [],
+    }
+
+
+def _provider_payload(
+    *,
+    provider_type: str = "real",
+    connection_status: str = "available",
+    configured: bool = True,
+    capabilities: list[str] | None = None,
+    connection_test_succeeded: bool | None = True,
+) -> dict:
+    return {
+        "data": [
+            {
+                "provider_id": "provider-live" if provider_type == "real" else "test-adapter",
+                "provider_type": provider_type,
+                "configured": configured,
+                "connection_status": connection_status,
+                "capabilities": capabilities or ["historical_candles"],
+                "last_connection_test_at": "2026-01-01T00:00:00Z",
+                "last_connection_test_success": connection_test_succeeded,
+            }
+        ],
+        "meta": {
+            "api_version": "v1",
+            "request_id": "provider-check",
+            "timestamp_utc": "2026-01-01T00:00:00Z",
+        },
+        "errors": [],
+    }
+
+
 def test_unconfigured_client_reports_unconfigured() -> None:
     client = MarketDataClient(base_url=None)
 
@@ -35,10 +76,14 @@ def test_unconfigured_client_reports_unconfigured() -> None:
     assert client.has_credential is False
 
 
-async def test_connectivity_check_reports_connected() -> None:
+async def test_connectivity_check_requires_authenticated_real_history_provider() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path == "/api/v1/health/live"
-        return httpx.Response(200, json={"data": {"status": "healthy"}})
+        if request.url.path == "/api/v1/status":
+            assert "x-api-key" not in request.headers
+            return httpx.Response(200, json=_status_payload())
+        assert request.url.path == "/api/v1/market-data/providers"
+        assert request.headers["x-api-key"] == "test-upstream-key"
+        return httpx.Response(200, json=_provider_payload())
 
     client = _client(httpx.MockTransport(handler))
     result = await client.check_connectivity()
@@ -46,6 +91,80 @@ async def test_connectivity_check_reports_connected() -> None:
     assert result.state == UpstreamState.CONNECTED
     assert result.latency_ms is not None
     assert result.checked_at is not None
+    assert result.contract_status == UpstreamContractStatus.VERIFIED
+    assert result.authentication_status == "verified"
+    assert result.provider_status == "available"
+    assert result.provider_tested_at == "2026-01-01T00:00:00Z"
+
+
+async def test_connectivity_check_reports_missing_required_credential() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v1/status"
+        return httpx.Response(200, json=_status_payload(authentication_required=True))
+
+    client = _client(httpx.MockTransport(handler), api_key=None)
+    result = await client.check_connectivity()
+
+    assert result.state == UpstreamState.AUTH_FAILED
+    assert result.contract_status == UpstreamContractStatus.VERIFIED
+    assert result.authentication_status == "missing"
+
+
+async def test_connectivity_check_reports_rejected_credential() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v1/status":
+            return httpx.Response(200, json=_status_payload())
+        return httpx.Response(401, json={"error": {"code": "unauthenticated"}})
+
+    client = _client(httpx.MockTransport(handler))
+    result = await client.check_connectivity()
+
+    assert result.state == UpstreamState.AUTH_FAILED
+    assert result.authentication_status == "rejected"
+
+
+async def test_connectivity_check_does_not_count_test_provider_as_live() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v1/status":
+            return httpx.Response(200, json=_status_payload())
+        return httpx.Response(
+            200,
+            json=_provider_payload(provider_type="test", connection_status="configured_not_tested"),
+        )
+
+    client = _client(httpx.MockTransport(handler))
+    result = await client.check_connectivity()
+
+    assert result.state == UpstreamState.UNAVAILABLE
+    assert result.contract_status == UpstreamContractStatus.VERIFIED
+    assert result.authentication_status == "verified"
+    assert result.provider_status == "test_adapter_only"
+
+
+async def test_connectivity_check_requires_a_successful_real_provider_test() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v1/status":
+            return httpx.Response(200, json=_status_payload())
+        return httpx.Response(
+            200,
+            json=_provider_payload(connection_test_succeeded=None),
+        )
+
+    client = _client(httpx.MockTransport(handler))
+    result = await client.check_connectivity()
+
+    assert result.state == UpstreamState.UNAVAILABLE
+    assert result.provider_status == "not_tested"
+
+
+async def test_connectivity_check_rejects_malformed_status_contract() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"data": {}, "meta": {}, "errors": []})
+
+    client = _client(httpx.MockTransport(handler))
+    result = await client.check_connectivity()
+
+    assert result.state == UpstreamState.CONTRACT_MISMATCH
 
 
 async def test_connectivity_check_reports_unavailable_on_timeout() -> None:
@@ -60,6 +179,8 @@ async def test_connectivity_check_reports_unavailable_on_timeout() -> None:
 
 async def test_connectivity_check_reports_auth_failure() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v1/status":
+            return httpx.Response(200, json=_status_payload())
         return httpx.Response(401, json={"error": {"code": "unauthenticated"}})
 
     client = _client(httpx.MockTransport(handler))

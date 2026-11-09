@@ -13,6 +13,7 @@ from pathlib import Path
 import httpx
 import pytest
 
+from backend.app.clients.base import UpstreamContractStatus, UpstreamState
 from backend.app.clients.market_data import MarketDataClient
 from backend.app.core.errors import UpstreamError
 
@@ -109,6 +110,12 @@ async def test_actual_service1_http_contract_and_authentication(
         max_retries=0,
     )
     try:
+        check = await client.check_connectivity(request_id="service2-http-test")
+        assert check.state == UpstreamState.UNAVAILABLE
+        assert check.authentication_status == "verified"
+        assert check.provider_status == "test_adapter_only"
+        assert check.contract_status == UpstreamContractStatus.VERIFIED
+
         providers = await client.list_providers(request_id="service2-http-test")
         assert providers.data is not None
         provider = next(

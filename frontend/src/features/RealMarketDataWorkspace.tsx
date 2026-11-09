@@ -242,7 +242,7 @@ async function handleRetrieve(event: FormEvent) {
     }
   }
 
-  const connectivity = dataSource?.connectivity ?? {};
+  const connectivity = dataSource?.connectivity;
   const configuration = dataSource?.configuration ?? {};
   const selectedProvider = providerInventory?.providers.find(
     (provider) => provider.provider_id === providerId,
@@ -287,12 +287,24 @@ async function handleRetrieve(event: FormEvent) {
           <dl className="data-list">
             <dt className="data-row__label">State</dt>
             <dd className="data-row__value" data-testid="data-source-state">
-              {String(connectivity.state ?? "unknown")}
+              {String(connectivity?.state ?? "unknown")}
             </dd>
             <dt className="data-row__label">Message</dt>
-            <dd className="data-row__value">{String(connectivity.message ?? "No message")}</dd>
+            <dd className="data-row__value">{String(connectivity?.message ?? "No message")}</dd>
             <dt className="data-row__label">Contract status</dt>
             <dd className="data-row__value">{dataSource.contract_status}</dd>
+            <dt className="data-row__label">Authentication</dt>
+            <dd className="data-row__value">
+              {String(connectivity?.authentication_status ?? "unverified")}
+            </dd>
+            <dt className="data-row__label">Real provider</dt>
+            <dd className="data-row__value">
+              {String(connectivity?.provider_status ?? "not_checked")}
+            </dd>
+            <dt className="data-row__label">Last provider test (UTC)</dt>
+            <dd className="data-row__value">
+              {String(connectivity?.provider_tested_at ?? "Not verified")}
+            </dd>
             <dt className="data-row__label">Base URL configured</dt>
             <dd className="data-row__value">
               {configuration.base_url_configured ? "Yes" : "No"}

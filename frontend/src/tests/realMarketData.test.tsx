@@ -31,7 +31,7 @@ describe("real market data workspace", () => {
                       provider_id: "provider-live",
                       provider_type: "real",
                       configured: true,
-                      connection_status: "configured_not_tested",
+                      connection_status: "available",
                       historical_candles_supported: true,
                     },
                   ],
@@ -51,6 +51,10 @@ describe("real market data workspace", () => {
         "connected",
       );
     });
+    expect(screen.getByText("Authentication")).toBeInTheDocument();
+    expect(screen.getAllByText("verified").length).toBeGreaterThan(0);
+    expect(screen.getByText("Real provider")).toBeInTheDocument();
+    expect(screen.getAllByText("available").length).toBeGreaterThan(0);
     await waitFor(() => {
       expect(screen.getByTestId("historical-provider")).toHaveTextContent(
         "provider-live (real)",

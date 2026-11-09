@@ -102,6 +102,9 @@ export const UpstreamIntegrationStatusSchema = z.object({
   last_checked_at: z.string().nullable().optional(),
   last_check_succeeded: z.boolean().nullable().optional(),
   last_check_message: z.string().nullable().optional(),
+  authentication_status: z.string(),
+  provider_status: z.string(),
+  provider_tested_at: z.string().nullable(),
   contract_status: z.string(),
   latency_ms: z.number().nullable().optional(),
 });
@@ -146,7 +149,15 @@ export const StatusEnvelopeSchema = ApiEnvelopeSchema.extend({
 /** Data source status returned by GET /api/v1/data-source. */
 export const DataSourceResponseDataSchema = z.object({
   configuration: z.record(z.unknown()),
-  connectivity: z.record(z.unknown()),
+  connectivity: z.object({
+    state: z.string(),
+    message: z.string(),
+    latency_ms: z.number().nullable(),
+    checked_at: z.string().nullable(),
+    authentication_status: z.string(),
+    provider_status: z.string(),
+    provider_tested_at: z.string().nullable(),
+  }),
   contract_status: z.string(),
 });
 

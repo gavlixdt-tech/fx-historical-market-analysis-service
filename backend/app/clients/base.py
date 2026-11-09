@@ -32,7 +32,16 @@ class UpstreamContractStatus(StrEnum):
 class UpstreamCheckResult:
     """Outcome of a single upstream connectivity check."""
 
-    __slots__ = ("state", "message", "latency_ms", "checked_at", "contract_status")
+    __slots__ = (
+        "state",
+        "message",
+        "latency_ms",
+        "checked_at",
+        "contract_status",
+        "authentication_status",
+        "provider_status",
+        "provider_tested_at",
+    )
 
     def __init__(
         self,
@@ -43,9 +52,15 @@ class UpstreamCheckResult:
         contract_status: UpstreamContractStatus = (
             UpstreamContractStatus.PROPOSED_NOT_YET_VERIFIED
         ),
+        authentication_status: str = "unverified",
+        provider_status: str = "not_checked",
+        provider_tested_at: str | None = None,
     ) -> None:
         self.state = state
         self.message = message
         self.latency_ms = latency_ms
         self.checked_at = checked_at
         self.contract_status = contract_status
+        self.authentication_status = authentication_status
+        self.provider_status = provider_status
+        self.provider_tested_at = provider_tested_at

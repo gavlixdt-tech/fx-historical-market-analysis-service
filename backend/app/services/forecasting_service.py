@@ -1035,6 +1035,9 @@ class ForecastingService(AnalysisService):
                 "message": result.message,
                 "latency_ms": result.latency_ms,
                 "checked_at": result.checked_at,
+                "authentication_status": result.authentication_status,
+                "provider_status": result.provider_status,
+                "provider_tested_at": result.provider_tested_at,
             },
             "contract_status": result.contract_status.value,
         }

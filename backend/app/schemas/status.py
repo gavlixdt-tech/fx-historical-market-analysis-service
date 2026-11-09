@@ -56,6 +56,18 @@ class UpstreamIntegrationStatus(BaseModel):
     last_check_message: str | None = Field(
         default=None, description="Safe summary of the last connectivity check"
     )
+    authentication_status: str = Field(
+        default="unverified",
+        description="Authentication evidence: verified, not_required, missing, rejected or unverified",
+    )
+    provider_status: str = Field(
+        default="not_checked",
+        description="Real provider evidence: available, not_tested, not_configured or unavailable",
+    )
+    provider_tested_at: str | None = Field(
+        default=None,
+        description="UTC timestamp of the upstream's most recent successful real provider test",
+    )
     contract_status: str = Field(
         default="verified",
         description=(
