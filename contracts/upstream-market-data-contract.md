@@ -54,20 +54,20 @@ The following were read directly from the Service 1 source:
    paths and no security schemes**. Every contract fact below therefore comes
    from the implementation, not from a published specification.
 
-2. **Service 1's production authentication mechanism.**
-   Service 1's `backend/app/main.py` installs a middleware stack from a
-   shared package named `Pipline` (`Pipline.middleware.AuthMiddleware`,
-   `Pipline.middleware.configure_trusted_host_middleware`). That package is
-   **not vendored** in the Service 1 repository and **not installed** in its
-   virtual environment, so the production authentication behaviour of the
-   shared middleware could not be read. Only the local
-   `backend/middleware/auth.py` implementation was readable.
+2. **Deployed workload identity and authorization.**
+   Service 1's current source implements `backend/middleware/auth.py` and
+   validates the `X-API-Key` header using constant-time comparison. The
+   source-level API-key contract is verified. Repository inspection cannot
+   prove that deployed Railway secrets match, that credentials are rotated,
+   or that workload identity and per-service authorization scopes are
+   enforced in the deployed environment.
 
-3. **The platform API gateway.**
-   No gateway repository, gateway configuration, or gateway route table was
-   found in either repository. Gateway conventions are documented as
-   *proposed* in `docs/architecture.md` and are explicitly **not** implemented
-   here.
+3. **Deployed gateway connectivity.**
+   The Gateway source now registers Service 1, forwards its versioned routes
+   (including the streaming feed), strips caller-supplied credentials, and
+   injects `MARKET_DATA_API_KEY` server-side. This source-level integration is
+   verified; actual Railway deployment, private DNS reachability, and secret
+   parity require deployment-environment verification.
 
 ---
 
@@ -242,10 +242,9 @@ However, a successful local check does not establish deployed workload
 identity or production authorization. In particular:
 
 - Service 1's OpenAPI document declares **no** security scheme.
-- Service 1's *deployed* authentication middleware comes from the unvendored
-  `Pipline` package, whose behaviour could not be inspected.
-- The deployed middleware's behavior and production identity grants remain
-  unverified because the shared middleware package is not vendored here.
+- Deployed workload identity, credential rotation, and per-service
+  authorization grants remain unverified; source-level API-key validation
+  alone does not establish those controls.
 
 ### What this service does about it
 
@@ -266,14 +265,13 @@ identity or production authorization. In particular:
 Before this integration is used in production, the following must be
 confirmed and this document updated:
 
-- [ ] Service 1's deployed authentication middleware and workload identity
-      grants, beyond successful local API-key acceptance.
-- [ ] Whether the platform gateway terminates authentication on behalf of
-      downstream services, in which case this client would present a
-      gateway-scoped credential instead.
-- [ ] Credential rotation and expiry behaviour.
-- [ ] Per-service authorisation scope (which instruments/providers this
-      service may read).
+- [ ] Verify Railway deployment connectivity and private DNS between Service 2,
+      the Gateway, and Service 1.
+- [ ] Confirm identical secret value is provisioned as Service 1 `API_KEY`,
+      Gateway `MARKET_DATA_API_KEY`, and Service 2 `UPSTREAM_API_KEY`.
+- [ ] Verify credential rotation and expiry behaviour without downtime.
+- [ ] Verify deployed workload identity and per-service authorization scope
+      (which instruments/providers this service may read).
 
 Until those are confirmed, local authentication evidence must not be
 represented as proof of production/deployed identity or authorization.
