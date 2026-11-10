@@ -16,6 +16,18 @@ def test_defaults_are_safe_for_development() -> None:
     assert settings.api_prefix == "/api/v1"
 
 
+def test_service_and_upstream_credentials_are_hidden_from_repr() -> None:
+    settings = Settings(
+        api_key="service-two-api-secret-value",
+        upstream_api_key="market-data-upstream-secret-value",
+    )
+
+    rendered = repr(settings)
+
+    assert "service-two-api-secret-value" not in rendered
+    assert "market-data-upstream-secret-value" not in rendered
+
+
 def test_require_auth_requires_api_key() -> None:
     with pytest.raises(PydanticValidationError):
         Settings(require_auth=True, api_key=None)
