@@ -173,12 +173,15 @@ Set `VITE_API_BASE_URL` if the backend is not on the same origin.
 | Service 1 response envelopes and payload fields | **VERIFIED** |
 | Service 1 error format and status codes | **VERIFIED** |
 | Service 1 correlation / trace headers | **VERIFIED** |
-| **Service 1 authentication mechanism** | **PROPOSED — NOT YET VERIFIED** |
-| Platform API gateway routes | **PROPOSED — NOT YET VERIFIED** |
+| Service 1 authentication header and API-key middleware | **VERIFIED IN SOURCE** (`X-API-Key`) |
+| Platform API Gateway Service 1 route and dedicated credential injection | **VERIFIED IN SOURCE** |
+| Production workload identity, deployed secret parity, and per-service authorization | **NOT YET VERIFIED** |
 
-Service 1's OpenAPI document is a placeholder with no security schemes, and its
-production middleware comes from an unvendored shared package. A shared static
-API key is therefore **not** assumed to be the correct production design. The
+Service 1's static OpenAPI file remains a placeholder without a security
+scheme. Its current source implements constant-time `X-API-Key` validation,
+and the Gateway injects the dedicated `MARKET_DATA_API_KEY` server-side.
+This verifies the source-level credential contract, not deployed workload
+identity, secret parity, rotation, or per-service authorization. The
 pre-production checklist is in
 `contracts/upstream-market-data-contract.md` section 5.
 
