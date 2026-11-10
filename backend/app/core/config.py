@@ -257,11 +257,19 @@ class Settings(BaseSettings):
                 raise ValueError("require_auth must be true in production")
             if self.api_key is None or len(self.api_key) < 32:
                 raise ValueError("api_key must contain at least 32 characters in production")
-            if (
-                self.upstream_market_data_base_url
-                and not self.upstream_market_data_base_url.startswith("https://")
-            ):
-                raise ValueError("upstream_market_data_base_url must use https in production")
+            if self.upstream_market_data_base_url:
+                upstream = urlsplit(self.upstream_market_data_base_url)
+                private_railway_http = (
+                    upstream.scheme == "http"
+                    and upstream.hostname is not None
+                    and upstream.hostname.endswith(".railway.internal")
+                    and upstream.port is not None
+                )
+                if upstream.scheme != "https" and not private_railway_http:
+                    raise ValueError(
+                        "upstream_market_data_base_url must use https in production, "
+                        "except for an explicit-port Railway private-network origin"
+                    )
             if self.upstream_market_data_base_url and not self.upstream_api_key:
                 raise ValueError(
                     "upstream_api_key is required when the production market-data URL is configured"
