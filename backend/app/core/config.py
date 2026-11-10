@@ -82,6 +82,7 @@ class Settings(BaseSettings):
     api_key: str | None = Field(
         default=None,
         description="API key for authenticating inbound requests (server-side only)",
+        repr=False,
     )
 
     # ---- Request limits ----
@@ -107,6 +108,7 @@ class Settings(BaseSettings):
     upstream_api_key: str | None = Field(
         default=None,
         description="Credential presented to the upstream service (server-side only)",
+        repr=False,
     )
     upstream_timeout_seconds: float = Field(
         default=5.0,
