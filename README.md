@@ -41,6 +41,14 @@ microservice's directory.
 This service consumes Service 1's data through a documented contract and does
 **not** duplicate any provider, collection, or source-quality logic.
 
+For Railway deployments in the same private network, configure
+`UPSTREAM_MARKET_DATA_BASE_URL=http://fx-market-data-service.railway.internal:8000`
+(or the actual Service 1 private DNS name and listening port) and set
+`UPSTREAM_API_KEY` to the same secret as Service 1's `API_KEY`. The Service 2
+production validator permits plain HTTP only for an explicit-port
+`*.railway.internal` origin; public production upstream URLs must use HTTPS.
+Do not route private service credentials through browser configuration.
+
 ---
 
 ## Implemented in this phase

@@ -16,6 +16,18 @@ def test_defaults_are_safe_for_development() -> None:
     assert settings.api_prefix == "/api/v1"
 
 
+def test_service_and_upstream_credentials_are_hidden_from_repr() -> None:
+    settings = Settings(
+        api_key="service-two-api-secret-value",
+        upstream_api_key="market-data-upstream-secret-value",
+    )
+
+    rendered = repr(settings)
+
+    assert "service-two-api-secret-value" not in rendered
+    assert "market-data-upstream-secret-value" not in rendered
+
+
 def test_require_auth_requires_api_key() -> None:
     with pytest.raises(PydanticValidationError):
         Settings(require_auth=True, api_key=None)
@@ -59,6 +71,42 @@ def test_production_requires_upstream_credential_when_configured() -> None:
             require_auth=True,
             api_key="x" * 32,
             upstream_market_data_base_url="https://market-data.internal",
+        )
+
+
+def test_production_accepts_authenticated_railway_private_http_upstream() -> None:
+    settings = Settings(
+        environment="production",
+        require_auth=True,
+        api_key="x" * 32,
+        upstream_market_data_base_url=(
+            "http://fx-market-data-service.railway.internal:8000"
+        ),
+        upstream_api_key="market-data-service-key",
+    )
+
+    assert settings.upstream_configured is True
+
+
+def test_production_rejects_plain_http_public_upstream() -> None:
+    with pytest.raises(PydanticValidationError, match="must use https"):
+        Settings(
+            environment="production",
+            require_auth=True,
+            api_key="x" * 32,
+            upstream_market_data_base_url="http://market-data.example.com:8000",
+            upstream_api_key="market-data-service-key",
+        )
+
+
+def test_production_rejects_railway_private_http_without_explicit_port() -> None:
+    with pytest.raises(PydanticValidationError, match="must use https"):
+        Settings(
+            environment="production",
+            require_auth=True,
+            api_key="x" * 32,
+            upstream_market_data_base_url="http://fx-market-data-service.railway.internal",
+            upstream_api_key="market-data-service-key",
         )
 
 
