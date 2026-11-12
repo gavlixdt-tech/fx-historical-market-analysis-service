@@ -392,6 +392,74 @@ def run_historical_replay(request: HistoricalReplayRequest) -> dict[str, Any]:
         raise ValueError("; ".join(errors))
     features = build_point_in_time_features(observations, spec, lookback=request.lookback)
     labels = generate_labels(observations, spec)
+
+    # Optional cross-service context is a feature only after its own available_at
+    # has passed the candle's information cutoff. Caller-supplied snapshots are
+    # fingerprinted but remain unverified provenance, never signed evidence.
+    session_names = (
+        "Wellington", "Sydney", "Tokyo", "Hong Kong", "Singapore",
+        "Frankfurt", "London", "New York",
+    )
+    open_window_names = ("sydney_open", "tokyo_open", "frankfurt_open", "london_open")
+    kill_zone_names = (
+        "ict_asia", "ict_london", "ict_new_york_am",
+        "ict_london_close", "ict_new_york_pm",
+    )
+    context_feature_names = [
+        *(f"session_{name.lower().replace(' ', '_')}" for name in session_names),
+        *(f"open_window_{name}" for name in open_window_names),
+        *(f"kill_zone_{name}" for name in kill_zone_names),
+        "session_overlap_count",
+        "liquidity_sweep_bullish", "liquidity_sweep_bearish",
+        "liquidity_displacement_confirmed", "liquidity_midpoint_reached",
+        "liquidity_midpoint_consolidation", "liquidity_invalidated",
+    ]
+    has_context = any(
+        item.session_context is not None or item.liquidity_lifecycle is not None
+        for item in request.observations
+    )
+    if has_context:
+        for index, item in enumerate(request.observations):
+            row = features[index]
+            if row is None:
+                continue
+            session = item.session_context
+            if session is not None and coerce_timestamp(session.available_at) <= available_at[index]:
+                active_sessions = set(session.active_sessions)
+                active_open_windows = set(session.active_open_windows)
+                active_kill_zones = set(session.active_kill_zones)
+                for name in session_names:
+                    row[f"session_{name.lower().replace(' ', '_')}"] = float(name in active_sessions)
+                for name in open_window_names:
+                    row[f"open_window_{name}"] = float(name in active_open_windows)
+                for name in kill_zone_names:
+                    row[f"kill_zone_{name}"] = float(name in active_kill_zones)
+                row["session_overlap_count"] = float(session.session_overlap_count)
+            else:
+                for name in context_feature_names[:18]:
+                    row[name] = None
+            lifecycle = item.liquidity_lifecycle
+            if lifecycle is not None and coerce_timestamp(lifecycle.available_at) <= available_at[index]:
+                state = lifecycle.state
+                confirmed = state in {
+                    "SWEEP_CONFIRMED_AWAITING_DISPLACEMENT", "DISPLACEMENT_CONFIRMED",
+                    "MIDPOINT_REACHED", "MIDPOINT_CONSOLIDATION_CANDIDATE",
+                }
+                row["liquidity_sweep_bullish"] = float(confirmed and lifecycle.direction == "bullish")
+                row["liquidity_sweep_bearish"] = float(confirmed and lifecycle.direction == "bearish")
+                row["liquidity_displacement_confirmed"] = float(
+                    state in {"DISPLACEMENT_CONFIRMED", "MIDPOINT_REACHED", "MIDPOINT_CONSOLIDATION_CANDIDATE"}
+                )
+                row["liquidity_midpoint_reached"] = float(
+                    state in {"MIDPOINT_REACHED", "MIDPOINT_CONSOLIDATION_CANDIDATE"}
+                )
+                row["liquidity_midpoint_consolidation"] = float(
+                    state == "MIDPOINT_CONSOLIDATION_CANDIDATE"
+                )
+                row["liquidity_invalidated"] = float(state == "INVALIDATED")
+            else:
+                for name in context_feature_names[18:]:
+                    row[name] = None
     task_type = task_type_for_target(spec.target_type)
     allowed = {item["name"] for item in supported_model_families(task_type)}
     baseline = (
@@ -410,9 +478,9 @@ def run_historical_replay(request: HistoricalReplayRequest) -> dict[str, Any]:
     if invalid_families:
         raise ValueError(f"unsupported model family for target: {', '.join(invalid_families)}")
     model_families = list(dict.fromkeys([baseline, *requested_families]))
-    feature_names = list(
-        FORECAST_FEATURE_NAMES[: min(spec.max_features, len(FORECAST_FEATURE_NAMES))]
-    )
+    feature_names = list(FORECAST_FEATURE_NAMES[: min(spec.max_features, len(FORECAST_FEATURE_NAMES))])
+    if has_context:
+        feature_names.extend(context_feature_names)
     closes = [observation.close for observation in observations]
 
     predictions: list[dict[str, Any]] = []
@@ -635,6 +703,11 @@ def run_historical_replay(request: HistoricalReplayRequest) -> dict[str, Any]:
         warnings.append("Small out-of-sample sample limits statistical reliability.")
     if request.synthetic:
         warnings.append("Synthetic input is for software validation only, not predictive evidence.")
+    if has_context:
+        warnings.append(
+            "Session and liquidity lifecycle context is caller-supplied and not independently authenticated; "
+            "each context field is excluded until its available_at is within that prediction's information cutoff."
+        )
     if request.final_holdout_start is None:
         warnings.append("No final holdout start was declared.")
     elif sum(records[baseline]["holdout"]) < 20:
@@ -656,6 +729,8 @@ def run_historical_replay(request: HistoricalReplayRequest) -> dict[str, Any]:
             "low": item.low,
             "close": item.close,
             "volume": item.volume,
+            "session_context": item.session_context.model_dump(mode="json") if item.session_context else None,
+            "liquidity_lifecycle": item.liquidity_lifecycle.model_dump(mode="json") if item.liquidity_lifecycle else None,
         }
         for index, item in enumerate(request.observations)
     ]
