@@ -131,12 +131,12 @@ def _bootstrap_improvement(
             "n": count,
             "block_length": BOOTSTRAP_BLOCK_LENGTH,
             "replicates": 0,
-            "mean_improvement": sum(improvements) / count if count else None,
+            "mean_improvement": math.fsum(improvements) / count if count else None,
             "ci_95": None,
             "p_value_one_sided": None,
         }
     rng = random.Random(seed)  # noqa: S311
-    observed = sum(improvements) / count
+    observed = math.fsum(improvements) / count
     centered = [value - observed for value in improvements]
     blocks = [
         centered[start : start + BOOTSTRAP_BLOCK_LENGTH]
@@ -152,8 +152,8 @@ def _bootstrap_improvement(
             block = blocks[block_index]
             sample.extend(improvements[block_index : block_index + len(block)])
             null_sample.extend(block)
-        estimates.append(sum(sample[:count]) / count)
-        null_means.append(sum(null_sample[:count]) / count)
+        estimates.append(math.fsum(sample[:count]) / count)
+        null_means.append(math.fsum(null_sample[:count]) / count)
     estimates.sort()
     p_value = (1 + sum(value >= observed for value in null_means)) / (replicates + 1)
     return {
