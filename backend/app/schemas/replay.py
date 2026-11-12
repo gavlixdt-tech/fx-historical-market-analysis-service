@@ -80,6 +80,10 @@ class ReplayLiquidityLifecycleInput(BaseModel):
     ]
     expected_direction: Literal["bullish", "bearish"] | None = None
     source_event_id: str = Field(min_length=1, max_length=200)
+    displacement_confirmed_at: datetime | None = None
+    midpoint_first_reached_at: datetime | None = None
+    consolidation_candidate_at: datetime | None = None
+    invalidated_at: datetime | None = None
 
     @model_validator(mode="after")
     def validate_lifecycle_context(self) -> ReplayLiquidityLifecycleInput:
@@ -89,6 +93,18 @@ class ReplayLiquidityLifecycleInput(BaseModel):
                 raise ValueError(f"liquidity_lifecycle.{name} must include a timezone")
         if self.available_at < self.observed_at:
             raise ValueError("liquidity_lifecycle.available_at cannot precede observed_at")
+        transition_times = (
+            ("displacement_confirmed_at", self.displacement_confirmed_at),
+            ("midpoint_first_reached_at", self.midpoint_first_reached_at),
+            ("consolidation_candidate_at", self.consolidation_candidate_at),
+            ("invalidated_at", self.invalidated_at),
+        )
+        for name, value in transition_times:
+            if value is not None:
+                if value.tzinfo is None or value.utcoffset() is None:
+                    raise ValueError(f"liquidity_lifecycle.{name} must include a timezone")
+                if value > self.observed_at:
+                    raise ValueError(f"liquidity_lifecycle.{name} cannot be later than observed_at")
         if (
             self.state
             in {
@@ -100,6 +116,18 @@ class ReplayLiquidityLifecycleInput(BaseModel):
             and self.expected_direction is None
         ):
             raise ValueError("confirmed lifecycle states require a direction")
+        if (
+            self.midpoint_first_reached_at is not None
+            and self.displacement_confirmed_at is not None
+            and self.midpoint_first_reached_at < self.displacement_confirmed_at
+        ):
+            raise ValueError("midpoint_first_reached_at cannot precede displacement_confirmed_at")
+        if (
+            self.consolidation_candidate_at is not None
+            and self.midpoint_first_reached_at is not None
+            and self.consolidation_candidate_at < self.midpoint_first_reached_at
+        ):
+            raise ValueError("consolidation_candidate_at cannot precede midpoint_first_reached_at")
         return self
 
 
