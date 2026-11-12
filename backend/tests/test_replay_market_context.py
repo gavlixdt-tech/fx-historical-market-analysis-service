@@ -38,9 +38,7 @@ def test_session_context_is_accepted_with_explicit_availability() -> None:
         "source_reference": "feature-engineering:context-123",
     }
 
-    result = ReplayObservationInput.model_validate(
-        _base_observation(session_context=context)
-    )
+    result = ReplayObservationInput.model_validate(_base_observation(session_context=context))
 
     assert result.session_context is not None
     assert result.session_context.available_at > result.available_at
@@ -62,9 +60,7 @@ def test_session_context_rejects_inconsistent_overlap_count() -> None:
     }
 
     with pytest.raises(ValidationError, match="session_overlap_count"):
-        ReplayObservationInput.model_validate(
-            _base_observation(session_context=context)
-        )
+        ReplayObservationInput.model_validate(_base_observation(session_context=context))
 
 
 def test_lifecycle_context_requires_direction_after_sweep_confirmation() -> None:
@@ -79,9 +75,7 @@ def test_lifecycle_context_requires_direction_after_sweep_confirmation() -> None
     }
 
     with pytest.raises(ValidationError, match="require a direction"):
-        ReplayObservationInput.model_validate(
-            _base_observation(liquidity_lifecycle=lifecycle)
-        )
+        ReplayObservationInput.model_validate(_base_observation(liquidity_lifecycle=lifecycle))
 
 
 def test_context_observation_cannot_postdate_its_candle() -> None:
@@ -99,9 +93,7 @@ def test_context_observation_cannot_postdate_its_candle() -> None:
     }
 
     with pytest.raises(ValidationError, match="later than the candle timestamp"):
-        ReplayObservationInput.model_validate(
-            _base_observation(session_context=context)
-        )
+        ReplayObservationInput.model_validate(_base_observation(session_context=context))
 
 
 
@@ -117,13 +109,10 @@ def test_lifecycle_context_accepts_expected_direction() -> None:
         "source_event_id": "liquidity:event-124",
     }
 
-    result = ReplayObservationInput.model_validate(
-        _base_observation(liquidity_lifecycle=lifecycle)
-    )
+    result = ReplayObservationInput.model_validate(_base_observation(liquidity_lifecycle=lifecycle))
 
     assert result.liquidity_lifecycle is not None
     assert result.liquidity_lifecycle.expected_direction == "bearish"
-
 
 
 def test_context_features_are_attached_only_after_their_availability_cutoff() -> None:
