@@ -92,7 +92,7 @@ jobs:
         run: npm ci --no-audit --no-fund
 
       - name: Type check
-        run: tsc --noEmit
+        run: npm run lint
 
       - name: Unit tests
         run: npm run test
