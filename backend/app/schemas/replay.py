@@ -108,7 +108,11 @@ class ReplayObservationInput(BaseModel):
                 raise ValueError(f"{field_name} must include a timezone")
         if self.available_at < self.timestamp:
             raise ValueError("available_at cannot precede timestamp")
-        for name, context in (("session_context", self.session_context), ("liquidity_lifecycle", self.liquidity_lifecycle)):
+        contexts = (
+            ("session_context", self.session_context),
+            ("liquidity_lifecycle", self.liquidity_lifecycle),
+        )
+        for name, context in contexts:
             if context is not None and context.observed_at > self.timestamp:
                 raise ValueError(f"{name}.observed_at cannot be later than the candle timestamp")
         now = datetime.now(UTC)
