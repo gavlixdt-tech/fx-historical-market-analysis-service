@@ -54,7 +54,7 @@ def test_session_context_rejects_inconsistent_overlap_count() -> None:
         "contract_version": "fx-session-context/v1",
         "observed_at": timestamp,
         "available_at": timestamp + timedelta(minutes=2),
-        "active_sessions": ["London", "New York"],
+        "active_sessions": ["london", "new_york"],
         "active_open_windows": [],
         "active_kill_zones": [],
         "session_overlap_count": 1,
@@ -102,3 +102,24 @@ def test_context_observation_cannot_postdate_its_candle() -> None:
         ReplayObservationInput.model_validate(
             _base_observation(session_context=context)
         )
+
+
+
+def test_lifecycle_context_accepts_expected_direction() -> None:
+    now = datetime.now(UTC)
+    timestamp = now - timedelta(hours=2)
+    lifecycle = {
+        "contract_version": "liquidity-sweep-lifecycle/v1",
+        "observed_at": timestamp,
+        "available_at": timestamp + timedelta(minutes=2),
+        "state": "DISPLACEMENT_CONFIRMED",
+        "expected_direction": "bearish",
+        "source_event_id": "liquidity:event-124",
+    }
+
+    result = ReplayObservationInput.model_validate(
+        _base_observation(liquidity_lifecycle=lifecycle)
+    )
+
+    assert result.liquidity_lifecycle is not None
+    assert result.liquidity_lifecycle.expected_direction == "bearish"
