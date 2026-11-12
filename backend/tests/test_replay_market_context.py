@@ -96,7 +96,6 @@ def test_context_observation_cannot_postdate_its_candle() -> None:
         ReplayObservationInput.model_validate(_base_observation(session_context=context))
 
 
-
 def test_lifecycle_context_accepts_expected_direction() -> None:
     now = datetime.now(UTC)
     timestamp = now - timedelta(hours=2)
