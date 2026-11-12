@@ -31,7 +31,7 @@ def test_session_context_is_accepted_with_explicit_availability() -> None:
         "contract_version": "fx-session-context/v1",
         "observed_at": timestamp,
         "available_at": timestamp + timedelta(minutes=2),
-        "active_sessions": ["London", "New York"],
+        "active_sessions": ["london", "new_york"],
         "active_open_windows": ["london_open"],
         "active_kill_zones": ["ict_london"],
         "session_overlap_count": 2,
