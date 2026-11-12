@@ -123,3 +123,82 @@ def test_lifecycle_context_accepts_expected_direction() -> None:
 
     assert result.liquidity_lifecycle is not None
     assert result.liquidity_lifecycle.expected_direction == "bearish"
+
+
+
+def test_context_features_are_attached_only_after_their_availability_cutoff() -> None:
+    from backend.app.analysis.replay import _attach_market_context_features
+
+    now = datetime.now(UTC)
+    timestamp = now - timedelta(hours=2)
+    candle_available_at = timestamp + timedelta(minutes=1)
+    session_context = {
+        "contract_version": "fx-session-context/v1",
+        "observed_at": timestamp,
+        "available_at": timestamp + timedelta(seconds=30),
+        "active_sessions": ["london", "new_york"],
+        "active_open_windows": ["london_open"],
+        "active_kill_zones": ["ict_london"],
+        "session_overlap_count": 2,
+        "source_reference": "feature-engineering:context-125",
+    }
+    lifecycle_context = {
+        "contract_version": "liquidity-sweep-lifecycle/v1",
+        "observed_at": timestamp,
+        "available_at": timestamp + timedelta(seconds=45),
+        "state": "MIDPOINT_CONSOLIDATION_CANDIDATE",
+        "expected_direction": "bullish",
+        "source_event_id": "liquidity:event-125",
+    }
+    observation = ReplayObservationInput.model_validate(
+        _base_observation(
+            available_at=candle_available_at,
+            session_context=session_context,
+            liquidity_lifecycle=lifecycle_context,
+        )
+    )
+    features = [{"reference_index": 0}]
+    names, has_context = _attach_market_context_features(
+        features, [observation], [candle_available_at]
+    )
+
+    assert has_context is True
+    assert "session_london" in names
+    assert features[0]["session_london"] == 1.0
+    assert features[0]["session_new_york"] == 1.0
+    assert features[0]["kill_zone_ict_london"] == 1.0
+    assert features[0]["session_overlap_count"] == 2.0
+    assert features[0]["liquidity_sweep_bullish"] == 1.0
+    assert features[0]["liquidity_displacement_confirmed"] == 1.0
+    assert features[0]["liquidity_midpoint_reached"] == 1.0
+    assert features[0]["liquidity_midpoint_consolidation"] == 1.0
+
+
+def test_late_context_is_null_and_cannot_enter_the_feature_row() -> None:
+    from backend.app.analysis.replay import _attach_market_context_features
+
+    now = datetime.now(UTC)
+    timestamp = now - timedelta(hours=2)
+    candle_available_at = timestamp + timedelta(minutes=1)
+    late_session_context = {
+        "contract_version": "fx-session-context/v1",
+        "observed_at": timestamp,
+        "available_at": timestamp + timedelta(minutes=2),
+        "active_sessions": ["london"],
+        "active_open_windows": [],
+        "active_kill_zones": [],
+        "session_overlap_count": 1,
+        "source_reference": "feature-engineering:late-context",
+    }
+    observation = ReplayObservationInput.model_validate(
+        _base_observation(
+            available_at=candle_available_at,
+            session_context=late_session_context,
+        )
+    )
+    features = [{"reference_index": 0}]
+    _attach_market_context_features(features, [observation], [candle_available_at])
+
+    assert features[0]["session_london"] is None
+    assert features[0]["session_overlap_count"] is None
+    assert features[0]["liquidity_sweep_bullish"] is None
