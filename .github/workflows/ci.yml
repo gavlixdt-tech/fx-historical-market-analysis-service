@@ -57,7 +57,7 @@ jobs:
         run: pytest tests -q
 
       - name: Verify the OpenAPI schema can be generated
-        run: python -c "from backend.app.main import create_app; create_app().openapi()"
+        run: python -c "from app.main import app; app.openapi()"
 
       - name: Verify no credentials are committed
         run: |
