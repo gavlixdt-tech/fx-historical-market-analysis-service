@@ -47,9 +47,6 @@ jobs:
       - name: Lint (ruff check)
         run: ruff check app tests
 
-      - name: Formatter diff diagnostics
-        run: ruff format --diff app/schemas/replay.py tests/test_replay_market_context.py || true
-
       - name: Lint (ruff format --check)
         run: ruff format --check app tests
 
