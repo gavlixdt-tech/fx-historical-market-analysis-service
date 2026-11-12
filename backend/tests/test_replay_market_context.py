@@ -253,7 +253,7 @@ def test_lifecycle_transition_timestamps_require_prerequisites() -> None:
     timestamp = now - timedelta(hours=2)
     base = {
         "contract_version": "liquidity-sweep-lifecycle/v1",
-        "observed_at": timestamp,
+        "observed_at": timestamp + timedelta(minutes=1),
         "available_at": timestamp + timedelta(minutes=2),
         "state": "INVALIDATED",
         "expected_direction": "bearish",
