@@ -345,7 +345,8 @@ class MarketDataClient:
             providers_response.status_code,
             started,
             contract_status=contract_status,
-            authentication_status="rejected" if providers_response.status_code in {401, 403}
+            authentication_status="rejected"
+            if providers_response.status_code in {401, 403}
             else ("verified" if authentication_required else "not_required"),
         )
         if provider_http_failure is not None:
@@ -365,16 +366,20 @@ class MarketDataClient:
             )
 
         real_providers = [
-            provider for provider in providers.data
+            provider
+            for provider in providers.data
             if provider.provider_type.value == "real" and provider.configured
         ]
         available_provider = next(
             (
-                provider for provider in real_providers
+                provider
+                for provider in real_providers
                 if provider.connection_status.value == "available"
                 and provider.last_connection_test_success is True
                 and self._is_utc_timestamp(provider.last_connection_test_at)
-                and any(capability.value == "historical_candles" for capability in provider.capabilities)
+                and any(
+                    capability.value == "historical_candles" for capability in provider.capabilities
+                )
             ),
             None,
         )
@@ -399,7 +404,10 @@ class MarketDataClient:
                 )
                 else "historical_candles_unavailable"
             )
-        elif any(provider.provider_type.value == "test" and provider.configured for provider in providers.data):
+        elif any(
+            provider.provider_type.value == "test" and provider.configured
+            for provider in providers.data
+        ):
             provider_status = "test_adapter_only"
         else:
             provider_status = "not_configured"
@@ -425,13 +433,25 @@ class MarketDataClient:
         if status_code < 400:
             return None
         if status_code == 429:
-            state, message = UpstreamState.RATE_LIMITED, "Upstream rate limited the connectivity probe."
+            state, message = (
+                UpstreamState.RATE_LIMITED,
+                "Upstream rate limited the connectivity probe.",
+            )
         elif status_code in {401, 403}:
-            state, message = UpstreamState.AUTH_FAILED, "Upstream rejected the configured credential."
+            state, message = (
+                UpstreamState.AUTH_FAILED,
+                "Upstream rejected the configured credential.",
+            )
         elif status_code >= 500:
-            state, message = UpstreamState.UNAVAILABLE, "Upstream service reported an internal error."
+            state, message = (
+                UpstreamState.UNAVAILABLE,
+                "Upstream service reported an internal error.",
+            )
         else:
-            state, message = UpstreamState.UNAVAILABLE, "Upstream service rejected the connectivity probe."
+            state, message = (
+                UpstreamState.UNAVAILABLE,
+                "Upstream service rejected the connectivity probe.",
+            )
         return self._connectivity_result(
             state,
             message,
