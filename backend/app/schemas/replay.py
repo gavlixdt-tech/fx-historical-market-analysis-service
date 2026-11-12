@@ -20,17 +20,24 @@ class ReplaySessionContextInput(BaseModel):
     contract_version: Literal["fx-session-context/v1"]
     observed_at: datetime
     available_at: datetime
-    active_sessions: list[Literal[
-        "wellington", "sydney", "tokyo", "hong_kong", "singapore",
-        "frankfurt", "london", "new_york"
-    ]] = Field(default_factory=list, max_length=8)
-    active_open_windows: list[Literal[
-        "sydney_open", "tokyo_open", "frankfurt_open", "london_open"
-    ]] = Field(default_factory=list, max_length=4)
-    active_kill_zones: list[Literal[
-        "ict_asia", "ict_london", "ict_new_york_am",
-        "ict_london_close", "ict_new_york_pm"
-    ]] = Field(default_factory=list, max_length=5)
+    active_sessions: list[
+        Literal[
+            "wellington",
+            "sydney",
+            "tokyo",
+            "hong_kong",
+            "singapore",
+            "frankfurt",
+            "london",
+            "new_york",
+        ]
+    ] = Field(default_factory=list, max_length=8)
+    active_open_windows: list[
+        Literal["sydney_open", "tokyo_open", "frankfurt_open", "london_open"]
+    ] = Field(default_factory=list, max_length=4)
+    active_kill_zones: list[
+        Literal["ict_asia", "ict_london", "ict_new_york_am", "ict_london_close", "ict_new_york_pm"]
+    ] = Field(default_factory=list, max_length=5)
     session_overlap_count: int = Field(ge=0, le=8)
     source_reference: str = Field(min_length=1, max_length=200)
 
@@ -62,10 +69,14 @@ class ReplayLiquidityLifecycleInput(BaseModel):
     observed_at: datetime
     available_at: datetime
     state: Literal[
-        "INSUFFICIENT_EVIDENCE_QUALITY", "INSUFFICIENT_PRE_SWEEP_HISTORY",
-        "NOT_REVERSAL_ELIGIBLE", "SWEEP_CONFIRMED_AWAITING_DISPLACEMENT",
-        "DISPLACEMENT_CONFIRMED", "MIDPOINT_REACHED",
-        "MIDPOINT_CONSOLIDATION_CANDIDATE", "INVALIDATED"
+        "INSUFFICIENT_EVIDENCE_QUALITY",
+        "INSUFFICIENT_PRE_SWEEP_HISTORY",
+        "NOT_REVERSAL_ELIGIBLE",
+        "SWEEP_CONFIRMED_AWAITING_DISPLACEMENT",
+        "DISPLACEMENT_CONFIRMED",
+        "MIDPOINT_REACHED",
+        "MIDPOINT_CONSOLIDATION_CANDIDATE",
+        "INVALIDATED",
     ]
     expected_direction: Literal["bullish", "bearish"] | None = None
     source_event_id: str = Field(min_length=1, max_length=200)
@@ -78,10 +89,16 @@ class ReplayLiquidityLifecycleInput(BaseModel):
                 raise ValueError(f"liquidity_lifecycle.{name} must include a timezone")
         if self.available_at < self.observed_at:
             raise ValueError("liquidity_lifecycle.available_at cannot precede observed_at")
-        if self.state in {
-            "SWEEP_CONFIRMED_AWAITING_DISPLACEMENT", "DISPLACEMENT_CONFIRMED",
-            "MIDPOINT_REACHED", "MIDPOINT_CONSOLIDATION_CANDIDATE"
-        } and self.expected_direction is None:
+        if (
+            self.state
+            in {
+                "SWEEP_CONFIRMED_AWAITING_DISPLACEMENT",
+                "DISPLACEMENT_CONFIRMED",
+                "MIDPOINT_REACHED",
+                "MIDPOINT_CONSOLIDATION_CANDIDATE",
+            }
+            and self.expected_direction is None
+        ):
             raise ValueError("confirmed lifecycle states require a direction")
         return self
 
