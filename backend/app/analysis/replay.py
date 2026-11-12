@@ -480,7 +480,8 @@ def run_historical_replay(request: HistoricalReplayRequest) -> dict[str, Any]:
     model_families = list(dict.fromkeys([baseline, *requested_families]))
     feature_names = list(FORECAST_FEATURE_NAMES[: min(spec.max_features, len(FORECAST_FEATURE_NAMES))])
     if has_context:
-        feature_names.extend(context_feature_names)
+        remaining_feature_capacity = max(0, spec.max_features - len(feature_names))
+        feature_names.extend(context_feature_names[:remaining_feature_capacity])
     closes = [observation.close for observation in observations]
 
     predictions: list[dict[str, Any]] = []
