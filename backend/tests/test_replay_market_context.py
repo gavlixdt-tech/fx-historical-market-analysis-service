@@ -190,3 +190,58 @@ def test_late_context_is_null_and_cannot_enter_the_feature_row() -> None:
     assert features[0]["session_london"] is None
     assert features[0]["session_overlap_count"] is None
     assert features[0]["liquidity_sweep_bullish"] is None
+
+
+
+def test_invalidated_lifecycle_preserves_prior_transition_features() -> None:
+    from backend.app.analysis.replay import _attach_market_context_features
+
+    now = datetime.now(UTC)
+    timestamp = now - timedelta(hours=2)
+    candle_available_at = timestamp + timedelta(minutes=11)
+    lifecycle = {
+        "contract_version": "liquidity-sweep-lifecycle/v1",
+        "observed_at": timestamp + timedelta(minutes=10),
+        "available_at": candle_available_at,
+        "state": "INVALIDATED",
+        "expected_direction": "bullish",
+        "source_event_id": "liquidity:event-invalidated",
+        "displacement_confirmed_at": timestamp + timedelta(minutes=2),
+        "midpoint_first_reached_at": timestamp + timedelta(minutes=5),
+        "invalidated_at": timestamp + timedelta(minutes=9),
+    }
+    observation = ReplayObservationInput.model_validate(
+        _base_observation(
+            available_at=candle_available_at,
+            liquidity_lifecycle=lifecycle,
+        )
+    )
+    features = [{"reference_index": 0}]
+    _attach_market_context_features(features, [observation], [candle_available_at])
+
+    assert features[0]["liquidity_sweep_bullish"] == 1.0
+    assert features[0]["liquidity_displacement_confirmed"] == 1.0
+    assert features[0]["liquidity_midpoint_reached"] == 1.0
+    assert features[0]["liquidity_midpoint_consolidation"] is None
+    assert features[0]["liquidity_invalidated"] == 1.0
+
+
+def test_lifecycle_transition_cannot_postdate_context_observation() -> None:
+    now = datetime.now(UTC)
+    timestamp = now - timedelta(hours=2)
+    lifecycle = {
+        "contract_version": "liquidity-sweep-lifecycle/v1",
+        "observed_at": timestamp + timedelta(minutes=5),
+        "available_at": timestamp + timedelta(minutes=6),
+        "state": "DISPLACEMENT_CONFIRMED",
+        "expected_direction": "bearish",
+        "source_event_id": "liquidity:event-future-transition",
+        "displacement_confirmed_at": timestamp + timedelta(minutes=7),
+    }
+    with pytest.raises(ValidationError, match="cannot be later than observed_at"):
+        ReplayObservationInput.model_validate(
+            _base_observation(
+                available_at=timestamp + timedelta(minutes=6),
+                liquidity_lifecycle=lifecycle,
+            )
+        )
