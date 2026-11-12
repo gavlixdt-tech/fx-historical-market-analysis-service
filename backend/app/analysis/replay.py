@@ -632,6 +632,7 @@ def run_historical_replay(request: HistoricalReplayRequest) -> dict[str, Any]:
             "forecasts": {},
         }
         session_context = request.observations[index].session_context
+        session_payload: dict[str, Any]
         if session_context is None:
             session_payload = {
                 "status": "not_supplied",
@@ -661,6 +662,7 @@ def run_historical_replay(request: HistoricalReplayRequest) -> dict[str, Any]:
             }
 
         lifecycle_context = request.observations[index].liquidity_lifecycle
+        lifecycle_payload: dict[str, Any]
         if lifecycle_context is None:
             lifecycle_payload = {
                 "status": "not_supplied",
