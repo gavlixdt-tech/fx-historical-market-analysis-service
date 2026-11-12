@@ -246,3 +246,36 @@ def test_lifecycle_transition_cannot_postdate_context_observation() -> None:
                 liquidity_lifecycle=lifecycle,
             )
         )
+
+
+
+def test_lifecycle_transition_timestamps_require_prerequisites() -> None:
+    now = datetime.now(UTC)
+    timestamp = now - timedelta(hours=2)
+    base = {
+        "contract_version": "liquidity-sweep-lifecycle/v1",
+        "observed_at": timestamp,
+        "available_at": timestamp + timedelta(minutes=2),
+        "state": "INVALIDATED",
+        "expected_direction": "bearish",
+        "source_event_id": "liquidity:event-transition-dependency",
+    }
+    with pytest.raises(ValidationError, match="requires displacement_confirmed_at"):
+        ReplayObservationInput.model_validate(
+            _base_observation(
+                liquidity_lifecycle={
+                    **base,
+                    "midpoint_first_reached_at": timestamp + timedelta(seconds=30),
+                }
+            )
+        )
+    with pytest.raises(ValidationError, match="requires midpoint_first_reached_at"):
+        ReplayObservationInput.model_validate(
+            _base_observation(
+                liquidity_lifecycle={
+                    **base,
+                    "displacement_confirmed_at": timestamp + timedelta(seconds=20),
+                    "consolidation_candidate_at": timestamp + timedelta(seconds=40),
+                }
+            )
+        )
