@@ -441,14 +441,25 @@ def run_historical_replay(request: HistoricalReplayRequest) -> dict[str, Any]:
             lifecycle = item.liquidity_lifecycle
             if lifecycle is not None and coerce_timestamp(lifecycle.available_at) <= available_at[index]:
                 state = lifecycle.state
-                confirmed = state in {
-                    "SWEEP_CONFIRMED_AWAITING_DISPLACEMENT", "DISPLACEMENT_CONFIRMED",
-                    "MIDPOINT_REACHED", "MIDPOINT_CONSOLIDATION_CANDIDATE",
+                sweep_observed = state in {
+                    "SWEEP_CONFIRMED_AWAITING_DISPLACEMENT",
+                    "DISPLACEMENT_CONFIRMED",
+                    "MIDPOINT_REACHED",
+                    "MIDPOINT_CONSOLIDATION_CANDIDATE",
+                    "INVALIDATED",
                 }
-                row["liquidity_sweep_bullish"] = float(confirmed and lifecycle.expected_direction == "bullish")
-                row["liquidity_sweep_bearish"] = float(confirmed and lifecycle.expected_direction == "bearish")
+                row["liquidity_sweep_bullish"] = float(
+                    sweep_observed and lifecycle.expected_direction == "bullish"
+                )
+                row["liquidity_sweep_bearish"] = float(
+                    sweep_observed and lifecycle.expected_direction == "bearish"
+                )
                 row["liquidity_displacement_confirmed"] = float(
-                    state in {"DISPLACEMENT_CONFIRMED", "MIDPOINT_REACHED", "MIDPOINT_CONSOLIDATION_CANDIDATE"}
+                    state in {
+                        "DISPLACEMENT_CONFIRMED",
+                        "MIDPOINT_REACHED",
+                        "MIDPOINT_CONSOLIDATION_CANDIDATE",
+                    }
                 )
                 row["liquidity_midpoint_reached"] = float(
                     state in {"MIDPOINT_REACHED", "MIDPOINT_CONSOLIDATION_CANDIDATE"}
