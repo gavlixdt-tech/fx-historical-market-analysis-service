@@ -397,8 +397,8 @@ def run_historical_replay(request: HistoricalReplayRequest) -> dict[str, Any]:
     # has passed the candle's information cutoff. Caller-supplied snapshots are
     # fingerprinted but remain unverified provenance, never signed evidence.
     session_names = (
-        "Wellington", "Sydney", "Tokyo", "Hong Kong", "Singapore",
-        "Frankfurt", "London", "New York",
+        "wellington", "sydney", "tokyo", "hong_kong", "singapore",
+        "frankfurt", "london", "new_york",
     )
     open_window_names = ("sydney_open", "tokyo_open", "frankfurt_open", "london_open")
     kill_zone_names = (
@@ -445,8 +445,8 @@ def run_historical_replay(request: HistoricalReplayRequest) -> dict[str, Any]:
                     "SWEEP_CONFIRMED_AWAITING_DISPLACEMENT", "DISPLACEMENT_CONFIRMED",
                     "MIDPOINT_REACHED", "MIDPOINT_CONSOLIDATION_CANDIDATE",
                 }
-                row["liquidity_sweep_bullish"] = float(confirmed and lifecycle.direction == "bullish")
-                row["liquidity_sweep_bearish"] = float(confirmed and lifecycle.direction == "bearish")
+                row["liquidity_sweep_bullish"] = float(confirmed and lifecycle.expected_direction == "bullish")
+                row["liquidity_sweep_bearish"] = float(confirmed and lifecycle.expected_direction == "bearish")
                 row["liquidity_displacement_confirmed"] = float(
                     state in {"DISPLACEMENT_CONFIRMED", "MIDPOINT_REACHED", "MIDPOINT_CONSOLIDATION_CANDIDATE"}
                 )
@@ -615,7 +615,7 @@ def run_historical_replay(request: HistoricalReplayRequest) -> dict[str, Any]:
                 ),
                 "source_event_id": lifecycle_context.source_event_id if lifecycle_known else None,
                 "state": lifecycle_context.state if lifecycle_known else None,
-                "direction": lifecycle_context.direction if lifecycle_known else None,
+                "expected_direction": lifecycle_context.expected_direction if lifecycle_known else None,
             },
             "provenance_status": "caller_asserted_unverified",
         }
