@@ -116,15 +116,9 @@ class ReplayLiquidityLifecycleInput(BaseModel):
             and self.expected_direction is None
         ):
             raise ValueError("confirmed lifecycle states require a direction")
-        if (
-            self.midpoint_first_reached_at is not None
-            and self.displacement_confirmed_at is None
-        ):
+        if self.midpoint_first_reached_at is not None and self.displacement_confirmed_at is None:
             raise ValueError("midpoint_first_reached_at requires displacement_confirmed_at")
-        if (
-            self.consolidation_candidate_at is not None
-            and self.midpoint_first_reached_at is None
-        ):
+        if self.consolidation_candidate_at is not None and self.midpoint_first_reached_at is None:
             raise ValueError("consolidation_candidate_at requires midpoint_first_reached_at")
         if (
             self.midpoint_first_reached_at is not None
