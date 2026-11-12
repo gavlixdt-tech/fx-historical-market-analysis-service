@@ -124,3 +124,30 @@ time.
   contract has no historical first-available timestamp.
 - The replay does not claim that generic market features represent all
   information available to GFX services.
+
+
+## Session and liquidity lifecycle context features
+
+The replay request may attach optional `session_context` and
+`liquidity_lifecycle` snapshots to each candle. These are versioned
+caller-supplied context records, not direct service calls and not authenticated
+evidence. Session snapshots carry active financial-centre sessions, local open
+windows, ICT-style research kill zones, overlap count, source reference,
+observation time and `available_at`. Lifecycle snapshots carry the
+`liquidity-sweep-lifecycle/v1` state, direction, source event ID, observation
+time and `available_at`.
+
+A context record contributes features only when its own `available_at` is no
+later than the candle's `available_at` information cutoff. Late-arriving
+context is represented as unavailable at that origin and is not backfilled
+into earlier training rows. Each forecast response includes the session and
+lifecycle context state at its information cutoff; source references are
+preserved for chart annotations. Context is included in the dataset
+fingerprint. All context provenance remains `caller_asserted_unverified`
+until producer authentication, source authorization and immutable lineage are
+integrated.
+
+These features support historical conditional analysis; they do not prove
+that a stop pool existed, that liquidity was consumed, or that a setup predicts
+future price direction. They do not create a calibrated probability or trade
+instruction.
