@@ -434,21 +434,47 @@ def _attach_market_context_features(
             row["liquidity_sweep_bearish"] = float(
                 sweep_observed and lifecycle.expected_direction == "bearish"
             )
-            row["liquidity_displacement_confirmed"] = float(
-                state
-                in {
-                    "DISPLACEMENT_CONFIRMED",
-                    "MIDPOINT_REACHED",
-                    "MIDPOINT_CONSOLIDATION_CANDIDATE",
-                }
-            )
-            row["liquidity_midpoint_reached"] = float(
-                state in {"MIDPOINT_REACHED", "MIDPOINT_CONSOLIDATION_CANDIDATE"}
-            )
-            row["liquidity_midpoint_consolidation"] = float(
-                state == "MIDPOINT_CONSOLIDATION_CANDIDATE"
-            )
-            row["liquidity_invalidated"] = float(state == "INVALIDATED")
+            progression_states = {
+                "DISPLACEMENT_CONFIRMED",
+                "MIDPOINT_REACHED",
+                "MIDPOINT_CONSOLIDATION_CANDIDATE",
+            }
+            if lifecycle.displacement_confirmed_at is not None:
+                row["liquidity_displacement_confirmed"] = float(
+                    coerce_timestamp(lifecycle.displacement_confirmed_at) <= available_at[index]
+                )
+            elif state == "INVALIDATED":
+                row["liquidity_displacement_confirmed"] = None
+            else:
+                row["liquidity_displacement_confirmed"] = float(state in progression_states)
+
+            midpoint_states = {"MIDPOINT_REACHED", "MIDPOINT_CONSOLIDATION_CANDIDATE"}
+            if lifecycle.midpoint_first_reached_at is not None:
+                row["liquidity_midpoint_reached"] = float(
+                    coerce_timestamp(lifecycle.midpoint_first_reached_at) <= available_at[index]
+                )
+            elif state == "INVALIDATED":
+                row["liquidity_midpoint_reached"] = None
+            else:
+                row["liquidity_midpoint_reached"] = float(state in midpoint_states)
+
+            if lifecycle.consolidation_candidate_at is not None:
+                row["liquidity_midpoint_consolidation"] = float(
+                    coerce_timestamp(lifecycle.consolidation_candidate_at) <= available_at[index]
+                )
+            elif state == "INVALIDATED":
+                row["liquidity_midpoint_consolidation"] = None
+            else:
+                row["liquidity_midpoint_consolidation"] = float(
+                    state == "MIDPOINT_CONSOLIDATION_CANDIDATE"
+                )
+
+            if lifecycle.invalidated_at is not None:
+                row["liquidity_invalidated"] = float(
+                    coerce_timestamp(lifecycle.invalidated_at) <= available_at[index]
+                )
+            else:
+                row["liquidity_invalidated"] = float(state == "INVALIDATED")
         else:
             for name in context_feature_names[18:]:
                 row[name] = None
@@ -676,6 +702,26 @@ def run_historical_replay(request: HistoricalReplayRequest) -> dict[str, Any]:
                 "source_event_id": lifecycle_context.source_event_id,
                 "state": lifecycle_context.state,
                 "expected_direction": lifecycle_context.expected_direction,
+                "displacement_confirmed_at": (
+                    lifecycle_context.displacement_confirmed_at.isoformat()
+                    if lifecycle_context.displacement_confirmed_at is not None
+                    else None
+                ),
+                "midpoint_first_reached_at": (
+                    lifecycle_context.midpoint_first_reached_at.isoformat()
+                    if lifecycle_context.midpoint_first_reached_at is not None
+                    else None
+                ),
+                "consolidation_candidate_at": (
+                    lifecycle_context.consolidation_candidate_at.isoformat()
+                    if lifecycle_context.consolidation_candidate_at is not None
+                    else None
+                ),
+                "invalidated_at": (
+                    lifecycle_context.invalidated_at.isoformat()
+                    if lifecycle_context.invalidated_at is not None
+                    else None
+                ),
             }
         else:
             lifecycle_payload = {
