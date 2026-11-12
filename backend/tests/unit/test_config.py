@@ -79,9 +79,7 @@ def test_production_accepts_authenticated_railway_private_http_upstream() -> Non
         environment="production",
         require_auth=True,
         api_key="x" * 32,
-        upstream_market_data_base_url=(
-            "http://fx-market-data-service.railway.internal:8000"
-        ),
+        upstream_market_data_base_url=("http://fx-market-data-service.railway.internal:8000"),
         upstream_api_key="market-data-service-key",
     )
 
