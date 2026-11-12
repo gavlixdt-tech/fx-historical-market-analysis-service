@@ -192,7 +192,6 @@ def test_late_context_is_null_and_cannot_enter_the_feature_row() -> None:
     assert features[0]["liquidity_sweep_bullish"] is None
 
 
-
 def test_invalidated_lifecycle_preserves_prior_transition_features() -> None:
     from backend.app.analysis.replay import _attach_market_context_features
 
@@ -212,6 +211,7 @@ def test_invalidated_lifecycle_preserves_prior_transition_features() -> None:
     }
     observation = ReplayObservationInput.model_validate(
         _base_observation(
+            timestamp=timestamp + timedelta(minutes=10),
             available_at=candle_available_at,
             liquidity_lifecycle=lifecycle,
         )
@@ -241,6 +241,7 @@ def test_lifecycle_transition_cannot_postdate_context_observation() -> None:
     with pytest.raises(ValidationError, match="cannot be later than observed_at"):
         ReplayObservationInput.model_validate(
             _base_observation(
+                timestamp=timestamp + timedelta(minutes=5),
                 available_at=timestamp + timedelta(minutes=6),
                 liquidity_lifecycle=lifecycle,
             )
