@@ -57,7 +57,7 @@ jobs:
         run: pytest tests -q
 
       - name: Verify the OpenAPI schema can be generated
-        run: python -c "from backend.app.main import create_app; create_app().openapi()"
+        run: PYTHONPATH=.. python -c "from backend.app.main import app; app.openapi()"
 
       - name: Verify no credentials are committed
         run: |
@@ -92,7 +92,7 @@ jobs:
         run: npm ci --no-audit --no-fund
 
       - name: Type check
-        run: tsc --noEmit
+        run: npm run lint
 
       - name: Unit tests
         run: npm run test

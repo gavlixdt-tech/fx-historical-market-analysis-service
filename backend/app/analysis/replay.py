@@ -32,7 +32,7 @@ from backend.app.analysis.model_research import (
     task_type_for_target,
 )
 from backend.app.analysis.observations import Observation, coerce_timestamp
-from backend.app.schemas.replay import HistoricalReplayRequest
+from backend.app.schemas.replay import HistoricalReplayRequest, ReplayObservationInput
 
 BOOTSTRAP_REPLICATES = 500
 BOOTSTRAP_BLOCK_LENGTH = 5
@@ -131,12 +131,12 @@ def _bootstrap_improvement(
             "n": count,
             "block_length": BOOTSTRAP_BLOCK_LENGTH,
             "replicates": 0,
-            "mean_improvement": sum(improvements) / count if count else None,
+            "mean_improvement": math.fsum(improvements) / count if count else None,
             "ci_95": None,
             "p_value_one_sided": None,
         }
     rng = random.Random(seed)  # noqa: S311
-    observed = sum(improvements) / count
+    observed = math.fsum(improvements) / count
     centered = [value - observed for value in improvements]
     blocks = [
         centered[start : start + BOOTSTRAP_BLOCK_LENGTH]
@@ -152,8 +152,8 @@ def _bootstrap_improvement(
             block = blocks[block_index]
             sample.extend(improvements[block_index : block_index + len(block)])
             null_sample.extend(block)
-        estimates.append(sum(sample[:count]) / count)
-        null_means.append(sum(null_sample[:count]) / count)
+        estimates.append(math.fsum(sample[:count]) / count)
+        null_means.append(math.fsum(null_sample[:count]) / count)
     estimates.sort()
     p_value = (1 + sum(value >= observed for value in null_means)) / (replicates + 1)
     return {
@@ -351,6 +351,137 @@ def _metric_report(
     return metrics
 
 
+def _attach_market_context_features(
+    features: list[dict[str, Any] | None],
+    observations: list[ReplayObservationInput],
+    available_at: list[datetime],
+) -> tuple[list[str], bool]:
+    """Attach context features only when each snapshot was available at that candle's cutoff."""
+    session_names = (
+        "wellington",
+        "sydney",
+        "tokyo",
+        "hong_kong",
+        "singapore",
+        "frankfurt",
+        "london",
+        "new_york",
+    )
+    open_window_names = ("sydney_open", "tokyo_open", "frankfurt_open", "london_open")
+    kill_zone_names = (
+        "ict_asia",
+        "ict_london",
+        "ict_new_york_am",
+        "ict_london_close",
+        "ict_new_york_pm",
+    )
+    context_feature_names = [
+        *(f"session_{name}" for name in session_names),
+        *(f"open_window_{name}" for name in open_window_names),
+        *(f"kill_zone_{name}" for name in kill_zone_names),
+        "session_overlap_count",
+        "liquidity_sweep_bullish",
+        "liquidity_sweep_bearish",
+        "liquidity_displacement_confirmed",
+        "liquidity_midpoint_reached",
+        "liquidity_midpoint_consolidation",
+        "liquidity_invalidated",
+    ]
+    has_context = any(
+        item.session_context is not None or item.liquidity_lifecycle is not None
+        for item in observations
+    )
+    if not has_context:
+        return context_feature_names, False
+
+    for index, item in enumerate(observations):
+        row = features[index]
+        if row is None:
+            continue
+
+        session = item.session_context
+        if session is not None and coerce_timestamp(session.available_at) <= available_at[index]:
+            active_sessions = set(session.active_sessions)
+            active_open_windows = set(session.active_open_windows)
+            active_kill_zones = set(session.active_kill_zones)
+            for name in session_names:
+                row[f"session_{name}"] = float(name in active_sessions)
+            for name in open_window_names:
+                row[f"open_window_{name}"] = float(name in active_open_windows)
+            for name in kill_zone_names:
+                row[f"kill_zone_{name}"] = float(name in active_kill_zones)
+            row["session_overlap_count"] = float(session.session_overlap_count)
+        else:
+            for name in context_feature_names[:18]:
+                row[name] = None
+
+        lifecycle = item.liquidity_lifecycle
+        if (
+            lifecycle is not None
+            and coerce_timestamp(lifecycle.available_at) <= available_at[index]
+        ):
+            state = lifecycle.state
+            sweep_observed = state in {
+                "SWEEP_CONFIRMED_AWAITING_DISPLACEMENT",
+                "DISPLACEMENT_CONFIRMED",
+                "MIDPOINT_REACHED",
+                "MIDPOINT_CONSOLIDATION_CANDIDATE",
+                "INVALIDATED",
+            }
+            row["liquidity_sweep_bullish"] = float(
+                sweep_observed and lifecycle.expected_direction == "bullish"
+            )
+            row["liquidity_sweep_bearish"] = float(
+                sweep_observed and lifecycle.expected_direction == "bearish"
+            )
+            progression_states = {
+                "DISPLACEMENT_CONFIRMED",
+                "MIDPOINT_REACHED",
+                "MIDPOINT_CONSOLIDATION_CANDIDATE",
+            }
+            if lifecycle.displacement_confirmed_at is not None:
+                row["liquidity_displacement_confirmed"] = float(
+                    coerce_timestamp(lifecycle.displacement_confirmed_at) <= available_at[index]
+                )
+            elif state == "INVALIDATED":
+                row["liquidity_displacement_confirmed"] = None
+            else:
+                row["liquidity_displacement_confirmed"] = float(state in progression_states)
+
+            midpoint_states = {"MIDPOINT_REACHED", "MIDPOINT_CONSOLIDATION_CANDIDATE"}
+            if lifecycle.midpoint_first_reached_at is not None:
+                row["liquidity_midpoint_reached"] = float(
+                    coerce_timestamp(lifecycle.midpoint_first_reached_at) <= available_at[index]
+                )
+            elif state == "INVALIDATED":
+                row["liquidity_midpoint_reached"] = None
+            else:
+                row["liquidity_midpoint_reached"] = float(state in midpoint_states)
+
+            if lifecycle.consolidation_candidate_at is not None:
+                row["liquidity_midpoint_consolidation"] = float(
+                    coerce_timestamp(lifecycle.consolidation_candidate_at) <= available_at[index]
+                )
+            elif state == "INVALIDATED":
+                row["liquidity_midpoint_consolidation"] = None
+            else:
+                row["liquidity_midpoint_consolidation"] = float(
+                    state == "MIDPOINT_CONSOLIDATION_CANDIDATE"
+                )
+
+            if lifecycle.invalidated_at is not None:
+                row["liquidity_invalidated"] = float(
+                    coerce_timestamp(lifecycle.invalidated_at) <= available_at[index]
+                )
+            else:
+                row["liquidity_invalidated"] = float(state == "INVALIDATED")
+        else:
+            for name in context_feature_names[18:]:
+                row[name] = None
+
+    return context_feature_names, True
+
+
 def run_historical_replay(request: HistoricalReplayRequest) -> dict[str, Any]:
     started_at = datetime.now(UTC).isoformat()
     timestamps = [coerce_timestamp(item.timestamp) for item in request.observations]
@@ -392,6 +523,10 @@ def run_historical_replay(request: HistoricalReplayRequest) -> dict[str, Any]:
         raise ValueError("; ".join(errors))
     features = build_point_in_time_features(observations, spec, lookback=request.lookback)
     labels = generate_labels(observations, spec)
+
+    context_feature_names, has_context = _attach_market_context_features(
+        features, request.observations, available_at
+    )
     task_type = task_type_for_target(spec.target_type)
     allowed = {item["name"] for item in supported_model_families(task_type)}
     baseline = (
@@ -413,6 +548,9 @@ def run_historical_replay(request: HistoricalReplayRequest) -> dict[str, Any]:
     feature_names = list(
         FORECAST_FEATURE_NAMES[: min(spec.max_features, len(FORECAST_FEATURE_NAMES))]
     )
+    if has_context:
+        remaining_feature_capacity = max(0, spec.max_features - len(feature_names))
+        feature_names.extend(context_feature_names[:remaining_feature_capacity])
     closes = [observation.close for observation in observations]
 
     predictions: list[dict[str, Any]] = []
@@ -518,6 +656,85 @@ def run_historical_replay(request: HistoricalReplayRequest) -> dict[str, Any]:
             "regime": regime,
             "actual": actual,
             "forecasts": {},
+        }
+        session_context = request.observations[index].session_context
+        session_payload: dict[str, Any]
+        if session_context is None:
+            session_payload = {
+                "status": "not_supplied",
+                "source_reference": None,
+                "active_sessions": [],
+                "active_open_windows": [],
+                "active_kill_zones": [],
+                "session_overlap_count": None,
+            }
+        elif coerce_timestamp(session_context.available_at) <= decision_time:
+            session_payload = {
+                "status": "available",
+                "source_reference": session_context.source_reference,
+                "active_sessions": session_context.active_sessions,
+                "active_open_windows": session_context.active_open_windows,
+                "active_kill_zones": session_context.active_kill_zones,
+                "session_overlap_count": session_context.session_overlap_count,
+            }
+        else:
+            session_payload = {
+                "status": "not_yet_available",
+                "source_reference": None,
+                "active_sessions": [],
+                "active_open_windows": [],
+                "active_kill_zones": [],
+                "session_overlap_count": None,
+            }
+
+        lifecycle_context = request.observations[index].liquidity_lifecycle
+        lifecycle_payload: dict[str, Any]
+        if lifecycle_context is None:
+            lifecycle_payload = {
+                "status": "not_supplied",
+                "source_event_id": None,
+                "state": None,
+                "expected_direction": None,
+            }
+        elif coerce_timestamp(lifecycle_context.available_at) <= decision_time:
+            lifecycle_payload = {
+                "status": "available",
+                "source_event_id": lifecycle_context.source_event_id,
+                "state": lifecycle_context.state,
+                "expected_direction": lifecycle_context.expected_direction,
+                "displacement_confirmed_at": (
+                    lifecycle_context.displacement_confirmed_at.isoformat()
+                    if lifecycle_context.displacement_confirmed_at is not None
+                    else None
+                ),
+                "midpoint_first_reached_at": (
+                    lifecycle_context.midpoint_first_reached_at.isoformat()
+                    if lifecycle_context.midpoint_first_reached_at is not None
+                    else None
+                ),
+                "consolidation_candidate_at": (
+                    lifecycle_context.consolidation_candidate_at.isoformat()
+                    if lifecycle_context.consolidation_candidate_at is not None
+                    else None
+                ),
+                "invalidated_at": (
+                    lifecycle_context.invalidated_at.isoformat()
+                    if lifecycle_context.invalidated_at is not None
+                    else None
+                ),
+            }
+        else:
+            lifecycle_payload = {
+                "status": "not_yet_available",
+                "source_event_id": None,
+                "state": None,
+                "expected_direction": None,
+            }
+
+        forecast_row["market_context"] = {
+            "session": session_payload,
+            "liquidity_lifecycle": lifecycle_payload,
+            "provenance_status": "caller_asserted_unverified",
         }
         for model_index, family in enumerate(model_families):
             predicted, probabilities = _fit_predict(
@@ -635,6 +852,11 @@ def run_historical_replay(request: HistoricalReplayRequest) -> dict[str, Any]:
         warnings.append("Small out-of-sample sample limits statistical reliability.")
     if request.synthetic:
         warnings.append("Synthetic input is for software validation only, not predictive evidence.")
+    if has_context:
+        warnings.append(
+            "Session and liquidity lifecycle context is caller-supplied and not independently authenticated; "
+            "each context field is excluded until its available_at is within that prediction's information cutoff."
+        )
     if request.final_holdout_start is None:
         warnings.append("No final holdout start was declared.")
     elif sum(records[baseline]["holdout"]) < 20:
@@ -656,6 +878,12 @@ def run_historical_replay(request: HistoricalReplayRequest) -> dict[str, Any]:
             "low": item.low,
             "close": item.close,
             "volume": item.volume,
+            "session_context": item.session_context.model_dump(mode="json")
+            if item.session_context
+            else None,
+            "liquidity_lifecycle": item.liquidity_lifecycle.model_dump(mode="json")
+            if item.liquidity_lifecycle
+            else None,
         }
         for index, item in enumerate(request.observations)
     ]
@@ -718,6 +946,10 @@ def run_historical_replay(request: HistoricalReplayRequest) -> dict[str, Any]:
             "rolling_window": request.rolling_window,
             "embargo_periods": request.embargo_periods,
             "model_families": model_families,
+            "feature_names": feature_names,
+            "context_features_selected": [
+                name for name in feature_names if name in context_feature_names
+            ],
             "model_hyperparameters": {
                 "ridge_alpha": 1.0,
                 "random_forest": {"n_estimators": 20, "max_depth": 4},

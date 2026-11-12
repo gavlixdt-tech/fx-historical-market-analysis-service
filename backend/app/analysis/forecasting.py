@@ -17,9 +17,9 @@ SUPPORTED_TARGET_TYPES = (
     "realized_volatility",
 )
 
-ALGORITHM_VERSION = "1.0.0"
+ALGORITHM_VERSION = "1.1.0"
 DATASET_SCHEMA_VERSION = "1.0.0"
-FEATURE_SET_VERSION = "1.0.0"
+FEATURE_SET_VERSION = "1.1.0"
 
 
 @dataclass(frozen=True)
