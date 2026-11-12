@@ -358,22 +358,34 @@ def _attach_market_context_features(
 ) -> tuple[list[str], bool]:
     """Attach context features only when each snapshot was available at that candle's cutoff."""
     session_names = (
-        "wellington", "sydney", "tokyo", "hong_kong", "singapore",
-        "frankfurt", "london", "new_york",
+        "wellington",
+        "sydney",
+        "tokyo",
+        "hong_kong",
+        "singapore",
+        "frankfurt",
+        "london",
+        "new_york",
     )
     open_window_names = ("sydney_open", "tokyo_open", "frankfurt_open", "london_open")
     kill_zone_names = (
-        "ict_asia", "ict_london", "ict_new_york_am",
-        "ict_london_close", "ict_new_york_pm",
+        "ict_asia",
+        "ict_london",
+        "ict_new_york_am",
+        "ict_london_close",
+        "ict_new_york_pm",
     )
     context_feature_names = [
         *(f"session_{name}" for name in session_names),
         *(f"open_window_{name}" for name in open_window_names),
         *(f"kill_zone_{name}" for name in kill_zone_names),
         "session_overlap_count",
-        "liquidity_sweep_bullish", "liquidity_sweep_bearish",
-        "liquidity_displacement_confirmed", "liquidity_midpoint_reached",
-        "liquidity_midpoint_consolidation", "liquidity_invalidated",
+        "liquidity_sweep_bullish",
+        "liquidity_sweep_bearish",
+        "liquidity_displacement_confirmed",
+        "liquidity_midpoint_reached",
+        "liquidity_midpoint_consolidation",
+        "liquidity_invalidated",
     ]
     has_context = any(
         item.session_context is not None or item.liquidity_lifecycle is not None
@@ -404,7 +416,10 @@ def _attach_market_context_features(
                 row[name] = None
 
         lifecycle = item.liquidity_lifecycle
-        if lifecycle is not None and coerce_timestamp(lifecycle.available_at) <= available_at[index]:
+        if (
+            lifecycle is not None
+            and coerce_timestamp(lifecycle.available_at) <= available_at[index]
+        ):
             state = lifecycle.state
             sweep_observed = state in {
                 "SWEEP_CONFIRMED_AWAITING_DISPLACEMENT",
@@ -420,7 +435,8 @@ def _attach_market_context_features(
                 sweep_observed and lifecycle.expected_direction == "bearish"
             )
             row["liquidity_displacement_confirmed"] = float(
-                state in {
+                state
+                in {
                     "DISPLACEMENT_CONFIRMED",
                     "MIDPOINT_REACHED",
                     "MIDPOINT_CONSOLIDATION_CANDIDATE",
@@ -503,7 +519,9 @@ def run_historical_replay(request: HistoricalReplayRequest) -> dict[str, Any]:
     if invalid_families:
         raise ValueError(f"unsupported model family for target: {', '.join(invalid_families)}")
     model_families = list(dict.fromkeys([baseline, *requested_families]))
-    feature_names = list(FORECAST_FEATURE_NAMES[: min(spec.max_features, len(FORECAST_FEATURE_NAMES))])
+    feature_names = list(
+        FORECAST_FEATURE_NAMES[: min(spec.max_features, len(FORECAST_FEATURE_NAMES))]
+    )
     if has_context:
         remaining_feature_capacity = max(0, spec.max_features - len(feature_names))
         feature_names.extend(context_feature_names[:remaining_feature_capacity])
@@ -625,22 +643,26 @@ def run_historical_replay(request: HistoricalReplayRequest) -> dict[str, Any]:
         )
         forecast_row["market_context"] = {
             "session": {
-                "status": "available" if session_known else (
-                    "not_yet_available" if session_context is not None else "not_supplied"
-                ),
+                "status": "available"
+                if session_known
+                else ("not_yet_available" if session_context is not None else "not_supplied"),
                 "source_reference": session_context.source_reference if session_known else None,
                 "active_sessions": session_context.active_sessions if session_known else [],
                 "active_open_windows": session_context.active_open_windows if session_known else [],
                 "active_kill_zones": session_context.active_kill_zones if session_known else [],
-                "session_overlap_count": session_context.session_overlap_count if session_known else None,
+                "session_overlap_count": session_context.session_overlap_count
+                if session_known
+                else None,
             },
             "liquidity_lifecycle": {
-                "status": "available" if lifecycle_known else (
-                    "not_yet_available" if lifecycle_context is not None else "not_supplied"
-                ),
+                "status": "available"
+                if lifecycle_known
+                else ("not_yet_available" if lifecycle_context is not None else "not_supplied"),
                 "source_event_id": lifecycle_context.source_event_id if lifecycle_known else None,
                 "state": lifecycle_context.state if lifecycle_known else None,
-                "expected_direction": lifecycle_context.expected_direction if lifecycle_known else None,
+                "expected_direction": lifecycle_context.expected_direction
+                if lifecycle_known
+                else None,
             },
             "provenance_status": "caller_asserted_unverified",
         }
@@ -786,8 +808,12 @@ def run_historical_replay(request: HistoricalReplayRequest) -> dict[str, Any]:
             "low": item.low,
             "close": item.close,
             "volume": item.volume,
-            "session_context": item.session_context.model_dump(mode="json") if item.session_context else None,
-            "liquidity_lifecycle": item.liquidity_lifecycle.model_dump(mode="json") if item.liquidity_lifecycle else None,
+            "session_context": item.session_context.model_dump(mode="json")
+            if item.session_context
+            else None,
+            "liquidity_lifecycle": item.liquidity_lifecycle.model_dump(mode="json")
+            if item.liquidity_lifecycle
+            else None,
         }
         for index, item in enumerate(request.observations)
     ]
@@ -851,7 +877,9 @@ def run_historical_replay(request: HistoricalReplayRequest) -> dict[str, Any]:
             "embargo_periods": request.embargo_periods,
             "model_families": model_families,
             "feature_names": feature_names,
-            "context_features_selected": [name for name in feature_names if name in context_feature_names],
+            "context_features_selected": [
+                name for name in feature_names if name in context_feature_names
+            ],
             "model_hyperparameters": {
                 "ridge_alpha": 1.0,
                 "random_forest": {"n_estimators": 20, "max_depth": 4},
