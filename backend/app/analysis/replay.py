@@ -32,7 +32,7 @@ from backend.app.analysis.model_research import (
     task_type_for_target,
 )
 from backend.app.analysis.observations import Observation, coerce_timestamp
-from backend.app.schemas.replay import HistoricalReplayRequest
+from backend.app.schemas.replay import HistoricalReplayRequest, ReplayObservationInput
 
 BOOTSTRAP_REPLICATES = 500
 BOOTSTRAP_BLOCK_LENGTH = 5
@@ -351,6 +351,105 @@ def _metric_report(
     return metrics
 
 
+def _attach_market_context_features(
+    features: list[dict[str, Any] | None],
+    observations: list[ReplayObservationInput],
+    available_at: list[datetime],
+) -> tuple[list[str], bool]:
+    """Attach context features only when each snapshot was available at that candle's cutoff."""
+    session_names = (
+        "wellington", "sydney", "tokyo", "hong_kong", "singapore",
+        "frankfurt", "london", "new_york",
+    )
+    open_window_names = ("sydney_open", "tokyo_open", "frankfurt_open", "london_open")
+    kill_zone_names = (
+        "ict_asia", "ict_london", "ict_new_york_am",
+        "ict_london_close", "ict_new_york_pm",
+    )
+    context_feature_names = [
+        *(f"session_{name}" for name in session_names),
+        *(f"open_window_{name}" for name in open_window_names),
+        *(f"kill_zone_{name}" for name in kill_zone_names),
+        "session_overlap_count",
+        "liquidity_sweep_bullish", "liquidity_sweep_bearish",
+        "liquidity_displacement_confirmed", "liquidity_midpoint_reached",
+        "liquidity_midpoint_consolidation", "liquidity_invalidated",
+    ]
+    has_context = any(
+        item.session_context is not None or item.liquidity_lifecycle is not None
+        for item in observations
+    )
+    if not has_context:
+        return context_feature_names, False
+
+    for index, item in enumerate(observations):
+        row = features[index]
+        if row is None:
+            continue
+
+        session = item.session_context
+        session_known = (
+            session is not None
+            and coerce_timestamp(session.available_at) <= available_at[index]
+        )
+        if session_known:
+            assert session is not None
+            active_sessions = set(session.active_sessions)
+            active_open_windows = set(session.active_open_windows)
+            active_kill_zones = set(session.active_kill_zones)
+            for name in session_names:
+                row[f"session_{name}"] = float(name in active_sessions)
+            for name in open_window_names:
+                row[f"open_window_{name}"] = float(name in active_open_windows)
+            for name in kill_zone_names:
+                row[f"kill_zone_{name}"] = float(name in active_kill_zones)
+            row["session_overlap_count"] = float(session.session_overlap_count)
+        else:
+            for name in context_feature_names[:18]:
+                row[name] = None
+
+        lifecycle = item.liquidity_lifecycle
+        lifecycle_known = (
+            lifecycle is not None
+            and coerce_timestamp(lifecycle.available_at) <= available_at[index]
+        )
+        if lifecycle_known:
+            assert lifecycle is not None
+            state = lifecycle.state
+            sweep_observed = state in {
+                "SWEEP_CONFIRMED_AWAITING_DISPLACEMENT",
+                "DISPLACEMENT_CONFIRMED",
+                "MIDPOINT_REACHED",
+                "MIDPOINT_CONSOLIDATION_CANDIDATE",
+                "INVALIDATED",
+            }
+            row["liquidity_sweep_bullish"] = float(
+                sweep_observed and lifecycle.expected_direction == "bullish"
+            )
+            row["liquidity_sweep_bearish"] = float(
+                sweep_observed and lifecycle.expected_direction == "bearish"
+            )
+            row["liquidity_displacement_confirmed"] = float(
+                state in {
+                    "DISPLACEMENT_CONFIRMED",
+                    "MIDPOINT_REACHED",
+                    "MIDPOINT_CONSOLIDATION_CANDIDATE",
+                }
+            )
+            row["liquidity_midpoint_reached"] = float(
+                state in {"MIDPOINT_REACHED", "MIDPOINT_CONSOLIDATION_CANDIDATE"}
+            )
+            row["liquidity_midpoint_consolidation"] = float(
+                state == "MIDPOINT_CONSOLIDATION_CANDIDATE"
+            )
+            row["liquidity_invalidated"] = float(state == "INVALIDATED")
+        else:
+            for name in context_feature_names[18:]:
+                row[name] = None
+
+    return context_feature_names, True
+
+
 def run_historical_replay(request: HistoricalReplayRequest) -> dict[str, Any]:
     started_at = datetime.now(UTC).isoformat()
     timestamps = [coerce_timestamp(item.timestamp) for item in request.observations]
@@ -393,84 +492,9 @@ def run_historical_replay(request: HistoricalReplayRequest) -> dict[str, Any]:
     features = build_point_in_time_features(observations, spec, lookback=request.lookback)
     labels = generate_labels(observations, spec)
 
-    # Optional cross-service context is a feature only after its own available_at
-    # has passed the candle's information cutoff. Caller-supplied snapshots are
-    # fingerprinted but remain unverified provenance, never signed evidence.
-    session_names = (
-        "wellington", "sydney", "tokyo", "hong_kong", "singapore",
-        "frankfurt", "london", "new_york",
+    context_feature_names, has_context = _attach_market_context_features(
+        features, request.observations, available_at
     )
-    open_window_names = ("sydney_open", "tokyo_open", "frankfurt_open", "london_open")
-    kill_zone_names = (
-        "ict_asia", "ict_london", "ict_new_york_am",
-        "ict_london_close", "ict_new_york_pm",
-    )
-    context_feature_names = [
-        *(f"session_{name.lower().replace(' ', '_')}" for name in session_names),
-        *(f"open_window_{name}" for name in open_window_names),
-        *(f"kill_zone_{name}" for name in kill_zone_names),
-        "session_overlap_count",
-        "liquidity_sweep_bullish", "liquidity_sweep_bearish",
-        "liquidity_displacement_confirmed", "liquidity_midpoint_reached",
-        "liquidity_midpoint_consolidation", "liquidity_invalidated",
-    ]
-    has_context = any(
-        item.session_context is not None or item.liquidity_lifecycle is not None
-        for item in request.observations
-    )
-    if has_context:
-        for index, item in enumerate(request.observations):
-            row = features[index]
-            if row is None:
-                continue
-            session = item.session_context
-            if session is not None and coerce_timestamp(session.available_at) <= available_at[index]:
-                active_sessions = set(session.active_sessions)
-                active_open_windows = set(session.active_open_windows)
-                active_kill_zones = set(session.active_kill_zones)
-                for name in session_names:
-                    row[f"session_{name.lower().replace(' ', '_')}"] = float(name in active_sessions)
-                for name in open_window_names:
-                    row[f"open_window_{name}"] = float(name in active_open_windows)
-                for name in kill_zone_names:
-                    row[f"kill_zone_{name}"] = float(name in active_kill_zones)
-                row["session_overlap_count"] = float(session.session_overlap_count)
-            else:
-                for name in context_feature_names[:18]:
-                    row[name] = None
-            lifecycle = item.liquidity_lifecycle
-            if lifecycle is not None and coerce_timestamp(lifecycle.available_at) <= available_at[index]:
-                state = lifecycle.state
-                sweep_observed = state in {
-                    "SWEEP_CONFIRMED_AWAITING_DISPLACEMENT",
-                    "DISPLACEMENT_CONFIRMED",
-                    "MIDPOINT_REACHED",
-                    "MIDPOINT_CONSOLIDATION_CANDIDATE",
-                    "INVALIDATED",
-                }
-                row["liquidity_sweep_bullish"] = float(
-                    sweep_observed and lifecycle.expected_direction == "bullish"
-                )
-                row["liquidity_sweep_bearish"] = float(
-                    sweep_observed and lifecycle.expected_direction == "bearish"
-                )
-                row["liquidity_displacement_confirmed"] = float(
-                    state in {
-                        "DISPLACEMENT_CONFIRMED",
-                        "MIDPOINT_REACHED",
-                        "MIDPOINT_CONSOLIDATION_CANDIDATE",
-                    }
-                )
-                row["liquidity_midpoint_reached"] = float(
-                    state in {"MIDPOINT_REACHED", "MIDPOINT_CONSOLIDATION_CANDIDATE"}
-                )
-                row["liquidity_midpoint_consolidation"] = float(
-                    state == "MIDPOINT_CONSOLIDATION_CANDIDATE"
-                )
-                row["liquidity_invalidated"] = float(state == "INVALIDATED")
-            else:
-                for name in context_feature_names[18:]:
-                    row[name] = None
     task_type = task_type_for_target(spec.target_type)
     allowed = {item["name"] for item in supported_model_families(task_type)}
     baseline = (
@@ -836,6 +860,8 @@ def run_historical_replay(request: HistoricalReplayRequest) -> dict[str, Any]:
             "rolling_window": request.rolling_window,
             "embargo_periods": request.embargo_periods,
             "model_families": model_families,
+            "feature_names": feature_names,
+            "context_features_selected": [name for name in feature_names if name in context_feature_names],
             "model_hyperparameters": {
                 "ridge_alpha": 1.0,
                 "random_forest": {"n_estimators": 20, "max_depth": 4},
