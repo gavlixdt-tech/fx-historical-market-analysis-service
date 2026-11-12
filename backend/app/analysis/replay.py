@@ -388,12 +388,7 @@ def _attach_market_context_features(
             continue
 
         session = item.session_context
-        session_known = (
-            session is not None
-            and coerce_timestamp(session.available_at) <= available_at[index]
-        )
-        if session_known:
-            assert session is not None
+        if session is not None and coerce_timestamp(session.available_at) <= available_at[index]:
             active_sessions = set(session.active_sessions)
             active_open_windows = set(session.active_open_windows)
             active_kill_zones = set(session.active_kill_zones)
@@ -409,12 +404,7 @@ def _attach_market_context_features(
                 row[name] = None
 
         lifecycle = item.liquidity_lifecycle
-        lifecycle_known = (
-            lifecycle is not None
-            and coerce_timestamp(lifecycle.available_at) <= available_at[index]
-        )
-        if lifecycle_known:
-            assert lifecycle is not None
+        if lifecycle is not None and coerce_timestamp(lifecycle.available_at) <= available_at[index]:
             state = lifecycle.state
             sweep_observed = state in {
                 "SWEEP_CONFIRMED_AWAITING_DISPLACEMENT",
