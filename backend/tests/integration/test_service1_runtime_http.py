@@ -86,8 +86,7 @@ def service1_runtime() -> Iterator[str]:
             else:
                 server_log.seek(0)
                 pytest.fail(
-                    "Service 1 test application did not become ready:\n"
-                    + server_log.read()[-4000:]
+                    "Service 1 test application did not become ready:\n" + server_log.read()[-4000:]
                 )
             yield base_url
         finally:
@@ -118,9 +117,7 @@ async def test_actual_service1_http_contract_and_authentication(
 
         providers = await client.list_providers(request_id="service2-http-test")
         assert providers.data is not None
-        provider = next(
-            item for item in providers.data if item.provider_id == "test-adapter"
-        )
+        provider = next(item for item in providers.data if item.provider_id == "test-adapter")
         assert provider.provider_type.value == "test"
 
         dataset = await client.fetch_historical_candles(
