@@ -245,7 +245,7 @@ async def test_market_data_replay_blocks_unapproved_production_workload_identity
         require_auth=True,
         api_key="t" * 32,
         upstream_market_data_base_url="https://market-data.example",
-        upstream_api_key="test-upstream-key",
+        upstream_api_key="u" * 32,
         upstream_replay_availability_delay_seconds=60,
     )
     with pytest.raises(DependencyUnavailableError, match="fx-security-access-service"):
