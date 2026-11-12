@@ -587,6 +587,37 @@ def run_historical_replay(request: HistoricalReplayRequest) -> dict[str, Any]:
             "actual": actual,
             "forecasts": {},
         }
+        session_context = request.observations[index].session_context
+        lifecycle_context = request.observations[index].liquidity_lifecycle
+        session_known = (
+            session_context is not None
+            and coerce_timestamp(session_context.available_at) <= decision_time
+        )
+        lifecycle_known = (
+            lifecycle_context is not None
+            and coerce_timestamp(lifecycle_context.available_at) <= decision_time
+        )
+        forecast_row["market_context"] = {
+            "session": {
+                "status": "available" if session_known else (
+                    "not_yet_available" if session_context is not None else "not_supplied"
+                ),
+                "source_reference": session_context.source_reference if session_known else None,
+                "active_sessions": session_context.active_sessions if session_known else [],
+                "active_open_windows": session_context.active_open_windows if session_known else [],
+                "active_kill_zones": session_context.active_kill_zones if session_known else [],
+                "session_overlap_count": session_context.session_overlap_count if session_known else None,
+            },
+            "liquidity_lifecycle": {
+                "status": "available" if lifecycle_known else (
+                    "not_yet_available" if lifecycle_context is not None else "not_supplied"
+                ),
+                "source_event_id": lifecycle_context.source_event_id if lifecycle_known else None,
+                "state": lifecycle_context.state if lifecycle_known else None,
+                "direction": lifecycle_context.direction if lifecycle_known else None,
+            },
+            "provenance_status": "caller_asserted_unverified",
+        }
         for model_index, family in enumerate(model_families):
             predicted, probabilities = _fit_predict(
                 family,
