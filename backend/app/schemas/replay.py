@@ -21,8 +21,8 @@ class ReplaySessionContextInput(BaseModel):
     observed_at: datetime
     available_at: datetime
     active_sessions: list[Literal[
-        "Wellington", "Sydney", "Tokyo", "Hong Kong", "Singapore",
-        "Frankfurt", "London", "New York"
+        "wellington", "sydney", "tokyo", "hong_kong", "singapore",
+        "frankfurt", "london", "new_york"
     ]] = Field(default_factory=list, max_length=8)
     active_open_windows: list[Literal[
         "sydney_open", "tokyo_open", "frankfurt_open", "london_open"
@@ -67,7 +67,7 @@ class ReplayLiquidityLifecycleInput(BaseModel):
         "DISPLACEMENT_CONFIRMED", "MIDPOINT_REACHED",
         "MIDPOINT_CONSOLIDATION_CANDIDATE", "INVALIDATED"
     ]
-    direction: Literal["bullish", "bearish"] | None = None
+    expected_direction: Literal["bullish", "bearish"] | None = None
     source_event_id: str = Field(min_length=1, max_length=200)
 
     @model_validator(mode="after")
@@ -81,7 +81,7 @@ class ReplayLiquidityLifecycleInput(BaseModel):
         if self.state in {
             "SWEEP_CONFIRMED_AWAITING_DISPLACEMENT", "DISPLACEMENT_CONFIRMED",
             "MIDPOINT_REACHED", "MIDPOINT_CONSOLIDATION_CANDIDATE"
-        } and self.direction is None:
+        } and self.expected_direction is None:
             raise ValueError("confirmed lifecycle states require a direction")
         return self
 
