@@ -248,7 +248,6 @@ def test_lifecycle_transition_cannot_postdate_context_observation() -> None:
         )
 
 
-
 def test_lifecycle_transition_timestamps_require_prerequisites() -> None:
     now = datetime.now(UTC)
     timestamp = now - timedelta(hours=2)
