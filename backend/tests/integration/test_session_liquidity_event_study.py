@@ -62,19 +62,22 @@ def test_study_uses_first_sweep_per_session_and_right_censoring() -> None:
                 25,
                 available_minute=55,
                 observation_end_minute=60,
-            ),
+            ).model_copy(update={
+                "available_at": dt(9, 5),
+                "observation_end_at": dt(9, 10),
+            }),
         ],
     )
 
     result = build_session_liquidity_event_study(payload)
 
-    assert result["eligible_event_count"] == 4
-    assert result["first_sweep_session_instance_count"] == 3
+    assert result["eligible_event_count"] == 3
+    assert result["first_sweep_session_instance_count"] == 2
     group = result["groups"][0]
-    assert group["first_sweep_session_instances"] == 3
-    assert group["minutes_from_session_open_to_first_confirmed_sweep"]["median"] == 15
+    assert group["first_sweep_session_instances"] == 2
+    assert group["minutes_from_session_open_to_first_confirmed_sweep"]["median"] == 10
     assert group["post_sweep_time_to_displacement"]["events"] == 1
-    assert group["post_sweep_time_to_displacement"]["censored"] == 2
+    assert group["post_sweep_time_to_displacement"]["censored"] == 1
     assert group["sample_status"] == "insufficient_sample"
     assert result["forecast_eligible"] is False
 
