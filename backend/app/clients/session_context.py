@@ -46,7 +46,11 @@ def _aware_utc(value: datetime) -> datetime:
     return value.astimezone(UTC)
 
 
-def _parse_observation(value: object, expected_timestamp: datetime) -> ReplaySessionContextInput:
+def _parse_observation(
+    value: object,
+    expected_timestamp: datetime,
+    expected_instrument: str,
+) -> ReplaySessionContextInput:
     if not isinstance(value, dict):
         raise SessionContextIntegrationError("Session-context observation must be an object.")
     expected = _aware_utc(expected_timestamp)
@@ -59,10 +63,46 @@ def _parse_observation(value: object, expected_timestamp: datetime) -> ReplaySes
             )
         if value.get("contract_version") != "fx-session-context/v1":
             raise SessionContextIntegrationError("Unsupported session-context contract version.")
+        if value.get("instrument") != expected_instrument:
+            raise SessionContextIntegrationError(
+                "Feature-engineering response instrument does not match the request."
+            )
+        if (
+            value.get("algorithm") != "iana-local-session-windows"
+            or not isinstance(value.get("algorithm_version"), str)
+            or not value["algorithm_version"]
+        ):
+            raise SessionContextIntegrationError("Feature-engineering algorithm identity is invalid.")
         active_sessions = value["active_sessions"]
         active_open_windows = value["active_open_windows"]
         active_kill_zones = value["active_kill_zones"]
         overlap = value["session_overlap_count"]
+        window_contracts = (
+            ("sessions", "session", 8, active_sessions),
+            ("open_windows", "open_window", 4, active_open_windows),
+            ("kill_zones", "kill_zone", 5, active_kill_zones),
+        )
+        for field_name, expected_kind, expected_count, summary in window_contracts:
+            windows = value[field_name]
+            if (
+                not isinstance(windows, list)
+                or len(windows) != expected_count
+                or any(
+                    not isinstance(window, dict)
+                    or not isinstance(window.get("key"), str)
+                    or window.get("kind") != expected_kind
+                    or not isinstance(window.get("active"), bool)
+                    for window in windows
+                )
+            ):
+                raise SessionContextIntegrationError(
+                    f"Feature-engineering {field_name} do not match the v1 window contract."
+                )
+            active_keys = [window["key"] for window in windows if window["active"]]
+            if summary != active_keys or len(set(active_keys)) != len(active_keys):
+                raise SessionContextIntegrationError(
+                    f"Feature-engineering {field_name} summary is inconsistent."
+                )
         if (
             not isinstance(active_sessions, list)
             or not all(isinstance(item, str) for item in active_sessions)
@@ -76,6 +116,7 @@ def _parse_observation(value: object, expected_timestamp: datetime) -> ReplaySes
             or len(set(active_sessions)) != len(active_sessions)
             or len(set(active_open_windows)) != len(active_open_windows)
             or len(set(active_kill_zones)) != len(active_kill_zones)
+            or value.get("is_session_overlap") is not (len(active_sessions) > 1)
         ):
             raise SessionContextIntegrationError("Feature-engineering session fields are invalid.")
         return ReplaySessionContextInput(
@@ -163,12 +204,13 @@ async def fetch_historical_session_contexts(
                     or payload.get("contract_version") != "fx-session-context/v1"
                     or not isinstance(payload.get("observations"), list)
                     or len(payload["observations"]) != len(batch)
+                    or payload.get("instrument") != instrument
                 ):
                     raise SessionContextIntegrationError(
                         "Feature-engineering response did not match the session-context batch contract."
                     )
                 contexts.extend(
-                    _parse_observation(item, timestamp)
+                    _parse_observation(item, timestamp, instrument)
                     for item, timestamp in zip(payload["observations"], batch, strict=True)
                 )
     except SessionContextIntegrationError:
