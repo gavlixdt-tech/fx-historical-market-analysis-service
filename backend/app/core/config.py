@@ -288,6 +288,32 @@ class Settings(BaseSettings):
             raise ValueError(
                 "ENABLE_LIVE_TRADING must be false - this service is research/simulation only"
             )
+        if self.upstream_feature_engineering_auth_token and not self.upstream_feature_engineering_base_url:
+            raise ValueError(
+                "upstream_feature_engineering_auth_token requires "
+                "upstream_feature_engineering_base_url"
+            )
+        if self.is_production and self.upstream_feature_engineering_base_url:
+            upstream = urlsplit(self.upstream_feature_engineering_base_url)
+            private_railway_http = (
+                upstream.scheme == "http"
+                and upstream.hostname is not None
+                and upstream.hostname.endswith(".railway.internal")
+                and upstream.port is not None
+            )
+            if upstream.scheme != "https" and not private_railway_http:
+                raise ValueError(
+                    "upstream_feature_engineering_base_url must use https in production, "
+                    "except for an explicit-port Railway private-network origin"
+                )
+            if (
+                self.upstream_feature_engineering_auth_token is None
+                or len(self.upstream_feature_engineering_auth_token.encode("utf-8")) < 32
+            ):
+                raise ValueError(
+                    "upstream_feature_engineering_auth_token must contain at least "
+                    "32 bytes when the production integration is configured"
+                )
         if self.is_production:
             if "*" in self.cors_origin_list:
                 raise ValueError("Wildcard CORS origin is not permitted in production")
