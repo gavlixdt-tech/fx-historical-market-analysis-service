@@ -108,7 +108,7 @@ async def run_market_data_replay(
         ) from exc
 
     observations: list[ReplayObservationInput] = []
-    for candle in data.candles:
+    for index, candle in enumerate(data.candles):
         if (
             not candle.valid
             or candle.completeness != "complete"
