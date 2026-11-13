@@ -48,7 +48,7 @@ jobs:
         run: ruff check app tests
 
       - name: Lint (ruff format --check)
-        run: ruff format --check app tests
+        run: ruff format --diff app tests
 
       - name: Type check (mypy)
         run: mypy app
