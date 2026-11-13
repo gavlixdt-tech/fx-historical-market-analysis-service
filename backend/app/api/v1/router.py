@@ -8,7 +8,14 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from backend.app.api.v1.routes import analysis, forecasting, health, session_liquidity, status, version
+from backend.app.api.v1.routes import (
+    analysis,
+    forecasting,
+    health,
+    session_liquidity,
+    status,
+    version,
+)
 
 router = APIRouter()
 router.include_router(health.router, prefix="/health", tags=["health"])
