@@ -12,6 +12,10 @@ from starlette.concurrency import run_in_threadpool
 
 from backend.app.analysis.replay import run_historical_replay
 from backend.app.clients.market_data import MarketDataClient
+from backend.app.clients.session_context import (
+    SessionContextIntegrationError,
+    fetch_historical_session_contexts,
+)
 from backend.app.core.config import Settings
 from backend.app.core.errors import (
     DependencyUnavailableError,
@@ -88,6 +92,21 @@ async def run_market_data_replay(
             "Market-data response is truncated; reduce the date range before replay."
         )
 
+    try:
+        session_contexts = await fetch_historical_session_contexts(
+            base_url=settings.upstream_feature_engineering_base_url,
+            auth_token=settings.upstream_feature_engineering_auth_token,
+            timestamps=[candle.close_time for candle in data.candles],
+            instrument=data.canonical_instrument,
+            timeout_seconds=settings.upstream_timeout_seconds,
+            request_id=request_id,
+        )
+    except SessionContextIntegrationError as exc:
+        raise DependencyUnavailableError(
+            "fx-feature-engineering-service",
+            "Historical session context could not be validated.",
+        ) from exc
+
     observations: list[ReplayObservationInput] = []
     for candle in data.candles:
         if (
@@ -130,6 +149,7 @@ async def run_market_data_replay(
                 close=_finite_float(candle.close),
                 volume=_finite_float(candle.volume) if candle.volume is not None else None,
                 source_record_id=source_id,
+                session_context=session_contexts[index] if session_contexts is not None else None,
             )
         )
 
@@ -186,6 +206,26 @@ async def run_market_data_replay(
         "coverage": data.coverage.model_dump(mode="json"),
         "validation_summary": data.validation_summary.model_dump(mode="json"),
     }
+    result["reproducibility"]["data_source"]["session_context_integration"] = {
+        "service": "fx-feature-engineering-service",
+        "contract_version": "fx-session-context/v1",
+        "state": "contract_verified" if session_contexts is not None else "not_configured",
+        "observations": len(session_contexts) if session_contexts is not None else 0,
+        "availability_semantics": (
+            "deterministic_calendar_context_available_at_candle_close"
+            if session_contexts is not None
+            else "not_available"
+        ),
+    }
+    if session_contexts is None:
+        result["warnings"].append(
+            "Historical session context was not integrated because "
+            "UPSTREAM_FEATURE_ENGINEERING_BASE_URL is not configured."
+        )
+        result["limitations"].append(
+            "Session-context features are absent from this replay until the "
+            "feature-engineering upstream is configured."
+        )
     result["status"] = "completed_with_warnings"
     return result
 
