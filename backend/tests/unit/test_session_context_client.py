@@ -16,17 +16,54 @@ def _timestamp(offset_minutes: int = 0) -> datetime:
     return datetime(2026, 10, 26, 8, 0, tzinfo=UTC) + timedelta(minutes=offset_minutes)
 
 
+def _window(key: str, kind: str, active: bool) -> dict:
+    return {"key": key, "kind": kind, "active": active}
+
+
 def _observation(timestamp: datetime) -> dict:
+    sessions = [
+        _window(key, "session", key in {"london", "new_york"})
+        for key in (
+            "wellington",
+            "sydney",
+            "tokyo",
+            "hong_kong",
+            "singapore",
+            "frankfurt",
+            "london",
+            "new_york",
+        )
+    ]
+    open_windows = [
+        _window(key, "open_window", key == "london_open")
+        for key in ("sydney_open", "tokyo_open", "frankfurt_open", "london_open")
+    ]
+    kill_zones = [
+        _window(key, "kill_zone", key == "ict_london")
+        for key in (
+            "ict_asia",
+            "ict_london",
+            "ict_new_york_am",
+            "ict_london_close",
+            "ict_new_york_pm",
+        )
+    ]
     return {
         "contract_version": "fx-session-context/v1",
         "algorithm": "iana-local-session-windows",
         "algorithm_version": "1.0.0",
+        "instrument": "EUR/USD",
         "timestamp_utc": timestamp.isoformat().replace("+00:00", "Z"),
         "active_sessions": ["london", "new_york"],
         "active_open_windows": ["london_open"],
         "active_kill_zones": ["ict_london"],
         "session_overlap_count": 2,
+        "is_session_overlap": True,
+        "sessions": sessions,
+        "open_windows": open_windows,
+        "kill_zones": kill_zones,
     }
+
 
 
 @pytest.mark.asyncio
@@ -77,6 +114,7 @@ async def test_rejects_context_returned_for_a_different_timestamp() -> None:
             200,
             json={
                 "contract_version": "fx-session-context/v1",
+                "instrument": "EUR/USD",
                 "observations": [_observation(timestamp + timedelta(minutes=1))],
             },
         )
@@ -102,6 +140,7 @@ async def test_rejects_inconsistent_session_overlap_count() -> None:
             200,
             json={
                 "contract_version": "fx-session-context/v1",
+                "instrument": "EUR/USD",
                 "observations": [observation],
             },
         )
