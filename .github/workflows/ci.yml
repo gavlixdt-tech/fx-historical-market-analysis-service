@@ -47,6 +47,9 @@ jobs:
       - name: Lint (ruff check)
         run: ruff check app tests
 
+      - name: Show Ruff formatting diff
+        run: ruff format --diff app/core/config.py || true
+
       - name: Lint (ruff format --check)
         run: ruff format --check app tests
 
