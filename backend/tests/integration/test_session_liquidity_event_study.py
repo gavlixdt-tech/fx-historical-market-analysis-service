@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from pydantic import ValidationError
@@ -13,7 +13,7 @@ UTC = timezone.utc
 
 
 def dt(hour: int, minute: int) -> datetime:
-    return datetime(2026, 11, 12, hour, minute, tzinfo=UTC)
+    return datetime(2026, 11, 12, hour, 0, tzinfo=UTC) + timedelta(minutes=minute)
 
 
 def event(
