@@ -16,11 +16,11 @@ def _timestamp(offset_minutes: int = 0) -> datetime:
     return datetime(2026, 10, 26, 8, 0, tzinfo=UTC) + timedelta(minutes=offset_minutes)
 
 
-def _window(key: str, kind: str, active: bool) -> dict:
+def _window(key: str, kind: str, active: bool) -> dict[str, object]:
     return {"key": key, "kind": kind, "active": active}
 
 
-def _observation(timestamp: datetime) -> dict:
+def _observation(timestamp: datetime) -> dict[str, object]:
     sessions = [
         _window(key, "session", key in {"london", "new_york"})
         for key in (
@@ -63,7 +63,6 @@ def _observation(timestamp: datetime) -> dict:
         "open_windows": open_windows,
         "kill_zones": kill_zones,
     }
-
 
 
 @pytest.mark.asyncio
