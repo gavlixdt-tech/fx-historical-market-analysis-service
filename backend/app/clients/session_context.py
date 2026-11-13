@@ -72,7 +72,9 @@ def _parse_observation(
             or not isinstance(value.get("algorithm_version"), str)
             or not value["algorithm_version"]
         ):
-            raise SessionContextIntegrationError("Feature-engineering algorithm identity is invalid.")
+            raise SessionContextIntegrationError(
+                "Feature-engineering algorithm identity is invalid."
+            )
         active_sessions = value["active_sessions"]
         active_open_windows = value["active_open_windows"]
         active_kill_zones = value["active_kill_zones"]
@@ -207,7 +209,8 @@ async def fetch_historical_session_contexts(
                     or payload.get("instrument") != instrument
                 ):
                     raise SessionContextIntegrationError(
-                        "Feature-engineering response did not match the session-context batch contract."
+                        "Feature-engineering response did not match the session-context "
+                        "batch contract."
                     )
                 contexts.extend(
                     _parse_observation(item, timestamp, instrument)
