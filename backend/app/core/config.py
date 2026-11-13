@@ -288,7 +288,10 @@ class Settings(BaseSettings):
             raise ValueError(
                 "ENABLE_LIVE_TRADING must be false - this service is research/simulation only"
             )
-        if self.upstream_feature_engineering_auth_token and not self.upstream_feature_engineering_base_url:
+        if (
+            self.upstream_feature_engineering_auth_token
+            and not self.upstream_feature_engineering_base_url
+        ):
             raise ValueError(
                 "upstream_feature_engineering_auth_token requires "
                 "upstream_feature_engineering_base_url"
