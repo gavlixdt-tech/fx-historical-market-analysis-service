@@ -240,9 +240,7 @@ class Settings(BaseSettings):
             return None
         parsed = urlsplit(value.strip())
         if parsed.scheme not in {"http", "https"} or not parsed.netloc or not parsed.hostname:
-            raise ValueError(
-                "upstream_feature_engineering_base_url must be an http(s) origin"
-            )
+            raise ValueError("upstream_feature_engineering_base_url must be an http(s) origin")
         if (
             parsed.username
             or parsed.password
