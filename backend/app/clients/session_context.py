@@ -108,6 +108,7 @@ async def fetch_historical_session_contexts(
     instrument: str,
     timeout_seconds: float = 5.0,
     request_id: str | None = None,
+    transport: httpx.AsyncBaseTransport | None = None,
 ) -> list[ReplaySessionContextInput] | None:
     """Fetch one validated context per candle timestamp; None means unconfigured."""
     if not base_url:
@@ -129,6 +130,7 @@ async def fetch_historical_session_contexts(
             timeout=httpx.Timeout(timeout_seconds),
             follow_redirects=False,
             trust_env=False,
+            transport=transport,
         ) as client:
             for offset in range(0, len(timestamps), MAX_SESSION_CONTEXT_BATCH):
                 batch = timestamps[offset : offset + MAX_SESSION_CONTEXT_BATCH]
