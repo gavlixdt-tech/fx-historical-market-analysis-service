@@ -53,6 +53,7 @@ async def test_fetches_and_validates_historical_session_context() -> None:
         auth_token="test-bearer-token",
         timestamps=timestamps,
         instrument="EUR/USD",
+        request_id="test-request-id",
         transport=httpx.MockTransport(handler),
     )
 
