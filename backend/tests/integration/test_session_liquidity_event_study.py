@@ -121,3 +121,24 @@ def test_duplicate_source_event_ids_are_rejected() -> None:
             analysis_cutoff=dt(9, 0),
             events=[first, second],
         )
+
+
+def test_unobserved_transition_is_censored_at_analysis_cutoff() -> None:
+    row = event(
+        "censored-at-cutoff",
+        "london-censored",
+        10,
+        available_minute=25,
+        observation_end_minute=60,
+    )
+    payload = SessionLiquidityEventStudyRequest(
+        analysis_cutoff=dt(8, 30),
+        events=[row],
+    )
+
+    result = build_session_liquidity_event_study(payload)
+
+    displacement = result["groups"][0]["post_sweep_time_to_displacement"]
+    assert displacement["events"] == 0
+    assert displacement["censored"] == 1
+    assert displacement["survival_curve"] == []
