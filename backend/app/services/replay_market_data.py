@@ -92,11 +92,19 @@ async def run_market_data_replay(
             "Market-data response is truncated; reduce the date range before replay."
         )
 
+    session_context_timestamps: list[datetime] = []
+    for candle in data.candles:
+        if candle.close_time is None:
+            raise ValidationError(
+                "Market-data response contains a candle without complete close-time data."
+            )
+        session_context_timestamps.append(candle.close_time)
+
     try:
         session_contexts = await fetch_historical_session_contexts(
             base_url=settings.upstream_feature_engineering_base_url,
             auth_token=settings.upstream_feature_engineering_auth_token,
-            timestamps=[candle.close_time for candle in data.candles],
+            timestamps=session_context_timestamps,
             instrument=data.canonical_instrument,
             timeout_seconds=settings.upstream_timeout_seconds,
             request_id=request_id,
