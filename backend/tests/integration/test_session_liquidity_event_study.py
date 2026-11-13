@@ -60,10 +60,12 @@ def test_study_uses_first_sweep_per_session_and_right_censoring() -> None:
                 25,
                 available_minute=55,
                 observation_end_minute=60,
-            ).model_copy(update={
-                "available_at": dt(9, 5),
-                "observation_end_at": dt(9, 10),
-            }),
+            ).model_copy(
+                update={
+                    "available_at": dt(9, 5),
+                    "observation_end_at": dt(9, 10),
+                }
+            ),
         ],
     )
 
