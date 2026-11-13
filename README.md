@@ -49,6 +49,25 @@ production validator permits plain HTTP only for an explicit-port
 `*.railway.internal` origin; public production upstream URLs must use HTTPS.
 Do not route private service credentials through browser configuration.
 
+### Historical session-context integration
+
+For point-in-time historical session features, configure
+`UPSTREAM_FEATURE_ENGINEERING_BASE_URL` to the feature-engineering service
+origin. If that service has `AUTH_TOKEN` configured, set the matching
+`UPSTREAM_FEATURE_ENGINEERING_AUTH_TOKEN` in this service. The URL is
+server-side only and must not contain a path or credentials.
+
+When configured, market-data replay requests DST-aware session context from
+`POST /api/v1/session-context` in batches of at most 1,000 candle-close
+timestamps. The consumer validates the v1 contract, response count, and exact
+timestamp alignment before attaching a context to each replay observation.
+Calendar context is deterministic from the timestamp and is marked available
+at candle close; it is not evidence of order flow or provider-sourced market
+activity. A configured but unavailable or contract-invalid dependency blocks
+the provider replay instead of silently omitting the feature. If the URL is
+not configured, the replay remains explicitly marked as missing session
+features and returns a warning.
+
 ---
 
 ## Implemented in this phase
