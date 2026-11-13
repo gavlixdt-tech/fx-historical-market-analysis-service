@@ -18,10 +18,21 @@ from backend.app.services.health_service import build_meta
 router = APIRouter()
 
 SessionKey = Literal[
-    "wellington", "sydney", "tokyo", "hong_kong", "singapore",
-    "frankfurt", "london", "new_york", "sydney_tokyo_overlap",
-    "tokyo_london_overlap", "london_new_york_overlap",
-    "ict_asia", "ict_london", "ict_new_york_am", "ict_london_close",
+    "wellington",
+    "sydney",
+    "tokyo",
+    "hong_kong",
+    "singapore",
+    "frankfurt",
+    "london",
+    "new_york",
+    "sydney_tokyo_overlap",
+    "tokyo_london_overlap",
+    "london_new_york_overlap",
+    "ict_asia",
+    "ict_london",
+    "ict_new_york_am",
+    "ict_london_close",
     "ict_new_york_pm",
 ]
 
@@ -49,9 +60,13 @@ class LiquidityEventObservation(BaseModel):
     @model_validator(mode="after")
     def validate_event_chronology(self) -> LiquidityEventObservation:
         fields = (
-            "session_open_at", "sweep_confirmed_at", "available_at",
-            "observation_end_at", "displacement_confirmed_at",
-            "midpoint_first_reached_at", "consolidation_candidate_at",
+            "session_open_at",
+            "sweep_confirmed_at",
+            "available_at",
+            "observation_end_at",
+            "displacement_confirmed_at",
+            "midpoint_first_reached_at",
+            "consolidation_candidate_at",
             "invalidated_at",
         )
         for name in fields:
@@ -63,7 +78,9 @@ class LiquidityEventObservation(BaseModel):
         ended = self.observation_end_at
         available = self.available_at
         if not opened <= swept <= ended:
-            raise ValueError("session_open_at <= sweep_confirmed_at <= observation_end_at is required")
+            raise ValueError(
+                "session_open_at <= sweep_confirmed_at <= observation_end_at is required"
+            )
         if available < swept or available > ended:
             raise ValueError("available_at must be between sweep confirmation and observation end")
         transitions = (
@@ -76,7 +93,9 @@ class LiquidityEventObservation(BaseModel):
         for name, value in transitions:
             if value is not None:
                 if value < previous or value > ended:
-                    raise ValueError(f"{name} must be chronological and no later than observation_end_at")
+                    raise ValueError(
+                        f"{name} must be chronological and no later than observation_end_at"
+                    )
                 previous = value
         if self.midpoint_first_reached_at is not None and self.displacement_confirmed_at is None:
             raise ValueError("midpoint_first_reached_at requires displacement_confirmed_at")
@@ -113,9 +132,7 @@ def _percentile(values: list[float], quantile: float) -> float | None:
     return round(ordered[rank], 3)
 
 
-def _kaplan_meier(
-    durations: list[float], observed: list[bool]
-) -> dict[str, Any]:
+def _kaplan_meier(durations: list[float], observed: list[bool]) -> dict[str, Any]:
     """Estimate time-to-transition with right-censored observations."""
     if len(durations) != len(observed) or not durations:
         return {"n": 0, "events": 0, "censored": 0, "median_minutes": None, "p90_minutes": None}
@@ -127,14 +144,18 @@ def _kaplan_meier(
     points: list[dict[str, float | int]] = []
     for instant in timeline:
         failures = sum(d == instant and event for d, event in zip(durations, observed, strict=True))
-        censored = sum(d == instant and not event for d, event in zip(durations, observed, strict=True))
+        censored = sum(
+            d == instant and not event for d, event in zip(durations, observed, strict=True)
+        )
         if failures and at_risk:
             survival *= 1.0 - failures / at_risk
             if median is None and survival <= 0.5:
                 median = instant
             if p90 is None and survival <= 0.1:
                 p90 = instant
-            points.append({"minutes": round(instant, 3), "survival": round(survival, 6), "at_risk": at_risk})
+            points.append(
+                {"minutes": round(instant, 3), "survival": round(survival, 6), "at_risk": at_risk}
+            )
         at_risk -= failures + censored
     return {
         "n": len(durations),
@@ -178,7 +199,9 @@ def build_session_liquidity_event_study(
         identity = (event.instrument, event.timeframe, event.session_key, event.session_open_at)
         prior_identity = instance_identity.setdefault(event.session_instance_id, identity)
         if prior_identity != identity:
-            raise ValueError("session_instance_id cannot refer to multiple instruments, timeframes, sessions or opens")
+            raise ValueError(
+                "session_instance_id cannot refer to multiple instruments, timeframes, sessions or opens"
+            )
         current = instances.get(event.session_instance_id)
         if current is None or event.sweep_confirmed_at < current.sweep_confirmed_at:
             instances[event.session_instance_id] = event
@@ -191,34 +214,44 @@ def build_session_liquidity_event_study(
     for (instrument, timeframe, session), rows in sorted(grouped.items()):
         rows.sort(key=lambda item: item.sweep_confirmed_at)
         minutes_to_first_sweep = [
-            (row.sweep_confirmed_at - row.session_open_at).total_seconds() / 60.0
-            for row in rows
+            (row.sweep_confirmed_at - row.session_open_at).total_seconds() / 60.0 for row in rows
         ]
         directional_counts = {
             direction: sum(row.direction == direction for row in rows)
             for direction in ("bullish", "bearish")
         }
-        groups.append({
-            "instrument": instrument,
-            "timeframe": timeframe,
-            "session_key": session,
-            "first_sweep_session_instances": len(rows),
-            "sample_status": "sufficient_for_descriptive_estimate"
-                if len(rows) >= payload.minimum_group_sample else "insufficient_sample",
-            "minutes_from_session_open_to_first_confirmed_sweep": {
-                "median": _percentile(minutes_to_first_sweep, 0.50),
-                "p75": _percentile(minutes_to_first_sweep, 0.75),
-                "p90": _percentile(minutes_to_first_sweep, 0.90),
-                "minimum": round(min(minutes_to_first_sweep), 3),
-                "maximum": round(max(minutes_to_first_sweep), 3),
-            },
-            "first_sweep_direction_counts": directional_counts,
-            "post_sweep_time_to_displacement": _transition_study(rows, "displacement_confirmed_at", cutoff),
-            "post_sweep_time_to_midpoint": _transition_study(rows, "midpoint_first_reached_at", cutoff),
-            "post_sweep_time_to_consolidation_candidate": _transition_study(rows, "consolidation_candidate_at", cutoff),
-            "post_sweep_time_to_invalidation": _transition_study(rows, "invalidated_at", cutoff),
-            "source_event_ids": [row.source_event_id for row in rows],
-        })
+        groups.append(
+            {
+                "instrument": instrument,
+                "timeframe": timeframe,
+                "session_key": session,
+                "first_sweep_session_instances": len(rows),
+                "sample_status": "sufficient_for_descriptive_estimate"
+                if len(rows) >= payload.minimum_group_sample
+                else "insufficient_sample",
+                "minutes_from_session_open_to_first_confirmed_sweep": {
+                    "median": _percentile(minutes_to_first_sweep, 0.50),
+                    "p75": _percentile(minutes_to_first_sweep, 0.75),
+                    "p90": _percentile(minutes_to_first_sweep, 0.90),
+                    "minimum": round(min(minutes_to_first_sweep), 3),
+                    "maximum": round(max(minutes_to_first_sweep), 3),
+                },
+                "first_sweep_direction_counts": directional_counts,
+                "post_sweep_time_to_displacement": _transition_study(
+                    rows, "displacement_confirmed_at", cutoff
+                ),
+                "post_sweep_time_to_midpoint": _transition_study(
+                    rows, "midpoint_first_reached_at", cutoff
+                ),
+                "post_sweep_time_to_consolidation_candidate": _transition_study(
+                    rows, "consolidation_candidate_at", cutoff
+                ),
+                "post_sweep_time_to_invalidation": _transition_study(
+                    rows, "invalidated_at", cutoff
+                ),
+                "source_event_ids": [row.source_event_id for row in rows],
+            }
+        )
 
     fingerprint_input = {
         "cutoff": cutoff.isoformat(),
@@ -226,7 +259,9 @@ def build_session_liquidity_event_study(
         "minimum_group_sample": payload.minimum_group_sample,
     }
     fingerprint = hashlib.sha256(
-        json.dumps(fingerprint_input, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+        json.dumps(
+            fingerprint_input, sort_keys=True, separators=(",", ":"), allow_nan=False
+        ).encode()
     ).hexdigest()
     return {
         "status": "completed" if groups else "no_eligible_events",
