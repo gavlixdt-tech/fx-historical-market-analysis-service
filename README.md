@@ -133,6 +133,15 @@ durable replay artifacts, and a verifiably untouched future evaluation remain
 outside this implementation. No profitability or production-readiness claim is
 made.
 
+
+## Session-conditioned liquidity event study (research only)
+
+The authenticated endpoint `POST /api/v1/market-session-liquidity/event-study` accepts caller-supplied, timestamped sweep events and reports the earliest confirmed sweep per `session_instance_id`, grouped by instrument, timeframe and session key. It reports the distribution of minutes from the supplied session open to the first confirmed sweep, directional counts, and post-sweep time-to-displacement, midpoint, consolidation-candidate and invalidation estimates.
+
+Post-sweep transition timing uses Kaplan-Meier estimates with right-censored observations. The request's `analysis_cutoff` excludes records not yet available at that cutoff and truncates follow-up at the cutoff; the endpoint never treats a not-yet-observed transition as a confirmed failure. The default minimum group size is 30 for a descriptive-sufficiency label; smaller groups remain visible but are explicitly marked insufficient.
+
+This endpoint does not yet ingest Service 18 events automatically, independently authenticate event producers, persist event-study datasets, or feed the model-training/forecasting pipeline. Event completeness, session identity, source timestamps and availability are caller-asserted. It is descriptive research, not a forward forecast, BUY/SELL instruction, proof of resting stop orders, or evidence of profitability. Do not use its distributions as model features until producer provenance, instrument-specific historical coverage, leakage-resistant walk-forward validation, multiple-testing controls and independent calibration are established.
+
 ---
 
 ## Quick start
