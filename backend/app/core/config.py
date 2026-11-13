@@ -239,14 +239,31 @@ class Settings(BaseSettings):
         if value is None or value == "":
             return None
         parsed = urlsplit(value.strip())
-        if parsed.scheme not in {"http", "https"} or not parsed.netloc or not parsed.hostname:
-            raise ValueError("upstream_feature_engineering_base_url must be an http(s) origin")
-        if parsed.username or parsed.password or parsed.path not in {"", "/"} or parsed.query or parsed.fragment:
-            raise ValueError("upstream_feature_engineering_base_url must be an origin without credentials, path, query, or fragment")
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.netloc
+            or not parsed.hostname
+        ):
+            raise ValueError(
+                "upstream_feature_engineering_base_url must be an http(s) origin"
+            )
+        if (
+            parsed.username
+            or parsed.password
+            or parsed.path not in {"", "/"}
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError(
+                "upstream_feature_engineering_base_url must be an origin without "
+                "credentials, path, query, or fragment"
+            )
         try:
             _ = parsed.port
         except ValueError as exc:
-            raise ValueError("upstream_feature_engineering_base_url contains an invalid port") from exc
+            raise ValueError(
+                "upstream_feature_engineering_base_url contains an invalid port"
+            ) from exc
         return urlunsplit((parsed.scheme, parsed.netloc, "", "", ""))
 
     @field_validator("upstream_market_data_base_url")
