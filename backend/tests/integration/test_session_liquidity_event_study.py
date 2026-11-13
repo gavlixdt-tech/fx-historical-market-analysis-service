@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from pydantic import ValidationError
@@ -8,8 +8,6 @@ from backend.app.api.v1.routes.session_liquidity import (
     SessionLiquidityEventStudyRequest,
     build_session_liquidity_event_study,
 )
-
-UTC = timezone.utc
 
 
 def dt(hour: int, minute: int) -> datetime:
