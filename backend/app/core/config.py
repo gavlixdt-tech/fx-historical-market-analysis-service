@@ -235,7 +235,9 @@ class Settings(BaseSettings):
 
     @field_validator("upstream_feature_engineering_base_url")
     @classmethod
-    def _validate_feature_engineering_base_url(cls, value: str | None) -> str | None:
+    def _validate_feature_engineering_base_url(
+        cls, value: str | None
+    ) -> str | None:
         if value is None or value == "":
             return None
         parsed = urlsplit(value.strip())
