@@ -9,7 +9,7 @@ from collections import defaultdict
 from datetime import datetime
 from typing import Any, Literal
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from backend.app.schemas.common import ApiResponse
@@ -82,6 +82,9 @@ class LiquidityEventObservation(BaseModel):
             raise ValueError("midpoint_first_reached_at requires displacement_confirmed_at")
         if self.consolidation_candidate_at is not None and self.midpoint_first_reached_at is None:
             raise ValueError("consolidation_candidate_at requires midpoint_first_reached_at")
+        known_transitions = [value for _, value in transitions if value is not None]
+        if known_transitions and available < max(known_transitions):
+            raise ValueError("available_at cannot precede a supplied lifecycle transition")
         return self
 
 
@@ -147,14 +150,16 @@ def _kaplan_meier(
 def _transition_study(
     rows: list[LiquidityEventObservation],
     transition_name: str,
+    cutoff: datetime,
 ) -> dict[str, Any]:
     durations: list[float] = []
     observed: list[bool] = []
     for row in rows:
         transition = getattr(row, transition_name)
-        end = transition or row.observation_end_at
+        event_observed = transition is not None and transition <= cutoff
+        end = transition if event_observed else min(row.observation_end_at, cutoff)
         durations.append(max(0.0, (end - row.sweep_confirmed_at).total_seconds() / 60.0))
-        observed.append(transition is not None)
+        observed.append(event_observed)
     return _kaplan_meier(durations, observed)
 
 
@@ -208,10 +213,10 @@ def build_session_liquidity_event_study(
                 "maximum": round(max(minutes_to_first_sweep), 3),
             },
             "first_sweep_direction_counts": directional_counts,
-            "post_sweep_time_to_displacement": _transition_study(rows, "displacement_confirmed_at"),
-            "post_sweep_time_to_midpoint": _transition_study(rows, "midpoint_first_reached_at"),
-            "post_sweep_time_to_consolidation_candidate": _transition_study(rows, "consolidation_candidate_at"),
-            "post_sweep_time_to_invalidation": _transition_study(rows, "invalidated_at"),
+            "post_sweep_time_to_displacement": _transition_study(rows, "displacement_confirmed_at", cutoff),
+            "post_sweep_time_to_midpoint": _transition_study(rows, "midpoint_first_reached_at", cutoff),
+            "post_sweep_time_to_consolidation_candidate": _transition_study(rows, "consolidation_candidate_at", cutoff),
+            "post_sweep_time_to_invalidation": _transition_study(rows, "invalidated_at", cutoff),
             "source_event_ids": [row.source_event_id for row in rows],
         })
 
@@ -247,7 +252,7 @@ def build_session_liquidity_event_study(
 
 @router.post("/market-session-liquidity/event-study")
 async def session_liquidity_event_study(
-    request: Any, payload: SessionLiquidityEventStudyRequest
+    request: Request, payload: SessionLiquidityEventStudyRequest
 ) -> ApiResponse[dict[str, Any]]:
     """Return session-conditioned first-sweep and post-sweep timing distributions."""
     from backend.app.core.errors import ValidationError as AppValidationError
