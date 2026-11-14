@@ -116,7 +116,7 @@ export function ProviderHistoricalReplayWorkbench() {
     }
   }
 
-  const eligibleProviders = (inventory?.providers ?? []).filter((provider) =>
+  const configuredRealProviders = (inventory?.providers ?? []).filter((provider) =>
     provider.provider_type === "real" && provider.configured && provider.historical_candles_supported,
   );
   const dataSource = result?.reproducibility.data_source;
@@ -133,16 +133,16 @@ export function ProviderHistoricalReplayWorkbench() {
         <p className="not-implemented-banner">
           This path uses the configured real-provider integration; it is not a live feed. Provider identity is provider-asserted, historical availability uses an explicit close-plus-lag assumption, and session context is only attached when the configured Feature Engineering contract validates.
         </p>
-        {eligibleProviders.length === 0 && !loadingProviders ? (
-          <EmptyState title="No eligible real historical provider" message="Configure and connection-test a real provider in Service 1. Test adapters are deliberately excluded from provider-sourced replay." />
+        {configuredRealProviders.length === 0 && !loadingProviders ? (
+          <EmptyState title="No configured real historical provider" message="Configure and connection-test a real provider in Service 1. Test adapters are deliberately excluded from provider-sourced replay." />
         ) : null}
         <form className="replay-form" onSubmit={runReplay}>
           <div className="replay-form__grid">
             <label>
               Real historical provider
-              <select required value={providerId} onChange={(event) => setProviderId(event.currentTarget.value)} disabled={loadingProviders || eligibleProviders.length === 0}>
+              <select required value={providerId} onChange={(event) => setProviderId(event.currentTarget.value)} disabled={loadingProviders || configuredRealProviders.length === 0}>
                 <option value="">Select provider</option>
-                {eligibleProviders.map((provider) => <option key={provider.provider_id} value={provider.provider_id}>{provider.provider_id}</option>)}
+                {configuredRealProviders.map((provider) => <option key={provider.provider_id} value={provider.provider_id}>{provider.provider_id}</option>)}
               </select>
             </label>
             <label>Canonical instrument<input required value={instrument} onChange={(event) => setInstrument(event.currentTarget.value.toUpperCase())} placeholder="EUR/USD" /></label>
@@ -179,7 +179,7 @@ export function ProviderHistoricalReplayWorkbench() {
               </select>
             </label>
           </div>
-          <button className="button" type="submit" disabled={running || loadingProviders || eligibleProviders.length === 0} data-testid="run-provider-replay">
+          <button className="button" type="submit" disabled={running || loadingProviders || configuredRealProviders.length === 0} data-testid="run-provider-replay">
             {running ? "Retrieving and replaying historical candles…" : "Run provider-sourced replay"}
           </button>
         </form>
