@@ -449,6 +449,7 @@ class AnalysisService:
         limitations = [
             "Pattern outcomes are retrospective evaluation labels, not real-time signals.",
             "Overlapping windows are not independent samples.",
+            "Permutation p-values and adjusted q-values are exploratory; the pooled permutation does not preserve full serial dependence or non-stationarity and does not establish predictive significance.",
         ]
         observations, instrument, timeframe, source_quality = await self._resolve_observations(
             request, request_id
@@ -610,6 +611,7 @@ class AnalysisService:
                         "ci_upper": ci_upper,
                         "permutation_p_value": p_val,
                         "multiple_testing_method": "benjamini_hochberg",
+                    "inference_status": "exploratory_only_no_serial_dependence_adjustment",
                     },
                     data_quality_restrictions={
                         "source_quality": source_quality,
@@ -623,7 +625,7 @@ class AnalysisService:
         q_vals = benjamini_hochberg(p_values, alpha=cfg_in.alpha)
         for i, r in enumerate(results_list):
             qv = q_vals[i] if i < len(q_vals) else None
-            sig = bool(qv is not None and qv < cfg_in.alpha and r.eligible_outcome_count >= 5)
+            sig = False
             results_list[i] = r.model_copy(update={"q_value": qv, "significant": sig})
 
         status = "completed"
