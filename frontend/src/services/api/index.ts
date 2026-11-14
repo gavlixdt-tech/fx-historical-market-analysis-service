@@ -25,4 +25,5 @@ export type {
   ExperimentValidationResponseData,
   ExperimentRunResponseData,
   HistoricalReplayResponseData,
+  SessionLiquidityEventStudyResponseData,
 } from "@/schemas/api";
