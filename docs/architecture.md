@@ -3,14 +3,14 @@
 ## 1. Purpose
 
 `fx-historical-market-analysis-service` (Service 2) is the second microservice
-in the Forex AI platform. Its eventual responsibility is to analyse historical
+in the Forex AI platform. Its responsibility is to analyse historical
 foreign-exchange market observations in order to discover statistically
 defensible historical patterns, market regimes, temporal relationships, and
 other evidence-supported findings.
 
 **This repository provides research/simulation capabilities, including
 retrospective regime/pattern analysis, calendar seasonality, availability-aware
-historical replay and an optional provider-sourced replay path.** It does not provide production model serving, authenticated cross-service
+historical replay, a caller-supplied session/liquidity event-timing study, and an optional provider-sourced replay path.** It does not provide production model serving, authenticated cross-service
 prediction ingestion, or trading.
 
 ---
@@ -165,7 +165,7 @@ Implemented in this phase:
   and payload shapes; production authentication remains unverified.
 - Explicit provider inventory and selection; synthetic test providers are
   restricted to development/testing and labeled synthetic.
-- Historical regime classification, retrospective change-point detection, bounded pattern research, and calendar-seasonality distributions.
+- Historical regime classification, retrospective change-point detection, bounded pattern research, calendar-seasonality distributions, and a separate caller-supplied session/liquidity event-timing study.
 - Forecasting research experiments using chronological walk-forward evaluation.
 - Historical replay at successive point-in-time origins using explicit
   observation-availability timestamps, target-maturity purging and optional
