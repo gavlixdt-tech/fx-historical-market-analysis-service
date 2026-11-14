@@ -461,7 +461,12 @@ export const SeasonalityAnalysisResponseDataSchema = z.object({
   global_summary: z.record(z.unknown()),
   buckets: z.array(SeasonalityBucketResultSchema),
   minimum_bucket_samples: z.number(),
-  bootstrap: z.record(z.unknown()),
+  bootstrap: z.object({
+    method: z.string(),
+    samples: z.number(),
+    block_size: z.number(),
+    interval: z.string(),
+  }),
   insufficient_bucket_count: z.number(),
   data_provenance: z.record(z.unknown()),
   source_quality: z.record(z.unknown()).nullable().optional(),
