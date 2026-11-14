@@ -41,7 +41,7 @@ def test_calendar_seasonality_groups_by_ending_candle_timezone() -> None:
     assert len(result["buckets"]) == 31
     assert result["global_summary"]["return_observation_count"] == 239
     assert all(bucket["dimension"] in {"weekday", "hour_of_day"} for bucket in result["buckets"])
-    assert all(bucket["forecast_eligible"] is False for bucket in [])  # No per-bucket eligibility field.
+    assert result["forecast_eligible"] is False
 
 
 def test_calendar_seasonality_bootstrap_is_deterministic() -> None:
