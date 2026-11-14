@@ -614,7 +614,7 @@ class AnalysisService:
                         "ci_upper": ci_upper,
                         "permutation_p_value": p_val,
                         "multiple_testing_method": "benjamini_hochberg",
-                    "inference_status": "exploratory_only_no_serial_dependence_adjustment",
+                        "inference_status": "exploratory_only_no_serial_dependence_adjustment",
                     },
                     data_quality_restrictions={
                         "source_quality": source_quality,
@@ -940,9 +940,7 @@ class AnalysisService:
             algorithm_id="calendar_seasonality_research",
             algorithm_version="1.0.0",
             global_summary=global_summary,
-            buckets=[
-                SeasonalityBucketResult.model_validate(item) for item in result["buckets"]
-            ],
+            buckets=[SeasonalityBucketResult.model_validate(item) for item in result["buckets"]],
             minimum_bucket_samples=request.minimum_bucket_samples,
             bootstrap=result["bootstrap"],
             insufficient_bucket_count=int(result["insufficient_bucket_count"]),

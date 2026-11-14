@@ -184,6 +184,7 @@ def test_calibration_rejected_deterministically(client):
     rr = client.post("/api/v1/forecasting/experiment/run", json=body)
     assert rr.status_code in {400, 422, 500}
 
+
 def test_direction_experiment_calibrates_on_matured_validation_data(client):
     body = {
         "observations": _observations(240),
@@ -204,14 +205,9 @@ def test_direction_experiment_calibrates_on_matured_validation_data(client):
     assert response.status_code == 200
     data = response.json()["data"]
     assert data["effective_config"]["calibration"] is True
-    assert (
-        data["effective_config"]["calibration_method"]
-        == "multiclass_temperature_scaling"
-    )
+    assert data["effective_config"]["calibration_method"] == "multiclass_temperature_scaling"
     model = data["models"][0]
-    applied = [
-        fold for fold in model["folds"] if fold["calibration"]["status"] == "applied"
-    ]
+    applied = [fold for fold in model["folds"] if fold["calibration"]["status"] == "applied"]
     assert applied
     for fold in applied:
         calibration = fold["calibration"]
@@ -221,6 +217,7 @@ def test_direction_experiment_calibrates_on_matured_validation_data(client):
         assert fold["metrics"]["brier_score"] is not None
         assert fold["metrics"]["log_loss"] is not None
         assert fold["metrics"]["expected_calibration_error"] is not None
+
 
 def test_direction_calibration_reports_insufficient_mature_samples(client):
     body = {
@@ -244,10 +241,7 @@ def test_direction_calibration_reports_insufficient_mature_samples(client):
         fold["calibration"]["status"] == "insufficient_mature_calibration_samples"
         for fold in model["folds"]
     )
-    assert any(
-        "Probability calibration was not applied" in warning
-        for warning in data["warnings"]
-    )
+    assert any("Probability calibration was not applied" in warning for warning in data["warnings"])
 
 
 def test_calibration_requires_probability_capable_model(client):
@@ -269,4 +263,3 @@ def test_calibration_requires_probability_capable_model(client):
         "requires at least one classification model with probability output" in error
         for error in response.json()["data"]["errors"]
     )
-

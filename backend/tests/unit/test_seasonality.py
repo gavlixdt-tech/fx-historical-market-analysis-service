@@ -40,10 +40,7 @@ def test_calendar_seasonality_groups_by_ending_candle_timezone() -> None:
     assert result["timeframe"] == "H1"
     assert len(result["buckets"]) == 31
     assert result["global_summary"]["return_observation_count"] == 239
-    assert all(
-        bucket["dimension"] in {"weekday", "hour_of_day"}
-        for bucket in result["buckets"]
-    )
+    assert all(bucket["dimension"] in {"weekday", "hour_of_day"} for bucket in result["buckets"])
     first_hour = next(
         bucket for bucket in result["buckets"] if bucket["bucket_label"] == "04:00-04:59"
     )

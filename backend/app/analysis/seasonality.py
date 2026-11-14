@@ -164,9 +164,7 @@ def analyze_calendar_seasonality(
         "median_return": median(all_returns) if all_returns else None,
         "realized_volatility": _sample_std(all_returns),
         "positive_return_rate": (
-            sum(value > 0 for value in all_returns) / len(all_returns)
-            if all_returns
-            else None
+            sum(value > 0 for value in all_returns) / len(all_returns) if all_returns else None
         ),
         "mean_candle_range_pct": _mean(all_ranges),
     }

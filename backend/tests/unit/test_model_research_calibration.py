@@ -35,8 +35,7 @@ def test_temperature_scaler_reduces_calibration_sample_log_loss() -> None:
         [0.05, 0.05, 0.90],
     ]
     overconfident = [
-        [0.98, 0.01, 0.01] if i % 3 == 0 else row
-        for i, row in enumerate(probabilities)
+        [0.98, 0.01, 0.01] if i % 3 == 0 else row for i, row in enumerate(probabilities)
     ]
     temperature = fit_temperature_scaler(overconfident, labels, classes)
     calibrated = apply_temperature_scaler(overconfident, temperature)

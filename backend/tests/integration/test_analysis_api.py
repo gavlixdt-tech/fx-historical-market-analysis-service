@@ -37,7 +37,10 @@ def test_pattern_endpoint(client) -> None:
     data = response.json()["data"]
     assert data["patterns"][0]["pattern_id"] == "directional_persistence"
     assert data["patterns"][0]["significant"] is False
-    assert data["patterns"][0]["statistical_uncertainty"]["inference_status"] == "exploratory_only_no_serial_dependence_adjustment"
+    assert (
+        data["patterns"][0]["statistical_uncertainty"]["inference_status"]
+        == "exploratory_only_no_serial_dependence_adjustment"
+    )
 
 
 def test_research_summary_endpoint(client) -> None:
@@ -147,7 +150,12 @@ def test_seasonality_endpoint_requires_explicit_provider_selection(client) -> No
 def test_seasonality_endpoint_rejects_invalid_timezone(client) -> None:
     response = client.post(
         "/api/v1/analysis/seasonality",
-        json={"observations": _obs(80), "instrument": "EUR/USD", "timeframe": "D1", "timezone": "Mars/Olympus"},
+        json={
+            "observations": _obs(80),
+            "instrument": "EUR/USD",
+            "timeframe": "D1",
+            "timezone": "Mars/Olympus",
+        },
     )
 
     assert response.status_code == 422

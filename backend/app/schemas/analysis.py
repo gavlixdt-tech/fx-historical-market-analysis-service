@@ -316,16 +316,10 @@ class SeasonalityAnalysisRequest(BaseModel):
                     "provider retrieval fields cannot be combined with caller-supplied observations"
                 )
         elif not self.instrument or not self.provider_id:
-            raise ValueError(
-                "provider retrieval requires an instrument and explicit provider_id"
-            )
-        if self.start is not None and (
-            self.start.tzinfo is None or self.start.utcoffset() is None
-        ):
+            raise ValueError("provider retrieval requires an instrument and explicit provider_id")
+        if self.start is not None and (self.start.tzinfo is None or self.start.utcoffset() is None):
             raise ValueError("start must include a timezone")
-        if self.end is not None and (
-            self.end.tzinfo is None or self.end.utcoffset() is None
-        ):
+        if self.end is not None and (self.end.tzinfo is None or self.end.utcoffset() is None):
             raise ValueError("end must include a timezone")
         if self.start is not None and self.end is not None and self.start >= self.end:
             raise ValueError("start must be earlier than end")
