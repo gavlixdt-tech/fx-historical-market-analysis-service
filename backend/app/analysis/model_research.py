@@ -797,10 +797,13 @@ def classification_metrics(
             raise ValueError("probability row must have positive total mass")
         normalized = [value / row_total for value in normalized]
         true_index = class_positions[label]
-        brier_total += sum(
-            (value - (1.0 if index == true_index else 0.0)) ** 2
-            for index, value in enumerate(normalized)
-        )
+        if len(classes) == 2:
+            brier_total += (normalized[1] - (1.0 if true_index == 1 else 0.0)) ** 2
+        else:
+            brier_total += sum(
+                (value - (1.0 if index == true_index else 0.0)) ** 2
+                for index, value in enumerate(normalized)
+            ) / len(classes)
         log_loss_total += -math.log(max(epsilon, normalized[true_index]))
         predicted_index = max(range(len(normalized)), key=normalized.__getitem__)
         confidences.append(normalized[predicted_index])
