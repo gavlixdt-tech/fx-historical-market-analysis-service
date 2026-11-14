@@ -284,9 +284,9 @@ export const ReplaySessionContextSchema = z.object({
   contract_version: z.literal("fx-session-context/v1"),
   observed_at: z.string().datetime({ offset: true }),
   available_at: z.string().datetime({ offset: true }),
-  active_sessions: z.array(z.enum(["wellington", "sydney", "tokyo", "hong_kong", "singapore", "frankfurt", "london", "new_york"])).max(8),
-  active_open_windows: z.array(z.enum(["sydney_open", "tokyo_open", "frankfurt_open", "london_open"])).max(4),
-  active_kill_zones: z.array(z.enum(["ict_asia", "ict_london", "ict_new_york_am", "ict_london_close", "ict_new_york_pm"])).max(5),
+  active_sessions: z.array(z.enum(["wellington", "sydney", "tokyo", "hong_kong", "singapore", "frankfurt", "london", "new_york"])).max(8).default([]),
+  active_open_windows: z.array(z.enum(["sydney_open", "tokyo_open", "frankfurt_open", "london_open"])).max(4).default([]),
+  active_kill_zones: z.array(z.enum(["ict_asia", "ict_london", "ict_new_york_am", "ict_london_close", "ict_new_york_pm"])).max(5).default([]),
   session_overlap_count: z.number().int().min(0).max(8),
   source_reference: z.string().min(1).max(200),
 });
