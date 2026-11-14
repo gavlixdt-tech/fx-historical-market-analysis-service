@@ -34,7 +34,7 @@ microservice's directory.
 | Provenance, freshness, source quality | `fx-market-data-service` |
 | Historical dataset requests | **this service** (via the upstream contract) |
 | Analytical input validation | **this service** (rejects unsuitable input) |
-| Historical statistics and patterns | **this service** (research APIs; see limitations) |
+| Historical statistics, patterns, regimes and calendar seasonality | **this service** (research APIs; see limitations) |
 | Replay and predictive validation | **this service** (caller records or configured provider retrieval with declared availability assumptions) |
 | Authoritative service outputs / lineage | **not integrated** |
 
@@ -72,6 +72,7 @@ features and returns a warning.
 
 ## Implemented in this phase
 
+- **Calendar seasonality research** — descriptive weekday, hour-of-day and month-of-year return/volatility distributions in an explicit IANA timezone, with contiguous-interval filtering, minimum-sample labels and deterministic circular moving-block bootstrap intervals. It does not claim statistical significance or forecast eligibility.
 - **Backend** — FastAPI application factory, validated configuration, versioned
   routing under `/api/v1`, request correlation IDs, consistent error
   envelopes, structured JSON logging, Prometheus metrics, optional
@@ -153,6 +154,7 @@ The React dashboard provides:
 - Bounded historical retrieval with an OHLC candlestick chart and recent candle table.
 - Dataset quality and provenance details from the actual retrieval response.
 - Retrospective regime and pattern research through the existing analysis API.
+- Calendar seasonality research by weekday, hour and month with explicit timezone, gap exclusion, sample sufficiency and descriptive uncertainty intervals.
 - Forecasting research readiness and experiment execution where the backend permits it.
 - Provider-sourced historical rolling-origin replay through Service 1, with optional validated DST-aware session context from Service 61 and explicit publication-lag/provenance caveats.
 - Caller-supplied historical replay with optional session and liquidity lifecycle snapshots displayed at each prediction origin.
