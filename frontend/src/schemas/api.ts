@@ -15,7 +15,7 @@ export const ErrorDetailSchema = z.object({
   code: z.string(),
   message: z.string(),
   request_id: z.string().nullable().optional(),
-  details: z.record(z.unknown()).nullable().optional(),
+  details: z.record(z.string(), z.unknown()).nullable().optional(),
 });
 
 export type ErrorDetail = z.infer<typeof ErrorDetailSchema>;
@@ -122,7 +122,7 @@ export const StatusResponseDataSchema = z.object({
   operational_state: z.string(),
   uptime_seconds: z.number().nullable().optional(),
   capabilities: z.array(CapabilityStatusSchema),
-  dependencies: z.array(z.record(z.unknown())),
+  dependencies: z.array(z.record(z.string(), z.unknown())),
   upstream_integration: UpstreamIntegrationStatusSchema,
   timestamp_utc: z.string(),
 });
@@ -148,7 +148,7 @@ export const StatusEnvelopeSchema = ApiEnvelopeSchema.extend({
 
 /** Data source status returned by GET /api/v1/data-source. */
 export const DataSourceResponseDataSchema = z.object({
-  configuration: z.record(z.unknown()),
+  configuration: z.record(z.string(), z.unknown()),
   connectivity: z.object({
     state: z.string(),
     message: z.string(),
@@ -172,9 +172,9 @@ export const HistoricalDatasetResponseDataSchema = z.object({
   timeframe: z.string(),
   price_basis: z.string(),
   provider_id: z.string(),
-  observations: z.array(z.record(z.unknown())),
-  quality: z.record(z.unknown()),
-  provenance: z.record(z.unknown()),
+  observations: z.array(z.record(z.string(), z.unknown())),
+  quality: z.record(z.string(), z.unknown()),
+  provenance: z.record(z.string(), z.unknown()),
   dataset_fingerprint: z.string(),
   partial: z.boolean().optional().default(false),
 });
@@ -210,9 +210,9 @@ export const HistoricalProviderInventoryEnvelopeSchema =
 /** Research readiness returned by POST /api/v1/research/readiness. */
 export const ResearchReadinessResponseDataSchema = z.object({
   ready: z.boolean(),
-  findings: z.array(z.record(z.unknown())),
-  experiment_validation: z.record(z.unknown()),
-  dataset_quality: z.record(z.unknown()).nullable().optional(),
+  findings: z.array(z.record(z.string(), z.unknown())),
+  experiment_validation: z.record(z.string(), z.unknown()),
+  dataset_quality: z.record(z.string(), z.unknown()).nullable().optional(),
   readiness_status: z.string().nullable().optional(),
   research_readiness_status: z.string().nullable().optional(),
 });
@@ -223,7 +223,7 @@ export type ResearchReadinessResponseData = z.infer<
 
 /** Model families returned by GET /api/v1/forecasting/models. */
 export const ModelFamiliesResponseDataSchema = z.object({
-  families: z.array(z.record(z.unknown())),
+  families: z.array(z.record(z.string(), z.unknown())),
 });
 
 export type ModelFamiliesResponseData = z.infer<
@@ -234,7 +234,7 @@ export type ModelFamiliesResponseData = z.infer<
 export const ExperimentValidationResponseDataSchema = z.object({
   valid: z.boolean(),
   errors: z.array(z.string()),
-  config: z.record(z.unknown()),
+  config: z.record(z.string(), z.unknown()),
 });
 
 export type ExperimentValidationResponseData = z.infer<
@@ -247,31 +247,31 @@ export const ExperimentRunResponseDataSchema = z.object({
   status: z.string(),
   started_at: z.string(),
   completed_at: z.string(),
-  problem: z.record(z.unknown()),
+  problem: z.record(z.string(), z.unknown()),
   dataset_fingerprint: z.string(),
   feature_set_version: z.string(),
   target_type: z.string(),
   task_type: z.string(),
   n_observations: z.number(),
   n_folds: z.number(),
-  folds: z.array(z.record(z.unknown())),
-  models: z.array(z.record(z.unknown())),
-  comparison: z.array(z.record(z.unknown())),
-  aggregate: z.record(z.unknown()),
+  folds: z.array(z.record(z.string(), z.unknown())),
+  models: z.array(z.record(z.string(), z.unknown())),
+  comparison: z.array(z.record(z.string(), z.unknown())),
+  aggregate: z.record(z.string(), z.unknown()),
   warnings: z.array(z.string()),
   limitations: z.array(z.string()),
-  artifact: z.record(z.unknown()),
+  artifact: z.record(z.string(), z.unknown()),
   data_source: z.string().nullable().optional(),
   synthetic: z.boolean().nullable().optional(),
-  data_provenance: z.record(z.unknown()).nullable().optional(),
+  data_provenance: z.record(z.string(), z.unknown()).nullable().optional(),
   random_seed: z.number().nullable().optional(),
   validation_scheme: z.string().nullable().optional(),
   purge: z.boolean().nullable().optional(),
   embargo_periods: z.number().nullable().optional(),
-  reproducibility: z.record(z.unknown()).nullable().optional(),
-  effective_config: z.record(z.unknown()).nullable().optional(),
+  reproducibility: z.record(z.string(), z.unknown()).nullable().optional(),
+  effective_config: z.record(z.string(), z.unknown()).nullable().optional(),
   research_readiness_status: z.string().nullable().optional(),
-  research_readiness: z.record(z.unknown()).nullable().optional(),
+  research_readiness: z.record(z.string(), z.unknown()).nullable().optional(),
   code_version: z.string().nullable().optional(),
   git_commit: z.string().nullable().optional(),
 });
@@ -346,12 +346,13 @@ export const HistoricalReplayResponseDataSchema = z.object({
       regime: z.string(),
       actual: z.number(),
       forecasts: z.record(
+        z.string(),
         z.object({
           prediction: z.number(),
-          class_probabilities: z.record(z.number()),
+          class_probabilities: z.record(z.string(), z.number()),
         }),
       ),
-      market_context: z.record(z.unknown()).optional(),
+      market_context: z.record(z.string(), z.unknown()).optional(),
     }),
   ),
   models: z.array(
@@ -359,14 +360,14 @@ export const HistoricalReplayResponseDataSchema = z.object({
       model_family: z.string(),
       n_predictions: z.number(),
       primary_metric: z.string(),
-      out_of_sample_metrics: z.record(z.unknown()),
-      regime_metrics: z.record(z.unknown()),
-      declared_holdout: z.record(z.unknown()),
-      vs_baseline: z.record(z.unknown()),
+      out_of_sample_metrics: z.record(z.string(), z.unknown()),
+      regime_metrics: z.record(z.string(), z.unknown()),
+      declared_holdout: z.record(z.string(), z.unknown()),
+      vs_baseline: z.record(z.string(), z.unknown()),
     }),
   ),
-  robustness: z.record(z.unknown()),
-  reproducibility: z.record(z.unknown()),
+  robustness: z.record(z.string(), z.unknown()),
+  reproducibility: z.record(z.string(), z.unknown()),
   warnings: z.array(z.string()),
   limitations: z.array(z.string()),
 });
@@ -383,7 +384,7 @@ export const SessionLiquidityEventStudyResponseDataSchema = z.object({
   eligible_event_count: z.number(),
   excluded_after_cutoff_count: z.number(),
   first_sweep_session_instance_count: z.number(),
-  groups: z.array(z.record(z.unknown())),
+  groups: z.array(z.record(z.string(), z.unknown())),
   provenance_status: z.string(),
   limitations: z.array(z.string()),
   forecast_eligible: z.boolean(),
@@ -410,12 +411,12 @@ export const ResearchSummaryResponseDataSchema = z.object({
   confidence_status: z.string(),
   narrative: z.string(),
   recommendations: z.array(z.string()),
-  regime_summary: z.record(z.unknown()).nullable().optional(),
-  pattern_summary: z.record(z.unknown()).nullable().optional(),
-  historical_interval: z.record(z.string().nullable()),
+  regime_summary: z.record(z.string(), z.unknown()).nullable().optional(),
+  pattern_summary: z.record(z.string(), z.unknown()).nullable().optional(),
+  historical_interval: z.record(z.string(), z.string().nullable()),
   dataset_fingerprint: z.string().nullable().optional(),
-  data_provenance: z.record(z.unknown()),
-  source_quality: z.record(z.unknown()).nullable().optional(),
+  data_provenance: z.record(z.string(), z.unknown()),
+  source_quality: z.record(z.string(), z.unknown()).nullable().optional(),
   warnings: z.array(z.string()),
   limitations: z.array(z.string()),
   duration_ms: z.number(),
@@ -455,11 +456,11 @@ export const SeasonalityAnalysisResponseDataSchema = z.object({
   interval: z.object({ start: z.string().nullable(), end: z.string().nullable() }),
   dataset_fingerprint: z.string(),
   analysis_fingerprint: z.string(),
-  effective_config: z.record(z.unknown()),
-  methodology: z.record(z.unknown()),
+  effective_config: z.record(z.string(), z.unknown()),
+  methodology: z.record(z.string(), z.unknown()),
   algorithm_id: z.string(),
   algorithm_version: z.string(),
-  global_summary: z.record(z.unknown()),
+  global_summary: z.record(z.string(), z.unknown()),
   buckets: z.array(SeasonalityBucketResultSchema),
   minimum_bucket_samples: z.number(),
   bootstrap: z.object({
@@ -469,8 +470,8 @@ export const SeasonalityAnalysisResponseDataSchema = z.object({
     interval: z.string(),
   }),
   insufficient_bucket_count: z.number(),
-  data_provenance: z.record(z.unknown()),
-  source_quality: z.record(z.unknown()).nullable().optional(),
+  data_provenance: z.record(z.string(), z.unknown()),
+  source_quality: z.record(z.string(), z.unknown()).nullable().optional(),
   forecast_eligible: z.boolean(),
   warnings: z.array(z.string()),
   limitations: z.array(z.string()),
