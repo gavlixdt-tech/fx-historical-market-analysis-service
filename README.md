@@ -154,7 +154,8 @@ The React dashboard provides:
 - Dataset quality and provenance details from the actual retrieval response.
 - Retrospective regime and pattern research through the existing analysis API.
 - Forecasting research readiness and experiment execution where the backend permits it.
-- Historical rolling-origin replay, including caller-supplied session and liquidity lifecycle context at each prediction origin.
+- Provider-sourced historical rolling-origin replay through Service 1, with optional validated DST-aware session context from Service 61 and explicit publication-lag/provenance caveats.
+- Caller-supplied historical replay with optional session and liquidity lifecycle snapshots displayed at each prediction origin.
 - A view-only session/liquidity event-study workspace for caller-supplied event JSON.
 
 Session and lifecycle replay context remains caller-asserted and unverified. Experiment and replay results remain in-memory unless an explicitly documented artifact mechanism is configured; this repository does not claim a durable experiment-history registry.
