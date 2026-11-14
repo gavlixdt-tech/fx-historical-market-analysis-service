@@ -194,6 +194,36 @@ dataset fingerprint. Test providers are explicitly synthetic and available
 only in development/testing. A provider type of `real` is not proof of
 entitlement or signed source data.
 
+### `POST /api/v1/analysis/regimes`
+
+Runs retrospective rule-based regime classification and change-point analysis.
+Regime labels describe the supplied historical sample; change-point detection
+uses the full series and is retrospective, not a point-in-time signal.
+
+### `POST /api/v1/analysis/patterns`
+
+Runs bounded historical pattern research. Supported pattern IDs are
+`volatility_compression_expansion`, `directional_persistence`, and
+`reversal_after_large_move`. Supported overlap policies are `allow`,
+`min_gap`, and `no_overlap_outcome`. Unsupported pattern IDs and overlap
+policies are rejected rather than silently treated as empty results or
+`allow`.
+
+The chronological walk-forward summary purges training events whose target
+horizon would reach the test period and excludes test events without a complete
+future horizon. Pattern effects and permutation statistics remain exploratory;
+they do not establish a deployable forecast or trading edge.
+
+### `POST /api/v1/analysis/research-summary`
+
+Combines the retrospective regime and pattern research outputs into one
+descriptive summary. It does not calculate calibrated forecast confidence.
+
+### `GET /api/v1/analysis/capabilities`
+
+Returns the implemented historical-analysis algorithms, features and supported
+pattern identifiers.
+
 ### `POST /api/v1/research/readiness`
 
 Validates whether an `ExperimentRunRequest` is ready to run, including experiment validation, dataset quality and coverage checks.
