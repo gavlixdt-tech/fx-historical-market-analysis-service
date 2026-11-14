@@ -30,7 +30,10 @@ from backend.app.analysis.patterns import (
     walk_forward_indices,
 )
 from backend.app.analysis.regimes import RegimeConfig, classify_regimes
-from backend.app.analysis.seasonality import analyze_calendar_seasonality
+from backend.app.analysis.seasonality import (
+    MINIMUM_INTERVAL_MULTIPLE,
+    analyze_calendar_seasonality,
+)
 from backend.app.clients.market_data import MarketDataClient
 from backend.app.core.config import Settings
 from backend.app.core.errors import ValidationError
@@ -869,7 +872,7 @@ class AnalysisService:
             "block_size": request.block_size,
             "seed": request.seed,
             "maximum_gap_multiple": request.maximum_gap_multiple,
-            "minimum_interval_multiple": 0.9,
+            "minimum_interval_multiple": MINIMUM_INTERVAL_MULTIPLE,
             "provider_id": (source_quality or {}).get("provider_id"),
             "price_basis": (request.price_basis or "bid") if source_quality else None,
             "start": request.start.isoformat() if request.start is not None else None,
