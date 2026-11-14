@@ -43,7 +43,6 @@ def test_temperature_scaler_reduces_calibration_sample_log_loss() -> None:
 
     assert temperature > 0.0
     assert _negative_log_likelihood(calibrated, labels, classes) <= _negative_log_likelihood(
-
         overconfident, labels, classes
     )
 
