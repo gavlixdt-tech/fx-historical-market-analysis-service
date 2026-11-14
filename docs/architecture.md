@@ -63,12 +63,12 @@ fx-historical-market-analysis-service/
 │   ├── app/
 │   │   ├── api/v1/            # Versioned routing
 │   │   │   ├── router.py      # Aggregates the v1 routers
-│   │   │   └── routes/        # health.py, status.py, version.py
+│   │   │   └── routes/        # health, status, version, analysis, forecasting, session_liquidity
 │   │   ├── core/              # config.py, errors.py, logging.py
 │   │   ├── middleware/        # auth, correlation, request_logging, security
 │   │   ├── schemas/           # Request/response contracts (incl. upstream.py, replay.py)
-│   │   ├── clients/           # market_data.py: typed upstream client
-│   │   ├── services/          # forecasting_service.py, health_service.py
+│   │   ├── clients/           # market_data.py, session_context.py: typed upstream adapters
+│   │   ├── services/          # forecasting, health, replay_market_data orchestration
 │   │   ├── analysis/          # point-in-time features, models, replay, metrics, seasonality
 │   │   ├── observability/     # metrics.py, tracing.py
 │   │   └── main.py            # create_app() factory + entrypoint
@@ -115,6 +115,8 @@ Every module exists for a stated purpose. There are no placeholder modules.
 | `middleware/security.py` | Security headers and request body size limits. | Be disabled in production. |
 | `schemas/upstream.py` | Typed mirror of the Service 1 payload shapes. | Re-interpret market data semantics. |
 | `clients/market_data.py` | Server-side calls to Service 1 with timeouts, correlation propagation, and sanitised errors. | Be called from the browser. |
+| `clients/session_context.py` | Optional Service 61 session-context v1 adapter; validates contract version, instrument, response count, timestamp alignment, and bearer auth. | Claim order flow or liquidity evidence from deterministic calendar windows. |
+| `services/replay_market_data.py` | Orchestrates real-provider historical retrieval, data-quality gates, assumed availability, optional session-context enrichment, and replay execution. | Claim original provider publication timestamps or persist replay artifacts. |
 | `services/health_service.py` | The single source of truth for operational state. | Report a state it has not observed. |
 | `observability/metrics.py` | Prometheus-compatible metrics on a dedicated registry. | Expose default process metrics. |
 | `observability/tracing.py` | Optional OpenTelemetry instrumentation. | Prevent startup when the collector is down. |
@@ -143,7 +145,11 @@ correlation ID.
 | `app/useServiceStatus.ts` | Loads status, readiness, and version independently so one failure does not hide the others. |
 | `components/` | Reusable presentation: badges, panels, loading, empty, error states. |
 | `features/ServiceOverview.tsx` | Service identity, version, connectivity, readiness. |
-| `features/AnalysisWorkspace.tsx` | Historical-analysis and replay workspaces. |
+| `features/AnalysisWorkspace.tsx` | Historical regime and pattern research. |
+| `features/SeasonalityWorkspace.tsx` | Calendar seasonality analysis. |
+| `features/HistoricalReplayWorkbench.tsx` | Caller-supplied point-in-time replay. |
+| `features/ProviderHistoricalReplayWorkbench.tsx` | Provider-sourced replay with availability assumptions. |
+| `features/SessionLiquidityEventStudy.tsx` | Caller-supplied session/liquidity event timing study. |
 | `features/DataSourceIntegration.tsx` | Upstream identity and the real connection state. |
 | `features/OperationalDiagnostics.tsx` | Safe diagnostics, correlation IDs, refresh time. |
 | `schemas/api.ts` | Zod schemas mirroring the backend contracts. |
@@ -166,6 +172,7 @@ Implemented in this phase:
 - Explicit provider inventory and selection; synthetic test providers are
   restricted to development/testing and labeled synthetic.
 - Historical regime classification, retrospective change-point detection, bounded pattern research, calendar-seasonality distributions, and a separate caller-supplied session/liquidity event-timing study.
+- Optional Service 61 session-context enrichment for provider-sourced replay through the validated `fx-session-context/v1` contract.
 - Forecasting research experiments using chronological walk-forward evaluation.
 - Historical replay at successive point-in-time origins using explicit
   observation-availability timestamps, target-maturity purging and optional
@@ -184,7 +191,7 @@ The replay and research endpoints do not provide:
 - independent verification of data provenance and availability timestamps,
 - historical revisions/correction event reconstruction,
 - immutable durable replay and model-artifact persistence,
-- point-in-time outputs from other GFX services and service-level ablation,
+- point-in-time outputs from GFX specialist services beyond the optional Service 61 calendar-context adapter, and service-level ablation,
 - authenticated inter-service replay coordination,
 - integrity controls proving that a declared final holdout was never inspected,
 - evaluation on future data not used in the replay,
@@ -233,8 +240,10 @@ contract is also unverified. Provider-retrieved replay derives availability
 from candle close plus a configured lag and labels it `availability_assumed`;
 this is not historical publication-time proof.
 
-Service 2 has no Service 60 persistence, Service 61 feature-service adapter,
-Services 21/49/50 dataset handoff, Service 62 publisher, or Service 66 recovery
-integration. Local metrics and optional OpenTelemetry are not evidence of
-central Service 65 ingestion. See the
+Service 2 has an optional Service 61 session-context adapter. It validates the
+`fx-session-context/v1` contract and exact candle-close timestamp alignment;
+this is deterministic calendar context, not market activity or order flow.
+Service 2 has no Service 60 persistence, Services 21/49/50 dataset handoff,
+Service 62 publisher, or Service 66 recovery integration. Local metrics and
+optional OpenTelemetry are not evidence of central Service 65 ingestion. See the
 [`current ecosystem audit`](integration/service2-ecosystem-integration-audit.md).
