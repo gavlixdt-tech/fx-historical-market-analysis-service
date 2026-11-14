@@ -57,6 +57,61 @@ def test_research_summary_endpoint(client) -> None:
     assert data["regime_summary"]["status"] == "completed"
 
 
+
+def test_seasonality_endpoint_returns_descriptive_calendar_buckets(client) -> None:
+    response = client.post(
+        "/api/v1/analysis/seasonality",
+        json={
+            "observations": _obs(120),
+            "timeframe": "D1",
+            "timezone": "Africa/Nairobi",
+            "bucket_types": ["weekday", "month_of_year"],
+            "minimum_bucket_samples": 5,
+            "bootstrap_samples": 100,
+            "block_size": 3,
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["status"] in {"completed", "completed_with_warnings"}
+    assert data["timezone"] == "Africa/Nairobi"
+    assert data["timeframe"] == "D1"
+    assert data["forecast_eligible"] is False
+    assert data["algorithm_id"] == "calendar_seasonality_research"
+    assert len(data["buckets"]) == 19
+    assert data["global_summary"]["return_observation_count"] > 0
+    assert all("sample_status" in bucket for bucket in data["buckets"])
+
+
+def test_seasonality_endpoint_rejects_invalid_timezone(client) -> None:
+    response = client.post(
+        "/api/v1/analysis/seasonality",
+        json={"observations": _obs(80), "timeframe": "D1", "timezone": "Mars/Olympus"},
+    )
+
+    assert response.status_code == 422
+
+
+def test_pattern_endpoint_rejects_unsupported_pattern_and_overlap_policy(client) -> None:
+    unsupported_pattern = client.post(
+        "/api/v1/analysis/patterns",
+        json={
+            "observations": _obs(),
+            "config": {"pattern_ids": ["unknown_pattern"]},
+        },
+    )
+    unsupported_overlap = client.post(
+        "/api/v1/analysis/patterns",
+        json={
+            "observations": _obs(),
+            "config": {"overlap_policy": "silently_allow"},
+        },
+    )
+
+    assert unsupported_pattern.status_code == 422
+    assert unsupported_overlap.status_code == 422
+
 def test_capabilities_endpoint(client) -> None:
     response = client.get("/api/v1/analysis/capabilities")
     assert response.status_code == 200
