@@ -632,8 +632,12 @@ class ForecastingService(AnalysisService):
                 proba_test = None
                 calibration_info: dict[str, Any] = {
                     "requested": bool(request.calibration),
-                    "status": "not_requested" if not request.calibration else "not_applied",
-                    "method": "multiclass_temperature_scaling" if request.calibration else None,
+                    "status": (
+                        "not_requested" if not request.calibration else "not_applied"
+                    ),
+                    "method": (
+                        "multiclass_temperature_scaling" if request.calibration else None
+                    ),
                 }
                 class_labels = (
                     [-1.0, 0.0, 1.0]
@@ -655,7 +659,9 @@ class ForecastingService(AnalysisService):
                     preds_test = [maj for _ in y_test]
                     selected = {"model": mf, "majority_class": maj}
                     if request.calibration:
-                        calibration_info["status"] = "not_applicable_baseline_without_probabilities"
+                        calibration_info["status"] = (
+                            "not_applicable_baseline_without_probabilities"
+                        )
                 else:
                     best_cfg: dict[str, Any] = {}
                     best_score = None
@@ -731,7 +737,10 @@ class ForecastingService(AnalysisService):
                                     y_vals[index] for index in calibration_indices
                                 ]
                                 calibration_class_support = set(calibration_labels)
-                                if len(calibration_indices) < request.calibration_min_samples:
+                                if (
+                                    len(calibration_indices)
+                                    < request.calibration_min_samples
+                                ):
                                     calibration_info.update(
                                         {
                                             "status": "insufficient_mature_calibration_samples",
@@ -745,7 +754,9 @@ class ForecastingService(AnalysisService):
                                             "calibration_sample_count": len(calibration_indices),
                                         }
                                     )
-                                elif not set(class_labels).issubset(calibration_class_support):
+                                elif not set(class_labels).issubset(
+                                    calibration_class_support
+                                ):
                                     calibration_info.update(
                                         {
                                             "status": "missing_calibration_class_support",
@@ -755,7 +766,10 @@ class ForecastingService(AnalysisService):
                                 else:
                                     calibration_probabilities = align_probability_columns(
                                         model.predict_proba(
-                                            [Xva_p[position] for position in calibration_positions]
+                                            [
+                                                Xva_p[position]
+                                                for position in calibration_positions
+                                            ]
                                         ),
                                         model_classes,
                                         class_labels,
@@ -769,7 +783,9 @@ class ForecastingService(AnalysisService):
                                         proba_test, temperature
                                     )
                                     preds_test = [
-                                        class_labels[max(range(len(row)), key=row.__getitem__)]
+                                        class_labels[
+                                            max(range(len(row)), key=row.__getitem__)
+                                        ]
                                         for row in proba_test
                                     ]
                                     calibration_info.update(
@@ -784,7 +800,8 @@ class ForecastingService(AnalysisService):
                                                 calibration_indices[-1]
                                             ].isoformat(),
                                             "calibration_max_label_maturity": max(
-                                                outcome_ends[index] for index in calibration_indices
+                                                outcome_ends[index]
+                                                for index in calibration_indices
                                             ).isoformat(),
                                             "test_start": test_start.isoformat(),
                                             "calibration_labels_matured_before_test": max(
