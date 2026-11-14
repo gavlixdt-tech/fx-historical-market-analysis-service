@@ -232,7 +232,7 @@ Validates whether an `ExperimentRunRequest` is ready to run, including experimen
 
 Runs descriptive calendar-seasonality research over contiguous historical
 close-to-close returns. The request requires an explicit `timeframe` and accepts
-an optional provider ID or caller-supplied observations, an IANA `timezone`,
+an optional provider ID or caller-supplied observations, a supported `price_basis`, an IANA `timezone`,
 and one or more `bucket_types`: `weekday`, `hour_of_day`, and `month_of_year`.
 
 Each return is assigned to the local calendar bucket of the ending candle
