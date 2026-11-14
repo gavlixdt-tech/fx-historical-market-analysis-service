@@ -5,8 +5,8 @@ from backend.app.analysis.patterns import (
     PatternSpec,
     bootstrap_mean_ci,
     detect_events,
-    permutation_p_value,
     partition_pattern_events,
+    permutation_p_value,
 )
 
 
