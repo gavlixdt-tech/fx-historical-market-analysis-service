@@ -299,6 +299,26 @@ class SeasonalityAnalysisRequest(BaseModel):
             raise ValueError("timezone must be a valid IANA timezone identifier") from exc
         if len(set(self.bucket_types)) != len(self.bucket_types):
             raise ValueError("bucket_types must be unique")
+        if self.observations is not None:
+            if not self.observations:
+                raise ValueError("observations must not be empty")
+            if any(
+                value is not None
+                for value in (
+                    self.provider_id,
+                    self.price_basis,
+                    self.start,
+                    self.end,
+                    self.limit,
+                )
+            ):
+                raise ValueError(
+                    "provider retrieval fields cannot be combined with caller-supplied observations"
+                )
+        elif not self.instrument or not self.provider_id:
+            raise ValueError(
+                "provider retrieval requires an instrument and explicit provider_id"
+            )
         if self.start is not None and (
             self.start.tzinfo is None or self.start.utcoffset() is None
         ):
