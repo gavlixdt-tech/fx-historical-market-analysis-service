@@ -13,6 +13,7 @@ import { ErrorNotice } from "@/components/ErrorNotice";
 import { LoadingState } from "@/components/LoadingState";
 import { Panel } from "@/components/Panel";
 import { DatasetQualityProvenance } from "@/features/DatasetQualityProvenance";
+import { HistoricalCandleChart } from "@/features/HistoricalCandleChart";
 export function RealMarketDataWorkspace() {
   const [dataSource, setDataSource] = useState<DataSourceResponseData | null>(null);
   const [dataSourceLoading, setDataSourceLoading] = useState(false);
@@ -467,7 +468,13 @@ async function handleRetrieve(event: FormEvent) {
       </section>
 
       {dataset ? (
-        <DatasetQualityProvenance dataset={dataset} />
+        <>
+          <HistoricalCandleChart
+            observations={dataset.observations}
+            instrument={dataset.instrument}
+            timeframe={dataset.timeframe}
+          />
+          <DatasetQualityProvenance dataset={dataset} />
         <section>
           <p className="muted">
             Experiments submitted from this workspace receive caller-supplied observations.
@@ -484,6 +491,7 @@ async function handleRetrieve(event: FormEvent) {
             {readinessLoading ? "Checking..." : "Validate research readiness"}
           </button>
         </section>
+        </>
       ) : null}
 
       {readinessError ? (
