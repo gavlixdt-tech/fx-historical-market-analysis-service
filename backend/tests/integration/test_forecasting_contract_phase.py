@@ -210,7 +210,53 @@ def test_direction_experiment_calibrates_on_matured_validation_data(client):
         calibration = fold["calibration"]
         assert calibration["calibration_labels_matured_before_test"] is True
         assert calibration["calibration_max_label_maturity"] < calibration["test_start"]
+        assert fold["selected_config"]["hyperparameters"]["alpha"] == 1.0
         assert fold["metrics"]["brier_score"] is not None
         assert fold["metrics"]["log_loss"] is not None
         assert fold["metrics"]["expected_calibration_error"] is not None
+
+def test_direction_calibration_reports_insufficient_mature_samples(client):
+    body = {
+        "observations": _observations(240),
+        "problem": _problem(target_type="direction"),
+        "lookback": 20,
+        "n_folds": 3,
+        "min_train_samples": 30,
+        "model_families": ["ridge_logistic"],
+        "random_seed": 7,
+        "calibration": True,
+        "calibration_min_samples": 100,
+    }
+    response = client.post("/api/v1/forecasting/experiment/run", json=body)
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    model = data["models"][0]
+    assert model["calibration_applied_folds"] == 0
+    assert all(
+        fold["calibration"]["status"] == "insufficient_mature_calibration_samples"
+        for fold in model["folds"]
+    )
+    assert any("Probability calibration was not applied" in warning for warning in data["warnings"])
+
+
+def test_calibration_requires_probability_capable_model(client):
+    body = {
+        "observations": _observations(240),
+        "problem": _problem(target_type="direction"),
+        "lookback": 20,
+        "n_folds": 3,
+        "min_train_samples": 30,
+        "model_families": ["majority_class"],
+        "random_seed": 7,
+        "calibration": True,
+    }
+    response = client.post("/api/v1/forecasting/experiment/validate", json=body)
+
+    assert response.status_code == 200
+    assert response.json()["data"]["valid"] is False
+    assert any(
+        "requires at least one classification model with probability output" in error
+        for error in response.json()["data"]["errors"]
+    )
 
