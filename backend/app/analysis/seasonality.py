@@ -12,7 +12,7 @@ from datetime import datetime
 from math import fsum
 from random import Random
 from statistics import median, stdev
-from typing import Literal
+from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
 from backend.app.analysis.observations import Observation
@@ -106,7 +106,7 @@ def analyze_calendar_seasonality(
     block_size: int,
     seed: int,
     maximum_gap_multiple: float = 1.5,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     """Group contiguous close-to-close returns by local calendar buckets.
 
     A return is assigned to the calendar bucket of the ending candle timestamp.
