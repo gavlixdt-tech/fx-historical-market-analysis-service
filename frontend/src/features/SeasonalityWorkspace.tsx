@@ -53,6 +53,7 @@ export function SeasonalityWorkspace() {
   const [end, setEnd] = useState("");
   const [limit, setLimit] = useState("2000");
   const [minimumSamples, setMinimumSamples] = useState("20");
+  const [maximumGapMultiple, setMaximumGapMultiple] = useState("1.5");
   const [bucketTypes, setBucketTypes] = useState<BucketType[]>([
     "weekday",
     "hour_of_day",
@@ -103,12 +104,17 @@ export function SeasonalityWorkspace() {
     event.preventDefault();
     const numericLimit = Number(limit);
     const numericMinimum = Number(minimumSamples);
+    const numericGapMultiple = Number(maximumGapMultiple);
     if (!providerId || !instrument.trim()) {
       setError(new ApiError("Select a historical provider and instrument.", 0, "VALIDATION_ERROR", null));
       return;
     }
     if (!Number.isInteger(numericLimit) || numericLimit < 20 || numericLimit > 5000) {
       setError(new ApiError("Observation limit must be between 20 and 5000.", 0, "VALIDATION_ERROR", null));
+      return;
+    }
+    if (!Number.isFinite(numericGapMultiple) || numericGapMultiple < 1 || numericGapMultiple > 4) {
+      setError(new ApiError("Maximum candle-gap multiple must be between 1 and 4.", 0, "VALIDATION_ERROR", null));
       return;
     }
     if (!Number.isInteger(numericMinimum) || numericMinimum < 5 || numericMinimum > 500) {
@@ -150,7 +156,7 @@ export function SeasonalityWorkspace() {
         bootstrap_samples: 300,
         block_size: 5,
         seed: 42,
-        maximum_gap_multiple: 1.5,
+        maximum_gap_multiple: numericGapMultiple,
       });
       setResult(data);
     } catch (caught) {
@@ -236,6 +242,10 @@ export function SeasonalityWorkspace() {
             <label>
               Minimum samples per bucket
               <input type="number" min="5" max="500" value={minimumSamples} onChange={(event) => setMinimumSamples(event.currentTarget.value)} />
+            </label>
+            <label>
+              Maximum candle-gap multiple
+              <input type="number" min="1" max="4" step="0.1" value={maximumGapMultiple} onChange={(event) => setMaximumGapMultiple(event.currentTarget.value)} />
             </label>
             <label>Start (local browser time)<input type="datetime-local" value={start} onChange={(event) => setStart(event.currentTarget.value)} /></label>
             <label>End (local browser time)<input type="datetime-local" value={end} onChange={(event) => setEnd(event.currentTarget.value)} /></label>
