@@ -8,6 +8,7 @@ statistical significance.
 from __future__ import annotations
 
 from collections import defaultdict
+from datetime import datetime
 from math import fsum
 from random import Random
 from statistics import median, stdev
@@ -86,12 +87,12 @@ def _bucket_definitions(bucket_type: BucketType) -> list[tuple[int, str]]:
     return list(enumerate(_MONTHS, start=1))
 
 
-def _bucket_key(bucket_type: BucketType, local_timestamp: object) -> int:
+def _bucket_key(bucket_type: BucketType, local_timestamp: datetime) -> int:
     if bucket_type == "weekday":
-        return local_timestamp.weekday()  # type: ignore[union-attr]
+        return local_timestamp.weekday()
     if bucket_type == "hour_of_day":
-        return local_timestamp.hour  # type: ignore[union-attr]
-    return local_timestamp.month  # type: ignore[union-attr]
+        return local_timestamp.hour
+    return local_timestamp.month
 
 
 def analyze_calendar_seasonality(
