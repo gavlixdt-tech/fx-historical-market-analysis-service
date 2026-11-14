@@ -26,6 +26,10 @@ describe("SessionLiquidityEventStudy upload validation", () => {
       "naive-cutoff.json",
       { type: "application/json" },
     );
+    Object.defineProperty(file, "text", {
+      value: async () =>
+        JSON.stringify({ analysis_cutoff: "2026-11-14T09:00:00", events: [{}] }),
+    });
 
     fireEvent.change(screen.getByTestId("event-study-file"), {
       target: { files: [file] },
