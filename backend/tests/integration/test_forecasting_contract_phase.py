@@ -198,9 +198,13 @@ def test_direction_experiment_calibrates_on_matured_validation_data(client):
     assert response.status_code == 200
     data = response.json()["data"]
     assert data["effective_config"]["calibration"] is True
-    assert data["effective_config"]["calibration_method"] == "multiclass_temperature_scaling"
+    assert (
+        data["effective_config"]["calibration_method"] == "multiclass_temperature_scaling"
+    )
     model = data["models"][0]
-    applied = [fold for fold in model["folds"] if fold["calibration"]["status"] == "applied"]
+    applied = [
+        fold for fold in model["folds"] if fold["calibration"]["status"] == "applied"
+    ]
     assert applied
     for fold in applied:
         calibration = fold["calibration"]
