@@ -82,6 +82,8 @@ def test_seasonality_endpoint_returns_descriptive_calendar_buckets(client) -> No
     assert len(data["buckets"]) == 19
     assert data["analysis_fingerprint"]
     assert data["effective_config"]["maximum_gap_multiple"] == 1.5
+    assert data["effective_config"]["price_basis"] is None
+    assert data["effective_config"]["provider_id"] is None
     assert data["global_summary"]["return_observation_count"] > 0
     assert all("sample_status" in bucket for bucket in data["buckets"])
 
@@ -107,6 +109,11 @@ def test_seasonality_analysis_fingerprint_is_deterministic(client) -> None:
     second_data = second.json()["data"]
     assert first_data["analysis_id"] != second_data["analysis_id"]
     assert first_data["analysis_fingerprint"] == second_data["analysis_fingerprint"]
+
+    changed_config = {**payload, "timezone": "Africa/Nairobi"}
+    third = client.post("/api/v1/analysis/seasonality", json=changed_config)
+    assert third.status_code == 200
+    assert third.json()["data"]["analysis_fingerprint"] != first_data["analysis_fingerprint"]
 
 def test_seasonality_endpoint_rejects_invalid_timezone(client) -> None:
     response = client.post(
