@@ -724,7 +724,11 @@ def classification_metrics(
     y_proba: Sequence[Sequence[float]] | None = None,
     class_labels: Sequence[float] | None = None,
 ) -> dict[str, Any]:
-    classes = list(class_labels) if class_labels is not None else sorted(set(list(y_true) + list(y_pred)))
+    classes = (
+        list(class_labels)
+        if class_labels is not None
+        else sorted(set(list(y_true) + list(y_pred)))
+    )
     acc = accuracy(y_true, y_pred)
     bacc = balanced_accuracy(y_true, y_pred)
     cm = confusion_matrix(y_true, y_pred)
