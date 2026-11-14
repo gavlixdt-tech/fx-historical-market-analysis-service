@@ -66,6 +66,7 @@ def test_seasonality_endpoint_returns_descriptive_calendar_buckets(client) -> No
         "/api/v1/analysis/seasonality",
         json={
             "observations": _obs(120),
+            "instrument": "EUR/USD",
             "timeframe": "D1",
             "timezone": "Africa/Nairobi",
             "bucket_types": ["weekday", "month_of_year"],
@@ -96,6 +97,7 @@ def test_seasonality_endpoint_returns_descriptive_calendar_buckets(client) -> No
 def test_seasonality_analysis_fingerprint_is_deterministic(client) -> None:
     payload = {
         "observations": _obs(120),
+        "instrument": "EUR/USD",
         "timeframe": "D1",
         "timezone": "UTC",
         "bucket_types": ["weekday"],
@@ -137,7 +139,7 @@ def test_seasonality_endpoint_rejects_mixed_observation_and_provider_inputs(clie
 def test_seasonality_endpoint_requires_explicit_provider_selection(client) -> None:
     response = client.post(
         "/api/v1/analysis/seasonality",
-        json={"instrument": "EUR/USD", "timeframe": "H1"},
+        json={"instrument": "EUR/USD", "provider_id": "fixture-provider", "timeframe": "H1"},
     )
 
     assert response.status_code == 422
@@ -146,7 +148,7 @@ def test_seasonality_endpoint_requires_explicit_provider_selection(client) -> No
 def test_seasonality_endpoint_rejects_invalid_timezone(client) -> None:
     response = client.post(
         "/api/v1/analysis/seasonality",
-        json={"observations": _obs(80), "timeframe": "D1", "timezone": "Mars/Olympus"},
+        json={"observations": _obs(80), "instrument": "EUR/USD", "timeframe": "D1", "timezone": "Mars/Olympus"},
     )
 
     assert response.status_code == 422
