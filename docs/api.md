@@ -228,6 +228,23 @@ pattern identifiers.
 
 Validates whether an `ExperimentRunRequest` is ready to run, including experiment validation, dataset quality and coverage checks.
 
+### `POST /api/v1/market-session-liquidity/event-study`
+
+Runs a descriptive session-conditioned liquidity event study over caller-
+supplied event records. The request requires a timezone-aware `analysis_cutoff`
+and 1–10,000 events with instrument, timeframe, session key and instance ID,
+source event ID, direction, session open, sweep confirmation, availability and
+observation-end timestamps, plus optional lifecycle transition timestamps.
+`minimum_group_sample` defaults to 30 (accepted range 5–1,000).
+
+Only records available by the analysis cutoff are eligible. Later-arriving
+records are excluded. Lifecycle transitions not observed by the cutoff are
+right-censored at the cutoff and summarized with Kaplan–Meier estimates. The
+response is explicitly `forecast_eligible: false`. These statistics do not
+prove resting stop orders, order-book liquidity consumption, or predictive
+trading value. Automatic event ingestion, independent producer authentication,
+durable event storage and model-training integration are not provided.
+
 ### `POST /api/v1/analysis/seasonality`
 
 Runs descriptive calendar-seasonality research over contiguous historical
