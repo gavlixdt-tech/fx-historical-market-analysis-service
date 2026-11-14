@@ -451,6 +451,7 @@ export const SeasonalityAnalysisResponseDataSchema = z.object({
   observation_count: z.number(),
   return_observation_count: z.number(),
   excluded_gap_return_count: z.number(),
+  excluded_short_interval_return_count: z.number(),
   interval: z.object({ start: z.string().nullable(), end: z.string().nullable() }),
   dataset_fingerprint: z.string(),
   analysis_fingerprint: z.string(),
