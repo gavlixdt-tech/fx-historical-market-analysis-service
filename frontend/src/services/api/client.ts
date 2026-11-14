@@ -26,6 +26,7 @@ import {
   ResearchSummaryEnvelopeSchema,
   StatusEnvelopeSchema,
   SessionLiquidityEventStudyEnvelopeSchema,
+  SeasonalityAnalysisEnvelopeSchema,
   VersionEnvelopeSchema,
   type DataSourceResponseData,
   type ErrorDetail,
@@ -40,6 +41,7 @@ import {
   type ResearchSummaryResponseData,
   type StatusResponseData,
   type SessionLiquidityEventStudyResponseData,
+  type SeasonalityAnalysisResponseData,
   type VersionResponseData,
 } from "@/schemas/api";
 
@@ -234,6 +236,14 @@ export const api = {
       body: payload,
     }).then((r) => r.data),
 
+  runSeasonalityAnalysis: (payload: unknown, options?: RequestOptions) =>
+    request("/analysis/seasonality", SeasonalityAnalysisEnvelopeSchema, {
+      ...options,
+      method: "POST",
+      timeoutMs: options?.timeoutMs ?? 120_000,
+      body: payload,
+    }).then((r) => r.data),
+
   listModelFamilies: (taskType?: string, options?: RequestOptions) =>
     request(
       taskType
@@ -303,5 +313,6 @@ export type {
   ResearchSummaryResponseData,
   StatusResponseData,
   SessionLiquidityEventStudyResponseData,
+  SeasonalityAnalysisResponseData,
   VersionResponseData,
 };
