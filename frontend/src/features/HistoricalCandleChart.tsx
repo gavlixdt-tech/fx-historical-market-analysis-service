@@ -48,7 +48,7 @@ export function HistoricalCandleChart({ observations, instrument, timeframe }: H
   return (
     <Panel title={`Historical candles · ${instrument} · ${timeframe}`} subtitle={`Latest ${visible.length} of ${candles.length} valid OHLC observations. Read-only source data.`}>
       <div data-testid="historical-candle-chart">
-        <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Candlestick chart for ${instrument} on ${timeframe}`} width="100%" height="auto">
+        <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Candlestick chart for ${instrument} on ${timeframe}`} width="100%" height={height}>
           {[0, 0.25, 0.5, 0.75, 1].map((fraction) => {
             const yy = padding.top + fraction * plotHeight;
             return <line key={fraction} x1={padding.left} x2={width - padding.right} y1={yy} y2={yy} stroke="var(--border)" strokeDasharray="3 5" />;
