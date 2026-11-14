@@ -844,6 +844,8 @@ class AnalysisService:
             request, request_id
         )
         validate_minimum(observations, 20)
+        if instrument is None:
+            raise ValidationError("instrument is required for calendar-seasonality analysis.")
         if timeframe is None:
             raise ValidationError("timeframe is required for calendar-seasonality analysis.")
         try:
@@ -864,6 +866,7 @@ class AnalysisService:
         global_summary = result["global_summary"]
         dataset_fingerprint = _dataset_fingerprint(observations, instrument, timeframe)
         effective_config = {
+            "instrument": instrument,
             "timeframe": timeframe,
             "timezone": request.timezone,
             "bucket_types": list(request.bucket_types),
