@@ -1,5 +1,5 @@
 import math
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 
 def _observations(n: int = 120) -> list[dict]:
@@ -31,7 +31,7 @@ def _direction_observations(n: int = 240) -> list[dict]:
         observations.append(
             {
                 "timestamp": (
-                    datetime(2024, 1, 1, tzinfo=timezone.utc) + timedelta(days=index)
+                    datetime(2024, 1, 1, tzinfo=UTC) + timedelta(days=index)
                 ).isoformat(),
                 "open": close,
                 "high": close + 0.001,
