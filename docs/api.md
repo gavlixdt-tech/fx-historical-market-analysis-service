@@ -232,13 +232,14 @@ Validates whether an `ExperimentRunRequest` is ready to run, including experimen
 
 Runs descriptive calendar-seasonality research over contiguous historical
 close-to-close returns. The request requires an explicit `timeframe` and accepts
-an optional provider ID or caller-supplied observations, a supported `price_basis`, an IANA `timezone`,
+either caller-supplied observations or an explicitly selected `provider_id` with an instrument, a supported `price_basis` for provider retrieval, and an IANA `timezone`,
 and one or more `bucket_types`: `weekday`, `hour_of_day`, and `month_of_year`.
 
 Each return is assigned to the local calendar bucket of the ending candle
-timestamp. Returns spanning more than `maximum_gap_multiple` times the declared
-timeframe are excluded and counted rather than treating a multi-period move as
-a single-period return. The response reports bucket counts, mean/median return,
+timestamp. Intervals shorter than `minimum_interval_multiple` (currently 0.9)
+or longer than `maximum_gap_multiple` times the declared timeframe are excluded
+and counted separately. This avoids treating duplicate/sub-timeframe updates or
+large missing-data gaps as ordinary one-period returns. The response reports valid-return counts, short-interval and long-gap exclusion counts, bucket counts, mean/median return,
 positive-return rate, realized volatility, average candle range, difference
 from the global mean, and a deterministic circular moving-block bootstrap
 interval for adequately sampled buckets. Returns are simple close-to-close
