@@ -26,7 +26,9 @@ jobs:
 
       - name: Resolve and write lockfile
         working-directory: frontend
-        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+        run: |
+          rm -f package-lock.json
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
 
       - name: Commit refreshed lockfile directly to master
         run: |
