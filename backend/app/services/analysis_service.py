@@ -30,6 +30,7 @@ from backend.app.analysis.patterns import (
     walk_forward_indices,
 )
 from backend.app.analysis.regimes import RegimeConfig, classify_regimes
+from backend.app.analysis.seasonality import analyze_calendar_seasonality
 from backend.app.clients.market_data import MarketDataClient
 from backend.app.core.config import Settings
 from backend.app.core.errors import ValidationError
@@ -47,6 +48,9 @@ from backend.app.schemas.analysis import (
     ResearchSummaryConfigInput,
     ResearchSummaryData,
     ResearchSummaryRequest,
+    SeasonalityAnalysisRequest,
+    SeasonalityAnalysisResponseData,
+    SeasonalityBucketResult,
 )
 from backend.app.services.market_data_policy import (
     require_approved_real_instrument,
@@ -827,12 +831,76 @@ class AnalysisService:
             duration_ms=duration_ms,
         )
 
+    async def analyze_seasonality(
+        self, request: SeasonalityAnalysisRequest, request_id: str
+    ) -> SeasonalityAnalysisResponseData:
+        started = time.perf_counter()
+        observations, instrument, timeframe, source_quality = await self._resolve_observations(
+            request, request_id
+        )
+        validate_minimum(observations, 20)
+        if timeframe is None:
+            raise ValidationError("timeframe is required for calendar-seasonality analysis.")
+        try:
+            result = analyze_calendar_seasonality(
+                observations,
+                timeframe=timeframe,
+                timezone_name=request.timezone,
+                bucket_types=request.bucket_types,
+                minimum_bucket_samples=request.minimum_bucket_samples,
+                bootstrap_samples=request.bootstrap_samples,
+                block_size=request.block_size,
+                seed=request.seed,
+                maximum_gap_multiple=request.maximum_gap_multiple,
+            )
+        except ValueError as exc:
+            raise ValidationError(str(exc)) from exc
+
+        global_summary = result["global_summary"]
+        warnings: list[str] = []
+        if result["insufficient_bucket_count"]:
+            warnings.append(
+                f"{result['insufficient_bucket_count']} calendar buckets do not meet "
+                f"the configured minimum sample count of {request.minimum_bucket_samples}."
+            )
+        return SeasonalityAnalysisResponseData(
+            status="completed_with_warnings" if warnings else "completed",
+            analysis_id=str(uuid.uuid4()),
+            instrument=instrument,
+            timeframe=timeframe,
+            timezone=request.timezone,
+            observation_count=len(observations),
+            return_observation_count=int(global_summary["return_observation_count"] or 0),
+            excluded_gap_return_count=int(global_summary["excluded_gap_return_count"] or 0),
+            interval={
+                "start": observations[0].timestamp.isoformat(),
+                "end": observations[-1].timestamp.isoformat(),
+            },
+            dataset_fingerprint=_dataset_fingerprint(observations, instrument, timeframe),
+            algorithm_id="calendar_seasonality_research",
+            algorithm_version="1.0.0",
+            global_summary=global_summary,
+            buckets=[
+                SeasonalityBucketResult.model_validate(item) for item in result["buckets"]
+            ],
+            minimum_bucket_samples=request.minimum_bucket_samples,
+            bootstrap=result["bootstrap"],
+            insufficient_bucket_count=int(result["insufficient_bucket_count"]),
+            data_provenance=_data_provenance(source_quality),
+            source_quality=source_quality,
+            forecast_eligible=False,
+            warnings=warnings,
+            limitations=list(result["limitations"]),
+            duration_ms=(time.perf_counter() - started) * 1000,
+        )
+
     def capabilities(self) -> CapabilityDiscoveryData:
         return CapabilityDiscoveryData(
             algorithms=[
                 "rule_based_regime_classification",
                 "binary_segmentation_change_points",
                 "bounded_pattern_research",
+                "calendar_seasonality_research",
             ],
             features=[
                 "simple_returns",
@@ -843,13 +911,17 @@ class AnalysisService:
                 "direction_consistency",
                 "candle_range_pct",
                 "candle_body_ratio",
+                "calendar_bucket_return_distribution",
+                "calendar_bucket_volatility",
             ],
             patterns=[
                 "volatility_compression_expansion",
                 "directional_persistence",
                 "reversal_after_large_move",
+                "calendar_seasonality",
             ],
             notes=[
+                "Calendar seasonality is descriptive only; it is not a forecast or trading signal.",
                 "Retrospective research only; no forecasting or trading signals.",
             ],
         )
