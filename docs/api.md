@@ -270,6 +270,14 @@ provider origin. Caller-supplied observations are returned as
 `user_supplied_unverified`, with unknown synthetic status unless explicitly
 declared synthetic.
 
+For classification targets, `calibration=true` enables multiclass temperature
+scaling. The validation segment is reserved for calibration and is not used for
+hyperparameter selection; only validation labels whose outcomes mature before
+the test period are eligible. `calibration_min_samples` defaults to 10. The
+response records calibration status and temporal maturity evidence per fold.
+Regression-target calibration is rejected. Test targets are evaluation-only and
+are never used to fit the calibrator.
+
 ### `POST /api/v1/historical-replay/run`
 
 Runs the point-in-time historical replay described in
