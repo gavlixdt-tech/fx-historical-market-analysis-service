@@ -45,17 +45,26 @@ def test_calendar_seasonality_groups_by_ending_candle_timezone() -> None:
 
 
 def test_calendar_seasonality_bootstrap_is_deterministic() -> None:
-    args = {
-        "timeframe": "H1",
-        "timezone_name": "UTC",
-        "bucket_types": ["hour_of_day"],
-        "minimum_bucket_samples": 2,
-        "bootstrap_samples": 100,
-        "block_size": 3,
-        "seed": 7,
-    }
-    first = analyze_calendar_seasonality(observations(), **args)
-    second = analyze_calendar_seasonality(observations(), **args)
+    first = analyze_calendar_seasonality(
+        observations(),
+        timeframe="H1",
+        timezone_name="UTC",
+        bucket_types=["hour_of_day"],
+        minimum_bucket_samples=2,
+        bootstrap_samples=100,
+        block_size=3,
+        seed=7,
+    )
+    second = analyze_calendar_seasonality(
+        observations(),
+        timeframe="H1",
+        timezone_name="UTC",
+        bucket_types=["hour_of_day"],
+        minimum_bucket_samples=2,
+        bootstrap_samples=100,
+        block_size=3,
+        seed=7,
+    )
 
     assert first["buckets"] == second["buckets"]
 
