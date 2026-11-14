@@ -246,6 +246,23 @@ export function HistoricalReplayWorkbench() {
             <p data-testid="replay-primary-metrics">
               Primary metrics: {JSON.stringify(metric ?? {})}
             </p>
+            <h4>Point-in-time session and liquidity context</h4>
+            <p className="muted small">
+              Context is caller-supplied and remains unverified. Each field is only eligible at forecast origins where its own available_at is no later than the information cutoff.
+            </p>
+            <pre data-testid="replay-market-context">
+              {JSON.stringify(
+                result.predictions.slice(0, 25).map((prediction) => ({
+                  reference_timestamp: prediction.reference_timestamp,
+                  information_cutoff: prediction.information_cutoff,
+                  market_context: prediction.market_context ?? {
+                    status: "not supplied in this replay response",
+                  },
+                })),
+                null,
+                2,
+              )}
+            </pre>
             <h4>Robustness diagnostics</h4>
             <pre>{JSON.stringify(result.robustness, null, 2)}</pre>
             <h4>Limitations</h4>
