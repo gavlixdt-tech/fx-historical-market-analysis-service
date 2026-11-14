@@ -295,9 +295,9 @@ export function SeasonalityWorkspace() {
             <p className="muted small">Analysis fingerprint: <code>{result.analysis_fingerprint}</code></p>
             <p className="muted small">Maximum accepted candle gap: {String(result.effective_config.maximum_gap_multiple)} × {result.timeframe}</p>
             <div className="overview-grid">
-              <div className="overview-card"><p className="overview-card__label">Mean return</p><p className="overview-card__value">{numberOrLabel(result.global_summary.mean_return)}</p></div>
-              <div className="overview-card"><p className="overview-card__label">Median return</p><p className="overview-card__value">{numberOrLabel(result.global_summary.median_return)}</p></div>
-              <div className="overview-card"><p className="overview-card__label">Realized volatility</p><p className="overview-card__value">{numberOrLabel(result.global_summary.realized_volatility)}</p></div>
+              <div className="overview-card"><p className="overview-card__label">Mean return</p><p className="overview-card__value">{percentageOrLabel(result.global_summary.mean_return)}</p></div>
+              <div className="overview-card"><p className="overview-card__label">Median return</p><p className="overview-card__value">{percentageOrLabel(result.global_summary.median_return)}</p></div>
+              <div className="overview-card"><p className="overview-card__label">Return standard deviation (not annualized)</p><p className="overview-card__value">{percentageOrLabel(result.global_summary.realized_volatility)}</p></div>
               <div className="overview-card"><p className="overview-card__label">Positive returns</p><p className="overview-card__value">{percentageOrLabel(result.global_summary.positive_return_rate)}</p></div>
             </div>
             {BUCKET_OPTIONS.filter((option) => bucketTypes.includes(option.value)).map((option) => (
@@ -310,13 +310,14 @@ export function SeasonalityWorkspace() {
                         {bucket.bucket_label} · n={bucket.observation_count} · {bucket.sample_status.replace(/_/g, " ")}
                       </dt>
                       <dd className="data-row__value">
-                        Mean {numberOrLabel(bucket.mean_return)} · Median {numberOrLabel(bucket.median_return)} · Positive {percentageOrLabel(bucket.positive_return_rate)} · Volatility {numberOrLabel(bucket.realized_volatility)} · Mean range {percentageOrLabel(bucket.mean_candle_range_pct)} · Δ vs global {numberOrLabel(bucket.difference_from_global_mean)} · 95% interval {numberOrLabel(bucket.mean_return_interval_95_lower)} to {numberOrLabel(bucket.mean_return_interval_95_upper)}
+                        Mean {percentageOrLabel(bucket.mean_return)} · Median {percentageOrLabel(bucket.median_return)} · Positive {percentageOrLabel(bucket.positive_return_rate)} · Volatility {percentageOrLabel(bucket.realized_volatility)} · Mean range {percentageOrLabel(bucket.mean_candle_range_pct)} · Δ vs global {percentageOrLabel(bucket.difference_from_global_mean)} · 95% interval {percentageOrLabel(bucket.mean_return_interval_95_lower)} to {percentageOrLabel(bucket.mean_return_interval_95_upper)}
                       </dd>
                     </div>
                   ))}
                 </div>
               </section>
             ))}
+            <p className="muted small">Methodology: {String(result.methodology.return_definition)} {String(result.methodology.realized_volatility)}</p>
             <p className="muted small">Bootstrap: {String(result.bootstrap.method)} · {result.bootstrap.samples} resamples · block size {result.bootstrap.block_size}. Intervals are descriptive, not significance tests.</p>
             <p className="muted small">Provenance: {String(result.data_provenance.provenance_status ?? "unknown")} · Forecast eligible: no.</p>
             {result.warnings.length ? <><h3 className="section-subtitle">Warnings</h3><ul>{result.warnings.map((item) => <li key={item}>{item}</li>)}</ul></> : null}
