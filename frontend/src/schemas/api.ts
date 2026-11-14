@@ -445,7 +445,7 @@ export const SeasonalityBucketResultSchema = z.object({
 export const SeasonalityAnalysisResponseDataSchema = z.object({
   status: z.string(),
   analysis_id: z.string(),
-  instrument: z.string().nullable().optional(),
+  instrument: z.string(),
   timeframe: z.string(),
   timezone: z.string(),
   observation_count: z.number(),
