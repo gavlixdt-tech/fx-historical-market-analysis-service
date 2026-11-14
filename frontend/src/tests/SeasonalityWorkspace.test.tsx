@@ -147,6 +147,9 @@ describe("SeasonalityWorkspace", () => {
     const user = userEvent.setup();
     render(<SeasonalityWorkspace />);
 
+    await waitFor(() => {
+      expect(screen.getByLabelText("Historical provider")).toHaveValue("fixture-provider");
+    });
     await user.click(screen.getByLabelText("Day of week"));
     await user.click(screen.getByLabelText("Hour of day"));
     await user.click(screen.getByLabelText("Month of year"));
