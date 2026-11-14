@@ -21,6 +21,7 @@ export type {
   HistoricalDatasetResponseData,
   HistoricalProviderInventory,
   ResearchReadinessResponseData,
+  ResearchSummaryResponseData,
   ModelFamiliesResponseData,
   ExperimentValidationResponseData,
   ExperimentRunResponseData,
