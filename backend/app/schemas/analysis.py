@@ -272,7 +272,7 @@ class SeasonalityAnalysisRequest(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     observations: list[ObservationInput] | None = Field(default=None, max_length=5000)
-    instrument: str | None = None
+    instrument: str = Field(min_length=3, max_length=20)
     timeframe: Literal["M1", "M5", "M15", "M30", "H1", "H4", "D1", "W1"]
     start: datetime | None = None
     end: datetime | None = None
@@ -355,7 +355,7 @@ class SeasonalityAnalysisResponseData(BaseModel):
 
     status: str
     analysis_id: str
-    instrument: str | None = None
+    instrument: str
     timeframe: str
     timezone: str
     observation_count: int
