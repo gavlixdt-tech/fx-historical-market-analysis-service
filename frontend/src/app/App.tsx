@@ -55,42 +55,54 @@ export default function App() {
         </div>
       </header>
 
+      <nav className="app-nav" aria-label="Dashboard sections">
+        <a href="#overview">Overview</a>
+        <a href="#analysis">Historical analysis</a>
+        <a href="#forecasting">Forecast research</a>
+        <a href="#provider-replay">Provider replay</a>
+        <a href="#replay">Uploaded replay</a>
+        <a href="#event-study">Session / liquidity study</a>
+        <a href="#market-data">Market data</a>
+        <a href="#integrations">Integrations</a>
+        <a href="#diagnostics">Diagnostics</a>
+      </nav>
+
       <main className="app-main">
-        <ServiceOverview
+        <section id="overview"><ServiceOverview
           status={status}
           readiness={readiness}
           version={version}
           isLoading={isLoading}
           error={error}
           lastRefreshedAt={lastRefreshedAt}
-        />
+        /></section>
 
-        <AnalysisWorkspace
+        <section id="analysis"><AnalysisWorkspace
           capabilities={status?.capabilities ?? []}
           isLoading={isLoading}
-        />
+        /></section>
 
-        <ForecastingReadiness />
+        <section id="forecasting"><ForecastingReadiness /></section>
 
-        <ProviderHistoricalReplayWorkbench />
+        <section id="provider-replay"><ProviderHistoricalReplayWorkbench /></section>
 
-        <HistoricalReplayWorkbench />
+        <section id="replay"><HistoricalReplayWorkbench /></section>
 
-        <SessionLiquidityEventStudy />
+        <section id="event-study"><SessionLiquidityEventStudy /></section>
 
-        <RealMarketDataWorkspace />
+        <section id="market-data"><RealMarketDataWorkspace /></section>
 
-        <DataSourceIntegration
+        <section id="integrations"><DataSourceIntegration
           upstream={status?.upstream_integration ?? null}
           isLoading={isLoading}
-        />
+        /></section>
 
-        <OperationalDiagnostics
+        <section id="diagnostics"><OperationalDiagnostics
           readiness={readiness}
           error={error}
           isLoading={isLoading}
           lastRefreshedAt={lastRefreshedAt}
-        />
+        /></section>
       </main>
 
       <footer className="app-footer">
