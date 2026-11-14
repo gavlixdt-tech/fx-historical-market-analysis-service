@@ -127,6 +127,7 @@ describe("SeasonalityWorkspace", () => {
           timezone: "Africa/Nairobi",
           bucket_types: ["weekday", "hour_of_day", "month_of_year"],
           minimum_bucket_samples: 20,
+          maximum_gap_multiple: 1.5,
         }),
       );
     });
