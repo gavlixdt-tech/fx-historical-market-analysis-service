@@ -275,7 +275,7 @@ class SeasonalityAnalysisRequest(BaseModel):
     start: datetime | None = None
     end: datetime | None = None
     provider_id: str | None = None
-    price_basis: str | None = None
+    price_basis: Literal["bid", "ask", "midpoint"] | None = None
     limit: int | None = Field(default=None, ge=20, le=5000)
     timezone: str = Field(default="UTC", min_length=1, max_length=64)
     bucket_types: list[Literal["weekday", "hour_of_day", "month_of_year"]] = Field(
