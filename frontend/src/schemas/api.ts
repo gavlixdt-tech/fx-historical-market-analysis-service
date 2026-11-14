@@ -453,6 +453,8 @@ export const SeasonalityAnalysisResponseDataSchema = z.object({
   excluded_gap_return_count: z.number(),
   interval: z.object({ start: z.string().nullable(), end: z.string().nullable() }),
   dataset_fingerprint: z.string(),
+  analysis_fingerprint: z.string(),
+  effective_config: z.record(z.unknown()),
   algorithm_id: z.string(),
   algorithm_version: z.string(),
   global_summary: z.record(z.unknown()),
