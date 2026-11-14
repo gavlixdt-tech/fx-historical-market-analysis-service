@@ -361,6 +361,7 @@ class SeasonalityAnalysisResponseData(BaseModel):
     observation_count: int
     return_observation_count: int
     excluded_gap_return_count: int
+    excluded_short_interval_return_count: int
     interval: dict[str, str | None]
     dataset_fingerprint: str
     analysis_fingerprint: str
