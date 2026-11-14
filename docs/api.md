@@ -241,7 +241,9 @@ timeframe are excluded and counted rather than treating a multi-period move as
 a single-period return. The response reports bucket counts, mean/median return,
 positive-return rate, realized volatility, average candle range, difference
 from the global mean, and a deterministic circular moving-block bootstrap
-interval for adequately sampled buckets. The response includes an effective
+interval for adequately sampled buckets. Returns are simple close-to-close
+fractions; realized volatility is the sample standard deviation per observation
+and is not annualized. The response includes an effective
 configuration and a deterministic analysis fingerprint derived from the dataset
 fingerprint and all seasonality settings.
 
