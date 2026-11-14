@@ -23,6 +23,7 @@ import {
   ModelFamiliesEnvelopeSchema,
   ReadyEnvelopeSchema,
   ResearchReadinessEnvelopeSchema,
+  ResearchSummaryEnvelopeSchema,
   StatusEnvelopeSchema,
   SessionLiquidityEventStudyEnvelopeSchema,
   VersionEnvelopeSchema,
@@ -36,6 +37,7 @@ import {
   type ModelFamiliesResponseData,
   type ReadyResponseData,
   type ResearchReadinessResponseData,
+  type ResearchSummaryResponseData,
   type StatusResponseData,
   type SessionLiquidityEventStudyResponseData,
   type VersionResponseData,
@@ -224,6 +226,14 @@ export const api = {
       body: payload,
     }).then((r) => r.data),
 
+  runResearchSummary: (payload: unknown, options?: RequestOptions) =>
+    request("/analysis/research-summary", ResearchSummaryEnvelopeSchema, {
+      ...options,
+      method: "POST",
+      timeoutMs: options?.timeoutMs ?? 120_000,
+      body: payload,
+    }).then((r) => r.data),
+
   listModelFamilies: (taskType?: string, options?: RequestOptions) =>
     request(
       taskType
@@ -282,6 +292,7 @@ export type {
   ModelFamiliesResponseData,
   ReadyResponseData,
   ResearchReadinessResponseData,
+  ResearchSummaryResponseData,
   StatusResponseData,
   SessionLiquidityEventStudyResponseData,
   VersionResponseData,
