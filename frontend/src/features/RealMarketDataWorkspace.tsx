@@ -12,6 +12,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { ErrorNotice } from "@/components/ErrorNotice";
 import { LoadingState } from "@/components/LoadingState";
 import { Panel } from "@/components/Panel";
+import { DatasetQualityProvenance } from "@/features/DatasetQualityProvenance";
 export function RealMarketDataWorkspace() {
   const [dataSource, setDataSource] = useState<DataSourceResponseData | null>(null);
   const [dataSourceLoading, setDataSourceLoading] = useState(false);
@@ -466,50 +467,8 @@ async function handleRetrieve(event: FormEvent) {
       </section>
 
       {dataset ? (
+        <DatasetQualityProvenance dataset={dataset} />
         <section>
-          <h3 className="section-subtitle">Dataset quality and provenance</h3>
-          <dl className="data-list">
-            <dt className="data-row__label">Data source</dt>
-            <dd className="data-row__value" data-testid="dataset-data-source">
-              {dataset.data_source}
-            </dd>
-            <dt className="data-row__label">Synthetic</dt>
-            <dd className="data-row__value" data-testid="dataset-synthetic">
-              {dataset.synthetic ? "Yes" : "No"}
-            </dd>
-            <dt className="data-row__label">Instrument</dt>
-            <dd className="data-row__value">{dataset.instrument}</dd>
-            <dt className="data-row__label">Timeframe</dt>
-            <dd className="data-row__value">{dataset.timeframe}</dd>
-            <dt className="data-row__label">Price basis</dt>
-            <dd className="data-row__value">{dataset.price_basis}</dd>
-            <dt className="data-row__label">Provider</dt>
-            <dd className="data-row__value">{dataset.provider_id}</dd>
-            <dt className="data-row__label">Provider type</dt>
-            <dd className="data-row__value" data-testid="dataset-provider-type">
-              {dataset.provenance?.provider_type === "test"
-                ? "test adapter (synthetic)"
-                : dataset.provenance?.provider_type === "real"
-                  ? "real provider (provider-asserted; unverified)"
-                  : "unknown"}
-            </dd>
-            <dt className="data-row__label">Real-market research</dt>
-            <dd className="data-row__value" data-testid="dataset-real-market-status">
-              Blocked (no verified genuine provider)
-            </dd>
-            <dt className="data-row__label">Row count</dt>
-            <dd className="data-row__value" data-testid="dataset-row-count">
-              {dataset.observations.length}
-            </dd>
-            <dt className="data-row__label">Partial</dt>
-            <dd className="data-row__value">{dataset.partial ? "Yes" : "No"}</dd>
-            <dt className="data-row__label">Fingerprint</dt>
-            <dd className="data-row__value">
-              <code>{dataset.dataset_fingerprint}</code>
-            </dd>
-          </dl>
-          <p className="muted small">Quality findings: {JSON.stringify(dataset.quality)}</p>
-          <p className="muted small">Provenance: {JSON.stringify(dataset.provenance)}</p>
           <p className="muted">
             Experiments submitted from this workspace receive caller-supplied observations.
             Their provider, original availability time, and source-record lineage are not
