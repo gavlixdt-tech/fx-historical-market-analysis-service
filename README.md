@@ -107,6 +107,11 @@ features and returns a warning.
   histogram gradient boosting.
 - Leakage-resistant walk-forward evaluation with purge/embargo and holdout isolation.
 - Target-appropriate metrics, fold-level stability, block bootstrap uncertainty.
+- Optional multiclass temperature scaling for direction classification. The
+  chronological validation segment is reserved for calibration, only matured
+  labels are eligible, and test targets are never used to fit the calibrator.
+- Calibration diagnostics include per-fold status, normalized multiclass Brier
+  score, log loss and top-label expected calibration error.
 - In-memory experiment store with optional local JSON artifacts (configurable).
 - API endpoints under `/api/v1/forecasting` for model families, experiment validation,
   execution, retrieval, folds, comparison and limitations.
