@@ -1,5 +1,6 @@
 import { ForecastingReadiness } from "@/features/ForecastingReadiness";
 import { SessionLiquidityEventStudy } from "@/features/SessionLiquidityEventStudy";
+import { SeasonalityWorkspace } from "@/features/SeasonalityWorkspace";
 import { HistoricalReplayWorkbench } from "@/features/HistoricalReplayWorkbench";
 import { ProviderHistoricalReplayWorkbench } from "@/features/ProviderHistoricalReplayWorkbench";
 import { RealMarketDataWorkspace } from "@/features/RealMarketDataWorkspace";
@@ -58,6 +59,7 @@ export default function App() {
       <nav className="app-nav" aria-label="Dashboard sections">
         <a href="#overview">Overview</a>
         <a href="#analysis">Historical analysis</a>
+        <a href="#seasonality">Calendar seasonality</a>
         <a href="#forecasting">Forecast research</a>
         <a href="#provider-replay">Provider replay</a>
         <a href="#replay">Uploaded replay</a>
@@ -81,6 +83,8 @@ export default function App() {
           capabilities={status?.capabilities ?? []}
           isLoading={isLoading}
         /></section>
+
+        <section id="seasonality"><SeasonalityWorkspace /></section>
 
         <section id="forecasting"><ForecastingReadiness /></section>
 
