@@ -1,0 +1,41 @@
+name: Format forecasting contract tests
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - backend/tests/integration/test_forecasting_contract_phase.py
+      - .github/workflows/format-forecasting-tests.yml
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Install Ruff
+        run: python -m pip install ruff==0.8.6
+
+      - name: Format forecasting contract tests
+        run: ruff format backend/tests/integration/test_forecasting_contract_phase.py
+
+      - name: Commit formatted test directly to master
+        run: |
+          if git diff --quiet -- backend/tests/integration/test_forecasting_contract_phase.py; then
+            echo "Test file is already formatted."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend/tests/integration/test_forecasting_contract_phase.py
+          git commit -m "style(tests): format forecasting calibration integration tests"
+          git push origin HEAD:master
