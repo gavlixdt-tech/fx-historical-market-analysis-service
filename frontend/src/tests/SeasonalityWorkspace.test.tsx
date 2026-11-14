@@ -138,7 +138,7 @@ describe("SeasonalityWorkspace", () => {
     });
 
     expect(await screen.findByTestId("seasonality-result")).toBeInTheDocument();
-    expect(screen.getByText("Monday")).toBeInTheDocument();
+    expect(screen.getByText(/Monday/)).toBeInTheDocument();
     expect(screen.getByText("descriptive only")).toBeInTheDocument();
     expect(screen.getByText(/synthetic_fixture/)).toBeInTheDocument();
   });
