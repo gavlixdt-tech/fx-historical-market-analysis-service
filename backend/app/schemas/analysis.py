@@ -107,6 +107,17 @@ class RegimeAnalysisResponseData(BaseModel):
     duration_ms: float
 
 
+PatternId = Literal[
+    "volatility_compression_expansion",
+    "directional_persistence",
+    "reversal_after_large_move",
+]
+
+
+def _default_pattern_ids() -> list[PatternId]:
+    return ["volatility_compression_expansion"]
+
+
 class PatternConfigInput(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -266,6 +277,13 @@ class CapabilityDiscoveryData(BaseModel):
     notes: list[str]
 
 
+SeasonalityBucketType = Literal["weekday", "hour_of_day", "month_of_year"]
+
+
+def _default_seasonality_bucket_types() -> list[SeasonalityBucketType]:
+    return ["weekday", "hour_of_day", "month_of_year"]
+
+
 class SeasonalityAnalysisRequest(BaseModel):
     """Bounded historical calendar-seasonality research request."""
 
@@ -280,10 +298,8 @@ class SeasonalityAnalysisRequest(BaseModel):
     price_basis: Literal["bid", "ask", "midpoint"] | None = None
     limit: int | None = Field(default=None, ge=20, le=5000)
     timezone: str = Field(default="UTC", min_length=1, max_length=64)
-    bucket_types: list[Literal["weekday", "hour_of_day", "month_of_year"]] = Field(
-        default_factory=lambda: ["weekday", "hour_of_day", "month_of_year"],
-        min_length=1,
-        max_length=3,
+    bucket_types: list[SeasonalityBucketType] = Field(
+        default_factory=_default_seasonality_bucket_types, min_length=1, max_length=3
     )
     minimum_bucket_samples: int = Field(default=20, ge=5, le=500)
     bootstrap_samples: int = Field(default=300, ge=100, le=1000)
