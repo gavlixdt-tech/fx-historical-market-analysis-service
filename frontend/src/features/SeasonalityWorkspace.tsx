@@ -29,12 +29,6 @@ const TIMEZONES = [
   "Australia/Sydney",
 ];
 
-function numberOrLabel(value: unknown, digits = 5): string {
-  return typeof value === "number" && Number.isFinite(value)
-    ? value.toFixed(digits)
-    : "Not estimable";
-}
-
 function percentageOrLabel(value: unknown): string {
   return typeof value === "number" && Number.isFinite(value)
     ? `${(value * 100).toFixed(2)}%`
@@ -299,6 +293,7 @@ export function SeasonalityWorkspace() {
               <div className="overview-card"><p className="overview-card__label">Median return</p><p className="overview-card__value">{percentageOrLabel(result.global_summary.median_return)}</p></div>
               <div className="overview-card"><p className="overview-card__label">Return standard deviation (not annualized)</p><p className="overview-card__value">{percentageOrLabel(result.global_summary.realized_volatility)}</p></div>
               <div className="overview-card"><p className="overview-card__label">Positive returns</p><p className="overview-card__value">{percentageOrLabel(result.global_summary.positive_return_rate)}</p></div>
+              <div className="overview-card"><p className="overview-card__label">Average candle range</p><p className="overview-card__value">{percentageOrLabel(result.global_summary.mean_candle_range_pct)}</p></div>
             </div>
             {BUCKET_OPTIONS.filter((option) => bucketTypes.includes(option.value)).map((option) => (
               <section key={option.value}>
