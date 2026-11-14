@@ -4,7 +4,7 @@
 # served by a minimal static file server in the runtime stage. The container
 # runs as a non-root user.
 
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 
 WORKDIR /build
 
