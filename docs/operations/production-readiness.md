@@ -20,7 +20,7 @@ establish production readiness.
 | Service 65 centralized observability | BLOCKED | Local metrics and optional OTEL exist; central ingestion/authorization/propagation unverified |
 | Service 66 recovery | BLOCKED | No durable artifact service integration or tested restore |
 | Frontend | PASS WITH EXPLICIT LIMITATIONS | Typed backend-only API, OHLC chart/table, provenance, historical regime/pattern research, calendar seasonality, direction-calibration controls, replay context and caller-supplied event-study workspace; durable experiment history and automatic upstream event ingestion remain unavailable |
-| CI/container/deployment | PASS WITH EXPLICIT LIMITATIONS | GitHub Actions run 43588541175 passed: backend 185 passed/2 skipped, Ruff, mypy, OpenAPI and credential checks; frontend 30 tests, type check and production build; Python/npm dependency audits found no known vulnerabilities; backend/frontend images built and backend container smoke-tested. No deployed Railway/Vercel environment was tested |
+| CI/container/deployment | PASS WITH EXPLICIT LIMITATIONS | GitHub Actions run 43588686417 passed: backend 185 passed/2 skipped, Ruff, mypy, OpenAPI and credential checks; frontend 30 tests, type check and production build; Python/npm dependency audits found no known vulnerabilities; backend/frontend images built and backend container smoke-tested. No deployed Railway/Vercel environment was tested |
 | Trading/execution | NOT_APPLICABLE | Service 2 is research-only and has no order-placement adapter |
 
 Production prerequisites include approved Service 64 inbound/outbound
