@@ -857,11 +857,35 @@ class AnalysisService:
             raise ValidationError(str(exc)) from exc
 
         global_summary = result["global_summary"]
+        dataset_fingerprint = _dataset_fingerprint(observations, instrument, timeframe)
+        effective_config = {
+            "timeframe": timeframe,
+            "timezone": request.timezone,
+            "bucket_types": list(request.bucket_types),
+            "minimum_bucket_samples": request.minimum_bucket_samples,
+            "bootstrap_samples": request.bootstrap_samples,
+            "block_size": request.block_size,
+            "seed": request.seed,
+            "maximum_gap_multiple": request.maximum_gap_multiple,
+        }
+        analysis_fingerprint = hashlib.sha256(
+            json.dumps(
+                {"dataset_fingerprint": dataset_fingerprint, "effective_config": effective_config},
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            ).encode()
+        ).hexdigest()
         warnings: list[str] = []
         if result["insufficient_bucket_count"]:
             warnings.append(
                 f"{result['insufficient_bucket_count']} calendar buckets do not meet "
                 f"the configured minimum sample count of {request.minimum_bucket_samples}."
+            )
+        if result["global_summary"]["excluded_gap_return_count"]:
+            warnings.append(
+                f"{result['global_summary']['excluded_gap_return_count']} returns spanning "
+                "larger-than-configured candle gaps were excluded."
             )
         return SeasonalityAnalysisResponseData(
             status="completed_with_warnings" if warnings else "completed",
@@ -876,7 +900,9 @@ class AnalysisService:
                 "start": observations[0].timestamp.isoformat(),
                 "end": observations[-1].timestamp.isoformat(),
             },
-            dataset_fingerprint=_dataset_fingerprint(observations, instrument, timeframe),
+            dataset_fingerprint=dataset_fingerprint,
+            analysis_fingerprint=analysis_fingerprint,
+            effective_config=effective_config,
             algorithm_id="calendar_seasonality_research",
             algorithm_version="1.0.0",
             global_summary=global_summary,
@@ -918,7 +944,6 @@ class AnalysisService:
                 "volatility_compression_expansion",
                 "directional_persistence",
                 "reversal_after_large_move",
-                "calendar_seasonality",
             ],
             notes=[
                 "Calendar seasonality is descriptive only; it is not a forecast or trading signal.",
