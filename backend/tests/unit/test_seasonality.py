@@ -122,3 +122,42 @@ def test_calendar_seasonality_rejects_unsupported_timeframe() -> None:
             block_size=2,
             seed=1,
         )
+
+
+def test_calendar_seasonality_excludes_shorter_than_timeframe_intervals() -> None:
+    rows = observations(5)
+    rows[2] = Observation(
+        timestamp=rows[1].timestamp + timedelta(minutes=30),
+        open=rows[2].open,
+        high=rows[2].high,
+        low=rows[2].low,
+        close=rows[2].close,
+    )
+    rows[3] = Observation(
+        timestamp=rows[2].timestamp + timedelta(hours=1),
+        open=rows[3].open,
+        high=rows[3].high,
+        low=rows[3].low,
+        close=rows[3].close,
+    )
+    rows[4] = Observation(
+        timestamp=rows[3].timestamp + timedelta(hours=1),
+        open=rows[4].open,
+        high=rows[4].high,
+        low=rows[4].low,
+        close=rows[4].close,
+    )
+
+    result = analyze_calendar_seasonality(
+        rows,
+        timeframe="H1",
+        timezone_name="UTC",
+        bucket_types=["hour_of_day"],
+        minimum_bucket_samples=2,
+        bootstrap_samples=100,
+        block_size=2,
+        seed=1,
+    )
+
+    assert result["global_summary"]["excluded_short_interval_return_count"] == 1
+    assert result["global_summary"]["return_observation_count"] == 3
