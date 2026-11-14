@@ -625,12 +625,106 @@ def _safe_div(a: float, b: float) -> float:
     return a / b if b not in (0, 0.0) else float("nan")
 
 
+def align_probability_columns(
+    probabilities: Sequence[Sequence[float]],
+    source_classes: Sequence[float],
+    target_classes: Sequence[float],
+) -> list[list[float]]:
+    """Align model probability columns to the declared target class order."""
+    source_positions = {label: index for index, label in enumerate(source_classes)}
+    aligned_rows: list[list[float]] = []
+    for row in probabilities:
+        values = [
+            float(row[source_positions[label]])
+            if label in source_positions and source_positions[label] < len(row)
+            else 0.0
+            for label in target_classes
+        ]
+        total = sum(values)
+        if total <= 0.0:
+            values = [1.0 / len(target_classes)] * len(target_classes)
+        else:
+            values = [value / total for value in values]
+        aligned_rows.append(values)
+    return aligned_rows
+
+
+def fit_temperature_scaler(
+    probabilities: Sequence[Sequence[float]],
+    y_true: Sequence[float],
+    classes: Sequence[float],
+) -> float:
+    """Fit scalar multiclass temperature using calibration rows only."""
+    if len(probabilities) != len(y_true) or not probabilities:
+        raise ValueError("temperature scaling requires aligned non-empty calibration data")
+    if len(classes) < 2 or any(len(row) != len(classes) for row in probabilities):
+        raise ValueError("temperature scaling probability dimensions do not match classes")
+    class_positions = {label: index for index, label in enumerate(classes)}
+    if any(label not in class_positions for label in y_true):
+        raise ValueError("calibration labels are outside the model class domain")
+
+    epsilon = 1e-12
+    log_probabilities = [
+        [math.log(max(epsilon, min(1.0, float(value)))) for value in row]
+        for row in probabilities
+    ]
+    label_indices = [class_positions[label] for label in y_true]
+
+    def negative_log_likelihood(log_temperature: float) -> float:
+        temperature = math.exp(log_temperature)
+        total = 0.0
+        for row, label_index in zip(log_probabilities, label_indices, strict=True):
+            logits = [value / temperature for value in row]
+            maximum = max(logits)
+            log_normalizer = maximum + math.log(
+                sum(math.exp(value - maximum) for value in logits)
+            )
+            total += log_normalizer - logits[label_index]
+        return total / len(label_indices)
+
+    # Golden-section minimization is deterministic and needs no external ML dependency.
+    lower, upper = -3.0, 3.0
+    ratio = (math.sqrt(5.0) - 1.0) / 2.0
+    left = upper - ratio * (upper - lower)
+    right = lower + ratio * (upper - lower)
+    left_value = negative_log_likelihood(left)
+    right_value = negative_log_likelihood(right)
+    for _ in range(80):
+        if left_value <= right_value:
+            upper, right, right_value = right, left, left_value
+            left = upper - ratio * (upper - lower)
+            left_value = negative_log_likelihood(left)
+        else:
+            lower, left, left_value = left, right, right_value
+            right = lower + ratio * (upper - lower)
+            right_value = negative_log_likelihood(right)
+    return math.exp((lower + upper) / 2.0)
+
+
+def apply_temperature_scaler(
+    probabilities: Sequence[Sequence[float]], temperature: float
+) -> list[list[float]]:
+    """Apply a fitted scalar temperature without accessing target labels."""
+    if not math.isfinite(temperature) or temperature <= 0.0:
+        raise ValueError("temperature must be a finite positive value")
+    epsilon = 1e-12
+    calibrated: list[list[float]] = []
+    for row in probabilities:
+        logits = [math.log(max(epsilon, min(1.0, float(value)))) / temperature for value in row]
+        maximum = max(logits)
+        exponentials = [math.exp(value - maximum) for value in logits]
+        total = sum(exponentials)
+        calibrated.append([value / total for value in exponentials])
+    return calibrated
+
+
 def classification_metrics(
     y_true: Sequence[float],
     y_pred: Sequence[float],
     y_proba: Sequence[Sequence[float]] | None = None,
+    class_labels: Sequence[float] | None = None,
 ) -> dict[str, Any]:
-    classes = sorted(set(list(y_true) + list(y_pred)))
+    classes = list(class_labels) if class_labels is not None else sorted(set(list(y_true) + list(y_pred)))
     acc = accuracy(y_true, y_pred)
     bacc = balanced_accuracy(y_true, y_pred)
     cm = confusion_matrix(y_true, y_pred)
@@ -678,52 +772,67 @@ def classification_metrics(
         "mcc": mcc,
         "confusion_matrix": cm,
         "class_distribution": dist,
+        "brier_score": None,
+        "log_loss": None,
+        "expected_calibration_error": None,
+        "roc_auc": None,
     }
-    if y_proba is not None and len(y_proba) == len(y_true):
-        if len(classes) == 2:
-            ps = [
-                pr[1] if isinstance(pr, list | tuple) and len(pr) > 1 else float(cast(Any, pr))
-                for pr in y_proba
-            ]
-            brier = sum(
-                (p - (1.0 if t == classes[1] else 0.0)) ** 2
-                for p, t in zip(ps, y_true, strict=False)
-            ) / len(y_true)
-            eps = 1e-12
-            ll = 0.0
-            for p, t in zip(ps, y_true, strict=False):
-                pp = min(max(p, eps), 1 - eps)
-                yb = 1.0 if t == classes[1] else 0.0
-                ll += -(yb * math.log(pp) + (1 - yb) * math.log(1 - pp))
-            ll /= len(y_true)
-            out["brier_score"] = brier
-            out["log_loss"] = ll
-        else:
-            out["brier_score"] = None
-            out["log_loss"] = None
-    else:
-        out["brier_score"] = None
-        out["log_loss"] = None
-    out["roc_auc"] = None
-    if y_proba is not None and len(classes) == 2:
-        try:
-            ps = [
-                pr[1] if isinstance(pr, list | tuple) and len(pr) > 1 else float(cast(Any, pr))
-                for pr in y_proba
-            ]
-            pos = [ps[i] for i in range(len(y_true)) if y_true[i] == classes[1]]
-            neg = [ps[i] for i in range(len(y_true)) if y_true[i] == classes[0]]
-            if pos and neg:
-                cnt = 0.0
-                for p in pos:
-                    for n in neg:
-                        if p > n:
-                            cnt += 1
-                        elif p == n:
-                            cnt += 0.5
-                out["roc_auc"] = cnt / (len(pos) * len(neg))
-        except Exception:
-            out["roc_auc"] = None
+    if y_proba is None or len(y_proba) != len(y_true) or not y_true:
+        return out
+    if any(len(row) != len(classes) for row in y_proba):
+        raise ValueError("probability rows must align with the declared class labels")
+    class_positions = {label: index for index, label in enumerate(classes)}
+    if any(label not in class_positions for label in y_true):
+        raise ValueError("true labels are outside the declared probability class domain")
+
+    epsilon = 1e-12
+    brier_total = 0.0
+    log_loss_total = 0.0
+    confidences: list[float] = []
+    correct: list[float] = []
+    for label, row in zip(y_true, y_proba, strict=True):
+        normalized = [max(0.0, float(value)) for value in row]
+        row_total = sum(normalized)
+        if row_total <= 0.0:
+            raise ValueError("probability row must have positive total mass")
+        normalized = [value / row_total for value in normalized]
+        true_index = class_positions[label]
+        brier_total += sum(
+            (value - (1.0 if index == true_index else 0.0)) ** 2
+            for index, value in enumerate(normalized)
+        )
+        log_loss_total += -math.log(max(epsilon, normalized[true_index]))
+        predicted_index = max(range(len(normalized)), key=normalized.__getitem__)
+        confidences.append(normalized[predicted_index])
+        correct.append(1.0 if classes[predicted_index] == label else 0.0)
+    out["brier_score"] = brier_total / len(y_true)
+    out["log_loss"] = log_loss_total / len(y_true)
+    n_bins = 10
+    ece = 0.0
+    for bin_index in range(n_bins):
+        lower = bin_index / n_bins
+        upper = (bin_index + 1) / n_bins
+        indices = [
+            index
+            for index, confidence in enumerate(confidences)
+            if lower <= confidence < upper or (bin_index == n_bins - 1 and confidence == 1.0)
+        ]
+        if indices:
+            mean_confidence = sum(confidences[index] for index in indices) / len(indices)
+            mean_accuracy = sum(correct[index] for index in indices) / len(indices)
+            ece += (len(indices) / len(y_true)) * abs(mean_confidence - mean_accuracy)
+    out["expected_calibration_error"] = ece
+    if len(classes) == 2:
+        positive_scores = [row[1] for row in y_proba]
+        positive = [positive_scores[i] for i in range(len(y_true)) if y_true[i] == classes[1]]
+        negative = [positive_scores[i] for i in range(len(y_true)) if y_true[i] == classes[0]]
+        if positive and negative:
+            concordance = sum(
+                1.0 if p > n else 0.5 if p == n else 0.0
+                for p in positive
+                for n in negative
+            )
+            out["roc_auc"] = concordance / (len(positive) * len(negative))
     return out
 
 
