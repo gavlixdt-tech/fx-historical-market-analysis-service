@@ -198,6 +198,26 @@ entitlement or signed source data.
 
 Validates whether an `ExperimentRunRequest` is ready to run, including experiment validation, dataset quality and coverage checks.
 
+### `POST /api/v1/analysis/seasonality`
+
+Runs descriptive calendar-seasonality research over contiguous historical
+close-to-close returns. The request requires an explicit `timeframe` and accepts
+an optional provider ID or caller-supplied observations, an IANA `timezone`,
+and one or more `bucket_types`: `weekday`, `hour_of_day`, and `month_of_year`.
+
+Each return is assigned to the local calendar bucket of the ending candle
+timestamp. Returns spanning more than `maximum_gap_multiple` times the declared
+timeframe are excluded and counted rather than treating a multi-period move as
+a single-period return. The response reports bucket counts, mean/median return,
+positive-return rate, realized volatility, average candle range, difference
+from the global mean, and a deterministic circular moving-block bootstrap
+interval for adequately sampled buckets.
+
+`minimum_bucket_samples` labels descriptive sample sufficiency; it is not a
+statistical significance threshold. The endpoint does not produce p-values,
+forecast probabilities, trading signals, or model-approved features. Results
+remain subject to the returned data-provenance limitations.
+
 ### `GET /api/v1/forecasting/models`
 
 Lists supported model families, optionally filtered by `task_type`.
