@@ -26,6 +26,7 @@ from backend.app.analysis.patterns import (
     compute_outcomes,
     detect_events,
     permutation_p_value,
+    partition_pattern_events,
     walk_forward_indices,
 )
 from backend.app.analysis.regimes import RegimeConfig, classify_regimes
@@ -501,10 +502,18 @@ class AnalysisService:
             train_idx, test_idx = walk_forward_indices(
                 len(observations), cfg_in.walk_forward_train_ratio
             )
-            train_set = set(train_idx)
-            test_set = set(test_idx)
-            train_events = [e for e in events if e in train_set]
-            test_events = [e for e in events if e in test_set]
+            split_index = len(train_idx)
+            (
+                train_events,
+                test_events,
+                purged_train_events,
+                incomplete_test_events,
+            ) = partition_pattern_events(
+                events,
+                split_index=split_index,
+                outcome_horizon=cfg_in.outcome_horizon,
+                observation_count=len(observations),
+            )
             train_outcome_vals = [
                 ev.outcome
                 for ev in compute_outcomes(
@@ -524,6 +533,9 @@ class AnalysisService:
                 "test_observations": len(test_idx),
                 "train_event_count": len(train_events),
                 "test_event_count": len(test_events),
+                "train_events_purged_for_horizon": purged_train_events,
+                "test_events_without_full_horizon": incomplete_test_events,
+                "training_target_end_exclusive_index": split_index,
                 "train_mean_outcome": (sum(train_outcome_vals) / len(train_outcome_vals))
                 if train_outcome_vals
                 else None,
