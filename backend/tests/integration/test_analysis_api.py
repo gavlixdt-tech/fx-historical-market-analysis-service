@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 
+
 def _obs(n: int = 80) -> list[dict]:
     out = []
     price = 1.0
