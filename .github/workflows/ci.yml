@@ -44,12 +44,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
-      - name: Diagnose Ruff import ordering
-        run: |
-          ruff check --select I001 --fix app/services/forecasting_service.py || true
-          git diff -- app/services/forecasting_service.py
-          git checkout -- app/services/forecasting_service.py
-
       - name: Lint (ruff check)
         run: ruff check app tests
 
