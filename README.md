@@ -140,7 +140,26 @@ The authenticated endpoint `POST /api/v1/market-session-liquidity/event-study` a
 
 Post-sweep transition timing uses Kaplan-Meier estimates with right-censored observations. The request's `analysis_cutoff` excludes records not yet available at that cutoff and truncates follow-up at the cutoff; the endpoint never treats a not-yet-observed transition as a confirmed failure. The default minimum group size is 30 for a descriptive-sufficiency label; smaller groups remain visible but are explicitly marked insufficient.
 
-This endpoint does not yet ingest Service 18 events automatically, independently authenticate event producers, persist event-study datasets, or feed the model-training/forecasting pipeline. Event completeness, session identity, source timestamps and availability are caller-asserted. It is descriptive research, not a forward forecast, BUY/SELL instruction, proof of resting stop orders, or evidence of profitability. Do not use its distributions as model features until producer provenance, instrument-specific historical coverage, leakage-resistant walk-forward validation, multiple-testing controls and independent calibration are established.
+The dashboard includes a view-only event-study workspace that accepts a caller-supplied JSON payload and renders the returned group summaries. It does not automatically ingest Service 18 events, independently authenticate event producers, persist event-study datasets, or feed the model-training/forecasting pipeline. Event completeness, session identity, source timestamps and availability are caller-asserted. It is descriptive research, not a forward forecast, BUY/SELL instruction, proof of resting stop orders, or evidence of profitability. Do not use its distributions as model features until producer provenance, instrument-specific historical coverage, leakage-resistant walk-forward validation, multiple-testing controls and independent calibration are established.
+
+---
+
+## Dashboard workspaces
+
+The React dashboard provides:
+
+- Service overview, readiness and safe operational diagnostics.
+- Historical provider inventory and explicit provider selection.
+- Bounded historical retrieval with an OHLC candlestick chart and recent candle table.
+- Dataset quality and provenance details from the actual retrieval response.
+- Retrospective regime and pattern research through the existing analysis API.
+- Forecasting research readiness and experiment execution where the backend permits it.
+- Historical rolling-origin replay, including caller-supplied session and liquidity lifecycle context at each prediction origin.
+- A view-only session/liquidity event-study workspace for caller-supplied event JSON.
+
+Session and lifecycle replay context remains caller-asserted and unverified. Experiment and replay results remain in-memory unless an explicitly documented artifact mechanism is configured; this repository does not claim a durable experiment-history registry.
+
+The dashboard does not execute trades, publish BUY/SELL signals, or approve downstream trading decisions.
 
 ---
 
