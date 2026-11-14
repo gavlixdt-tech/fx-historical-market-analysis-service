@@ -276,7 +276,7 @@ class SeasonalityAnalysisRequest(BaseModel):
     end: datetime | None = None
     provider_id: str | None = None
     price_basis: str | None = None
-    limit: int | None = Field(default=None, ge=2, le=5000)
+    limit: int | None = Field(default=None, ge=20, le=5000)
     timezone: str = Field(default="UTC", min_length=1, max_length=64)
     bucket_types: list[Literal["weekday", "hour_of_day", "month_of_year"]] = Field(
         default_factory=lambda: ["weekday", "hour_of_day", "month_of_year"],
@@ -341,6 +341,8 @@ class SeasonalityAnalysisResponseData(BaseModel):
     excluded_gap_return_count: int
     interval: dict[str, str | None]
     dataset_fingerprint: str
+    analysis_fingerprint: str
+    effective_config: dict[str, Any]
     algorithm_id: str
     algorithm_version: str
     global_summary: dict[str, Any]
