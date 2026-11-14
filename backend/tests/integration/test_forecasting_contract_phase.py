@@ -177,3 +177,36 @@ def test_calibration_rejected_deterministically(client):
     assert any("calibration is not implemented" in e for e in rv.json()["data"]["errors"])
     rr = client.post("/api/v1/forecasting/experiment/run", json=body)
     assert rr.status_code in {400, 422, 500}
+
+def test_direction_experiment_calibrates_on_matured_validation_data(client):
+    body = {
+        "observations": _observations(240),
+        "problem": _problem(target_type="direction"),
+        "lookback": 20,
+        "n_folds": 3,
+        "min_train_samples": 30,
+        "model_families": ["ridge_logistic"],
+        "random_seed": 7,
+        "calibration": True,
+        "calibration_min_samples": 10,
+    }
+    validation = client.post("/api/v1/forecasting/experiment/validate", json=body)
+    assert validation.status_code == 200
+    assert validation.json()["data"]["valid"] is True
+
+    response = client.post("/api/v1/forecasting/experiment/run", json=body)
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["effective_config"]["calibration"] is True
+    assert data["effective_config"]["calibration_method"] == "multiclass_temperature_scaling"
+    model = data["models"][0]
+    applied = [fold for fold in model["folds"] if fold["calibration"]["status"] == "applied"]
+    assert applied
+    for fold in applied:
+        calibration = fold["calibration"]
+        assert calibration["calibration_labels_matured_before_test"] is True
+        assert calibration["calibration_max_label_maturity"] < calibration["test_start"]
+        assert fold["metrics"]["brier_score"] is not None
+        assert fold["metrics"]["log_loss"] is not None
+        assert fold["metrics"]["expected_calibration_error"] is not None
+
