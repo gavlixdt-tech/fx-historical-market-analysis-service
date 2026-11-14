@@ -30,9 +30,7 @@ def _direction_observations(n: int = 240) -> list[dict]:
         close = 1.0 + 0.0001 * index + math.sin(index * 0.5) * 0.005
         observations.append(
             {
-                "timestamp": (
-                    datetime(2024, 1, 1, tzinfo=UTC) + timedelta(days=index)
-                ).isoformat(),
+                "timestamp": (datetime(2024, 1, 1, tzinfo=UTC) + timedelta(days=index)).isoformat(),
                 "open": close,
                 "high": close + 0.001,
                 "low": close - 0.001,
@@ -43,9 +41,7 @@ def _direction_observations(n: int = 240) -> list[dict]:
     return observations
 
 
-def _problem(
-    target_type: str = "future_return", eligibility_rules=None, max_features=64
-):
+def _problem(target_type: str = "future_return", eligibility_rules=None, max_features=64):
     return {
         "problem_id": "demo",
         "version": "1.0.0",
@@ -227,14 +223,9 @@ def test_direction_experiment_calibrates_on_matured_validation_data(client):
     assert response.status_code == 200
     data = response.json()["data"]
     assert data["effective_config"]["calibration"] is True
-    assert (
-        data["effective_config"]["calibration_method"]
-        == "multiclass_temperature_scaling"
-    )
+    assert data["effective_config"]["calibration_method"] == "multiclass_temperature_scaling"
     model = data["models"][0]
-    applied = [
-        fold for fold in model["folds"] if fold["calibration"]["status"] == "applied"
-    ]
+    applied = [fold for fold in model["folds"] if fold["calibration"]["status"] == "applied"]
     assert applied
     for fold in applied:
         calibration = fold["calibration"]
@@ -268,10 +259,7 @@ def test_direction_calibration_reports_insufficient_mature_samples(client):
         fold["calibration"]["status"] == "insufficient_mature_calibration_samples"
         for fold in model["folds"]
     )
-    assert any(
-        "Probability calibration was not applied" in warning
-        for warning in data["warnings"]
-    )
+    assert any("Probability calibration was not applied" in warning for warning in data["warnings"])
 
 
 def test_calibration_requires_probability_capable_model(client):
