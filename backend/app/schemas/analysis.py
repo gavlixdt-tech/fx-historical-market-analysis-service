@@ -116,7 +116,9 @@ class PatternConfigInput(BaseModel):
             "directional_persistence",
             "reversal_after_large_move",
         ]
-    ] = Field(default_factory=lambda: ["volatility_compression_expansion"], min_length=1, max_length=3)
+    ] = Field(
+        default_factory=lambda: ["volatility_compression_expansion"], min_length=1, max_length=3
+    )
     lookback: int = Field(default=20, ge=5, le=200)
     outcome_horizon: int = Field(default=5, ge=1, le=60)
     overlap_policy: Literal["allow", "min_gap", "no_overlap_outcome"] = "no_overlap_outcome"
