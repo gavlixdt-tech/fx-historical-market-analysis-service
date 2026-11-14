@@ -7,7 +7,7 @@ observations in order to discover statistically defensible historical
 patterns, market regimes, temporal relationships, and other evidence-supported
 findings.
 
-> **Status:** Historical analysis, forecasting research, and historical replay
+> **Status:** Historical analysis, calendar seasonality, forecasting research, and historical replay
 > are implemented for research/simulation. Provider selection is explicit and
 > retrieved source-quality evidence is retained, but source entitlement and
 > historical availability are not independently verified. Durable research
