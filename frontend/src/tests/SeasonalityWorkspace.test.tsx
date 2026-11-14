@@ -55,6 +55,10 @@ const seasonalityResult = {
   dataset_fingerprint: "fingerprint-123",
   analysis_fingerprint: "analysis-fingerprint-123",
   effective_config: { maximum_gap_multiple: 1.5 },
+  methodology: {
+    return_definition: "Simple close-to-close return.",
+    realized_volatility: "Sample standard deviation; not annualized.",
+  },
   algorithm_id: "calendar_seasonality_research",
   algorithm_version: "1.0.0",
   global_summary: {
