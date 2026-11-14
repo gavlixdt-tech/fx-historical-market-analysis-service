@@ -69,7 +69,7 @@ fx-historical-market-analysis-service/
 │   │   ├── schemas/           # Request/response contracts (incl. upstream.py, replay.py)
 │   │   ├── clients/           # market_data.py: typed upstream client
 │   │   ├── services/          # forecasting_service.py, health_service.py
-│   │   ├── analysis/          # point-in-time features, models, replay, metrics, seasonality, seasonality
+│   │   ├── analysis/          # point-in-time features, models, replay, metrics, seasonality, seasonality, seasonality
 │   │   ├── observability/     # metrics.py, tracing.py
 │   │   └── main.py            # create_app() factory + entrypoint
 │   │                          (no repositories/ package: nothing is persisted)
