@@ -1,6 +1,7 @@
 import { ForecastingReadiness } from "@/features/ForecastingReadiness";
 import { SessionLiquidityEventStudy } from "@/features/SessionLiquidityEventStudy";
 import { HistoricalReplayWorkbench } from "@/features/HistoricalReplayWorkbench";
+import { ProviderHistoricalReplayWorkbench } from "@/features/ProviderHistoricalReplayWorkbench";
 import { RealMarketDataWorkspace } from "@/features/RealMarketDataWorkspace";
 import { AnalysisWorkspace } from "@/features/AnalysisWorkspace";
 import { DataSourceIntegration } from "@/features/DataSourceIntegration";
@@ -70,6 +71,8 @@ export default function App() {
         />
 
         <ForecastingReadiness />
+
+        <ProviderHistoricalReplayWorkbench />
 
         <HistoricalReplayWorkbench />
 
