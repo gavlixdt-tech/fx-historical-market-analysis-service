@@ -446,9 +446,9 @@ class ForecastingService(AnalysisService):
             HistogramGradientBoosting,
             Preprocessor,
             RandomForest,
+            regression_metrics,
             RidgeLogistic,
             RidgeRegression,
-            regression_metrics,
             task_type_for_target,
             walk_forward_folds,
         )
