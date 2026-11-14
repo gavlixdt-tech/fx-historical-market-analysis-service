@@ -869,6 +869,7 @@ class AnalysisService:
             "block_size": request.block_size,
             "seed": request.seed,
             "maximum_gap_multiple": request.maximum_gap_multiple,
+            "minimum_interval_multiple": 0.9,
             "provider_id": (source_quality or {}).get("provider_id"),
             "price_basis": (request.price_basis or "bid") if source_quality else None,
             "start": request.start.isoformat() if request.start is not None else None,
@@ -899,6 +900,11 @@ class AnalysisService:
                 f"{result['global_summary']['excluded_gap_return_count']} returns spanning "
                 "larger-than-configured candle gaps were excluded."
             )
+        if result["global_summary"]["excluded_short_interval_return_count"]:
+            warnings.append(
+                f"{result['global_summary']['excluded_short_interval_return_count']} returns "
+                "with shorter-than-expected candle intervals were excluded."
+            )
         return SeasonalityAnalysisResponseData(
             status="completed_with_warnings" if warnings else "completed",
             analysis_id=str(uuid.uuid4()),
@@ -908,6 +914,9 @@ class AnalysisService:
             observation_count=len(observations),
             return_observation_count=int(global_summary["return_observation_count"] or 0),
             excluded_gap_return_count=int(global_summary["excluded_gap_return_count"] or 0),
+            excluded_short_interval_return_count=int(
+                global_summary["excluded_short_interval_return_count"] or 0
+            ),
             interval={
                 "start": observations[0].timestamp.isoformat(),
                 "end": observations[-1].timestamp.isoformat(),
