@@ -34,6 +34,8 @@ _MONTHS = (
     "November",
     "December",
 )
+_MINIMUM_INTERVAL_MULTIPLE = 0.9
+
 _TIMEFRAME_SECONDS = {
     "M1": 60,
     "M5": 300,
@@ -127,6 +129,7 @@ def analyze_calendar_seasonality(
     all_returns: list[float] = []
     all_ranges: list[float] = []
     excluded_gap_count = 0
+    excluded_short_interval_count = 0
 
     for previous, current in zip(observations, observations[1:], strict=False):
         if previous.timestamp.tzinfo is None or current.timestamp.tzinfo is None:
@@ -134,6 +137,9 @@ def analyze_calendar_seasonality(
         elapsed = (current.timestamp - previous.timestamp).total_seconds()
         if elapsed <= 0:
             raise ValueError("seasonality observations must be strictly chronological")
+        if elapsed < expected_seconds * _MINIMUM_INTERVAL_MULTIPLE:
+            excluded_short_interval_count += 1
+            continue
         if elapsed > maximum_gap_seconds:
             excluded_gap_count += 1
             continue
@@ -153,6 +159,7 @@ def analyze_calendar_seasonality(
     global_summary: dict[str, float | int | None] = {
         "return_observation_count": len(all_returns),
         "excluded_gap_return_count": excluded_gap_count,
+        "excluded_short_interval_return_count": excluded_short_interval_count,
         "mean_return": global_mean,
         "median_return": median(all_returns) if all_returns else None,
         "realized_volatility": _sample_std(all_returns),
@@ -230,7 +237,7 @@ def analyze_calendar_seasonality(
         "limitations": [
             "This is retrospective descriptive seasonality research, not a forecast or trading signal.",
             "Returns are close-to-close and are assigned to the local calendar bucket of the ending candle timestamp.",
-            "Returns spanning gaps larger than the configured timeframe multiple are excluded.",
+            "Returns with intervals shorter than 0.9 times the declared timeframe or longer than the configured maximum gap are excluded.",
             "The moving-block bootstrap interval is descriptive and does not establish statistical significance or predictive value.",
             "Calendar buckets can be affected by daylight-saving changes, market holidays, missing candles and provider sampling conventions.",
             "Source identity and original historical publication times remain subject to the upstream provenance contract.",
