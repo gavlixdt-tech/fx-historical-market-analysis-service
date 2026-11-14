@@ -1,0 +1,35 @@
+name: Apply backend Ruff formatting
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - .github/workflows/apply-backend-format.yml
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install ruff
+      - name: Format the files reported by CI
+        working-directory: backend
+        run: |
+          ruff format app/analysis/model_research.py app/analysis/seasonality.py app/schemas/analysis.py app/services/analysis_service.py app/services/forecasting_service.py tests/integration/test_analysis_api.py tests/integration/test_forecasting_contract_phase.py tests/unit/test_model_research_calibration.py tests/unit/test_seasonality.py
+      - name: Commit formatting directly to master
+        run: |
+          if git diff --quiet; then
+            echo "No formatting changes."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend
+          git commit -m "style(backend): apply Ruff formatting"
+          git push origin HEAD:master
