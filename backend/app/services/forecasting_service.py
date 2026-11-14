@@ -438,17 +438,17 @@ class ForecastingService(AnalysisService):
             generate_labels,
         )
         from backend.app.analysis.model_research import (
+            HistogramGradientBoosting,
+            Preprocessor,
+            RandomForest,
+            RidgeLogistic,
+            RidgeRegression,
             align_probability_columns,
             apply_temperature_scaler,
             classification_metrics,
             fit_temperature_scaler,
             fold_bootstrap_ci,
-            HistogramGradientBoosting,
-            Preprocessor,
-            RandomForest,
             regression_metrics,
-            RidgeLogistic,
-            RidgeRegression,
             task_type_for_target,
             walk_forward_folds,
         )
