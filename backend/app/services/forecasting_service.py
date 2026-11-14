@@ -1120,6 +1120,11 @@ class ForecastingService(AnalysisService):
                 "max_features_requested": spec.max_features,
                 "effective_feature_count": len(feature_names),
                 "effective_feature_names": feature_names,
+                "calibration": request.calibration,
+                "calibration_method": "multiclass_temperature_scaling"
+                if request.calibration
+                else None,
+                "calibration_min_samples": request.calibration_min_samples,
             },
             "research_readiness_status": research_readiness_status,
             "research_readiness": {
