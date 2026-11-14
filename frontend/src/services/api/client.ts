@@ -265,6 +265,14 @@ export const api = {
       body: payload,
     }).then((r) => r.data),
 
+  runHistoricalReplayFromMarketData: (payload: unknown, options?: RequestOptions) =>
+    request("/historical-replay/run-from-market-data", HistoricalReplayEnvelopeSchema, {
+      ...options,
+      method: "POST",
+      timeoutMs: options?.timeoutMs ?? 180_000,
+      body: payload,
+    }).then((r) => r.data),
+
   runSessionLiquidityEventStudy: (payload: unknown, options?: RequestOptions) =>
     request("/market-session-liquidity/event-study", SessionLiquidityEventStudyEnvelopeSchema, {
       ...options,
