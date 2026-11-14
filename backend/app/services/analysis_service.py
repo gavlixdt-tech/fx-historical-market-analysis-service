@@ -25,8 +25,8 @@ from backend.app.analysis.patterns import (
     bootstrap_mean_ci,
     compute_outcomes,
     detect_events,
-    permutation_p_value,
     partition_pattern_events,
+    permutation_p_value,
     walk_forward_indices,
 )
 from backend.app.analysis.regimes import RegimeConfig, classify_regimes
