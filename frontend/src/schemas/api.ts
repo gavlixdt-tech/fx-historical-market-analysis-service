@@ -280,6 +280,30 @@ export type ExperimentRunResponseData = z.infer<
   typeof ExperimentRunResponseDataSchema
 >;
 
+export const ReplaySessionContextSchema = z.object({
+  contract_version: z.literal("fx-session-context/v1"),
+  observed_at: z.string().datetime({ offset: true }),
+  available_at: z.string().datetime({ offset: true }),
+  active_sessions: z.array(z.enum(["wellington", "sydney", "tokyo", "hong_kong", "singapore", "frankfurt", "london", "new_york"])).max(8),
+  active_open_windows: z.array(z.enum(["sydney_open", "tokyo_open", "frankfurt_open", "london_open"])).max(4),
+  active_kill_zones: z.array(z.enum(["ict_asia", "ict_london", "ict_new_york_am", "ict_london_close", "ict_new_york_pm"])).max(5),
+  session_overlap_count: z.number().int().min(0).max(8),
+  source_reference: z.string().min(1).max(200),
+});
+
+export const ReplayLiquidityLifecycleSchema = z.object({
+  contract_version: z.literal("liquidity-sweep-lifecycle/v1"),
+  observed_at: z.string().datetime({ offset: true }),
+  available_at: z.string().datetime({ offset: true }),
+  state: z.enum(["INSUFFICIENT_EVIDENCE_QUALITY", "INSUFFICIENT_PRE_SWEEP_HISTORY", "NOT_REVERSAL_ELIGIBLE", "SWEEP_CONFIRMED_AWAITING_DISPLACEMENT", "DISPLACEMENT_CONFIRMED", "MIDPOINT_REACHED", "MIDPOINT_CONSOLIDATION_CANDIDATE", "INVALIDATED"]),
+  expected_direction: z.enum(["bullish", "bearish"]).nullable().optional(),
+  source_event_id: z.string().min(1).max(200),
+  displacement_confirmed_at: z.string().datetime({ offset: true }).nullable().optional(),
+  midpoint_first_reached_at: z.string().datetime({ offset: true }).nullable().optional(),
+  consolidation_candidate_at: z.string().datetime({ offset: true }).nullable().optional(),
+  invalidated_at: z.string().datetime({ offset: true }).nullable().optional(),
+});
+
 export const ReplayObservationSchema = z.object({
   timestamp: z.string().datetime({ offset: true }),
   available_at: z.string().datetime({ offset: true }),
@@ -289,6 +313,8 @@ export const ReplayObservationSchema = z.object({
   close: z.number().positive(),
   volume: z.number().nonnegative().nullable().optional(),
   source_record_id: z.string().min(1),
+  session_context: ReplaySessionContextSchema.nullable().optional(),
+  liquidity_lifecycle: ReplayLiquidityLifecycleSchema.nullable().optional(),
 });
 
 export type ReplayObservation = z.infer<typeof ReplayObservationSchema>;
@@ -325,6 +351,7 @@ export const HistoricalReplayResponseDataSchema = z.object({
           class_probabilities: z.record(z.number()),
         }),
       ),
+      market_context: z.record(z.unknown()).optional(),
     }),
   ),
   models: z.array(
@@ -346,6 +373,24 @@ export const HistoricalReplayResponseDataSchema = z.object({
 
 export type HistoricalReplayResponseData = z.infer<
   typeof HistoricalReplayResponseDataSchema
+>;
+
+export const SessionLiquidityEventStudyResponseDataSchema = z.object({
+  status: z.string(),
+  analysis_id: z.string(),
+  analysis_cutoff: z.string(),
+  input_event_count: z.number(),
+  eligible_event_count: z.number(),
+  excluded_after_cutoff_count: z.number(),
+  first_sweep_session_instance_count: z.number(),
+  groups: z.array(z.record(z.unknown())),
+  provenance_status: z.string(),
+  limitations: z.array(z.string()),
+  forecast_eligible: z.boolean(),
+});
+
+export type SessionLiquidityEventStudyResponseData = z.infer<
+  typeof SessionLiquidityEventStudyResponseDataSchema
 >;
 
 /** Envelope schemas for the new endpoints. */
@@ -375,4 +420,8 @@ export const ExperimentRunEnvelopeSchema = ApiEnvelopeSchema.extend({
 
 export const HistoricalReplayEnvelopeSchema = ApiEnvelopeSchema.extend({
   data: HistoricalReplayResponseDataSchema,
+});
+
+export const SessionLiquidityEventStudyEnvelopeSchema = ApiEnvelopeSchema.extend({
+  data: SessionLiquidityEventStudyResponseDataSchema,
 });
