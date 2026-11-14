@@ -248,7 +248,7 @@ durable event storage and model-training integration are not provided.
 ### `POST /api/v1/analysis/seasonality`
 
 Runs descriptive calendar-seasonality research over contiguous historical
-close-to-close returns. The request requires an explicit `timeframe` and accepts
+close-to-close returns. The request requires an explicit `instrument` and supported `timeframe` (M1, M5, M15, M30, H1, H4, D1 or W1) and accepts
 either caller-supplied observations or an explicitly selected `provider_id` with an instrument, a supported `price_basis` for provider retrieval, and an IANA `timezone`,
 and one or more `bucket_types`: `weekday`, `hour_of_day`, and `month_of_year`.
 
