@@ -145,6 +145,15 @@ export function SessionLiquidityEventStudy() {
                       <div className="data-row"><dt className="data-row__label">Consolidation (events / censored / median min)</dt><dd className="data-row__value">{display(consolidation.events)} / {display(consolidation.censored)} / {numberOrLabel(consolidation.median_minutes)}</dd></div>
                       <div className="data-row"><dt className="data-row__label">Invalidation (events / censored / median min)</dt><dd className="data-row__value">{display(invalidation.events)} / {display(invalidation.censored)} / {numberOrLabel(invalidation.median_minutes)}</dd></div>
                     </dl>
+                    <details>
+                      <summary>Kaplan-Meier survival curves</summary>
+                      <pre>{JSON.stringify({
+                        displacement: displacement.survival_curve ?? [],
+                        midpoint: midpoint.survival_curve ?? [],
+                        consolidation: consolidation.survival_curve ?? [],
+                        invalidation: invalidation.survival_curve ?? [],
+                      }, null, 2)}</pre>
+                    </details>
                     <p className="muted small">Source event IDs: {Array.isArray(group.source_event_ids) ? group.source_event_ids.join(", ") : "Not reported"}</p>
                   </section>
                 );
