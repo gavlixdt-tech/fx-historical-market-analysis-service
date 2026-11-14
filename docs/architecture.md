@@ -9,8 +9,8 @@ defensible historical patterns, market regimes, temporal relationships, and
 other evidence-supported findings.
 
 **This repository provides research/simulation capabilities, including
-availability-aware historical replay and an optional provider-sourced replay
-path.** It does not provide production model serving, authenticated cross-service
+retrospective regime/pattern analysis, calendar seasonality, availability-aware
+historical replay and an optional provider-sourced replay path.** It does not provide production model serving, authenticated cross-service
 prediction ingestion, or trading.
 
 ---
