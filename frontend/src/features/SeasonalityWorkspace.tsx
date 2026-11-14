@@ -287,7 +287,7 @@ export function SeasonalityWorkspace() {
             </p>
             <p className="muted small">Dataset fingerprint: <code>{result.dataset_fingerprint}</code></p>
             <p className="muted small">Analysis fingerprint: <code>{result.analysis_fingerprint}</code></p>
-            <p className="muted small">Accepted interval: 0.9× to {String(result.effective_config.maximum_gap_multiple)}× {result.timeframe}</p>
+            <p className="muted small">Accepted interval: {String(result.effective_config.minimum_interval_multiple)}× to {String(result.effective_config.maximum_gap_multiple)}× {result.timeframe}</p>
             <div className="overview-grid">
               <div className="overview-card"><p className="overview-card__label">Mean return</p><p className="overview-card__value">{percentageOrLabel(result.global_summary.mean_return)}</p></div>
               <div className="overview-card"><p className="overview-card__label">Median return</p><p className="overview-card__value">{percentageOrLabel(result.global_summary.median_return)}</p></div>
