@@ -455,6 +455,7 @@ export const SeasonalityAnalysisResponseDataSchema = z.object({
   dataset_fingerprint: z.string(),
   analysis_fingerprint: z.string(),
   effective_config: z.record(z.unknown()),
+  methodology: z.record(z.unknown()),
   algorithm_id: z.string(),
   algorithm_version: z.string(),
   global_summary: z.record(z.unknown()),
