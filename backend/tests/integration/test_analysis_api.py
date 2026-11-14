@@ -139,7 +139,7 @@ def test_seasonality_endpoint_rejects_mixed_observation_and_provider_inputs(clie
 def test_seasonality_endpoint_requires_explicit_provider_selection(client) -> None:
     response = client.post(
         "/api/v1/analysis/seasonality",
-        json={"instrument": "EUR/USD", "provider_id": "fixture-provider", "timeframe": "H1"},
+        json={"instrument": "EUR/USD", "timeframe": "H1"},
     )
 
     assert response.status_code == 422
