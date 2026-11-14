@@ -165,7 +165,6 @@ Implemented in this phase:
   and payload shapes; production authentication remains unverified.
 - Explicit provider inventory and selection; synthetic test providers are
   restricted to development/testing and labeled synthetic.
-- Historical regime classification, retrospective change-point detection, bounded pattern research and calendar-seasonality distributions.
 - Historical regime classification, retrospective change-point detection, bounded pattern research, and calendar-seasonality distributions.
 - Forecasting research experiments using chronological walk-forward evaluation.
 - Historical replay at successive point-in-time origins using explicit
