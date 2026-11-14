@@ -163,6 +163,11 @@ export function AnalysisWorkspace({ capabilities, isLoading }: AnalysisWorkspace
               <div className="overview-card"><p className="overview-card__label">Pattern significance</p><p className="overview-card__value">{result.pattern_significance ? "Significant under reported test" : "Not established"}</p></div>
             </div>
             <p className="muted small">Confidence: {result.confidence_status}; no calibrated confidence is produced by this analysis. Provenance: {String(result.data_provenance.provenance_status ?? "unknown")}. Fingerprint: {result.dataset_fingerprint ?? "Not reported"}</p>
+            {result.data_provenance.provenance_status === "synthetic_fixture" ? (
+              <p className="error-notice" role="status">This analysis used synthetic/test data. It is not evidence of real-market behaviour and must not be used to validate trading performance.</p>
+            ) : (
+              <p className="not-implemented-banner" role="status">Provider identity and original historical publication time are not independently verified. This retrospective analysis is descriptive research only.</p>
+            )}
             <h4>Research notes</h4>
             <ul>{result.recommendations.map((item) => <li key={item}>{item}</li>)}</ul>
             {result.warnings.length ? <><h4>Warnings</h4><ul>{result.warnings.map((item) => <li key={item}>{item}</li>)}</ul></> : null}
