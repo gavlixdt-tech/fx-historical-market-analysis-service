@@ -399,8 +399,8 @@ class ForecastingService(AnalysisService):
             and cast(int, getattr(request, "limit", None)) > 2000
         ):
             errors.append("limit exceeds experiment resource cap (2000)")
-        if getattr(request, "calibration", False):
-            errors.append("calibration is not implemented in the current evaluation path")
+        if getattr(request, "calibration", False) and tt != "classification":
+            errors.append("probability calibration is supported only for classification targets")
         config = {
             "problem": dataclasses.asdict(spec),
             "lookback": getattr(request, "lookback", None),
@@ -411,6 +411,10 @@ class ForecastingService(AnalysisService):
             "model_families": request_model_families,
             "random_seed": getattr(request, "random_seed", None),
             "calibration": getattr(request, "calibration", None),
+            "calibration_method": "multiclass_temperature_scaling"
+            if getattr(request, "calibration", False)
+            else None,
+            "calibration_min_samples": getattr(request, "calibration_min_samples", 10),
             "task_type": tt,
         }
         return len(errors) == 0, errors, config
@@ -432,7 +436,10 @@ class ForecastingService(AnalysisService):
             RandomForest,
             RidgeLogistic,
             RidgeRegression,
+            align_probability_columns,
+            apply_temperature_scaler,
             classification_metrics,
+            fit_temperature_scaler,
             fold_bootstrap_ci,
             regression_metrics,
             task_type_for_target,
@@ -616,6 +623,12 @@ class ForecastingService(AnalysisService):
                 Xte_p = pre.transform(X_test)
 
                 proba_test = None
+                calibration_info: dict[str, Any] = {
+                    "requested": bool(request.calibration),
+                    "status": "not_requested" if not request.calibration else "not_applied",
+                    "method": "multiclass_temperature_scaling" if request.calibration else None,
+                }
+                class_labels = [-1.0, 0.0, 1.0] if spec.target_type == "direction" else sorted(set(y_train))
                 if mf == "zero_return":
                     preds_test = [0.0 for _ in y_test]
                     selected = {"model": mf}
@@ -630,6 +643,8 @@ class ForecastingService(AnalysisService):
                     maj = max(counts.items(), key=lambda kv: (kv[1], -kv[0]))[0] if counts else 0.0
                     preds_test = [maj for _ in y_test]
                     selected = {"model": mf, "majority_class": maj}
+                    if request.calibration:
+                        calibration_info["status"] = "not_applicable_baseline_without_probabilities"
                 else:
                     best_cfg: dict[str, Any] = {}
                     best_score = None
@@ -645,6 +660,10 @@ class ForecastingService(AnalysisService):
                             if best_score is None or vm_mae < best_score:
                                 best_score = vm_mae
                                 best_cfg = {"alpha": alpha}
+                    elif mf == "ridge_logistic" and request.calibration:
+                        # The chronological validation segment is reserved exclusively
+                        # for calibration; it must not also select hyperparameters.
+                        best_cfg = {"alpha": 1.0}
                     elif mf == "ridge_logistic":
                         for alpha in (0.1, 1.0, 10.0):
                             m = RidgeLogistic(alpha=alpha)
@@ -682,7 +701,78 @@ class ForecastingService(AnalysisService):
                         preds_test = model.predict(Xte_p)
                         selected = {"model": mf, "hyperparameters": best_cfg}
                         if tt == "classification" and hasattr(model, "predict_proba"):
-                            proba_test = model.predict_proba(Xte_p)
+                            model_classes = list(getattr(model, "classes", []))
+                            raw_test_probabilities = model.predict_proba(Xte_p)
+                            proba_test = align_probability_columns(
+                                raw_test_probabilities, model_classes, class_labels
+                            )
+                            if request.calibration:
+                                test_start = ts_list[te[0]]
+                                calibration_positions = [
+                                    position
+                                    for position, index in enumerate(va)
+                                    if outcome_ends[index] < test_start
+                                ]
+                                calibration_indices = [va[position] for position in calibration_positions]
+                                calibration_labels = [y_vals[index] for index in calibration_indices]
+                                calibration_class_support = set(calibration_labels)
+                                if len(calibration_indices) < request.calibration_min_samples:
+                                    calibration_info.update(
+                                        {
+                                            "status": "insufficient_mature_calibration_samples",
+                                            "calibration_sample_count": len(calibration_indices),
+                                        }
+                                    )
+                                elif not set(class_labels).issubset(set(model_classes)):
+                                    calibration_info.update(
+                                        {
+                                            "status": "missing_training_class_support",
+                                            "calibration_sample_count": len(calibration_indices),
+                                        }
+                                    )
+                                elif not set(class_labels).issubset(calibration_class_support):
+                                    calibration_info.update(
+                                        {
+                                            "status": "missing_calibration_class_support",
+                                            "calibration_sample_count": len(calibration_indices),
+                                        }
+                                    )
+                                else:
+                                    calibration_probabilities = align_probability_columns(
+                                        model.predict_proba(
+                                            [Xva_p[position] for position in calibration_positions]
+                                        ),
+                                        model_classes,
+                                        class_labels,
+                                    )
+                                    temperature = fit_temperature_scaler(
+                                        calibration_probabilities,
+                                        calibration_labels,
+                                        class_labels,
+                                    )
+                                    proba_test = apply_temperature_scaler(
+                                        proba_test, temperature
+                                    )
+                                    preds_test = [
+                                        class_labels[max(range(len(row)), key=row.__getitem__)]
+                                        for row in proba_test
+                                    ]
+                                    calibration_info.update(
+                                        {
+                                            "status": "applied",
+                                            "temperature": temperature,
+                                            "calibration_sample_count": len(calibration_indices),
+                                            "calibration_start": ts_list[calibration_indices[0]].isoformat(),
+                                            "calibration_end": ts_list[calibration_indices[-1]].isoformat(),
+                                            "calibration_max_label_maturity": max(
+                                                outcome_ends[index] for index in calibration_indices
+                                            ).isoformat(),
+                                            "test_start": test_start.isoformat(),
+                                            "calibration_labels_matured_before_test": max(
+                                                outcome_ends[index] for index in calibration_indices
+                                            ) < test_start,
+                                        }
+                                    )
                     else:
                         preds_test = (
                             [0.0 for _ in y_test]
@@ -697,7 +787,9 @@ class ForecastingService(AnalysisService):
                     mmetrics = regression_metrics(y_test, preds_test)
                     primary = mmetrics["mae"]
                 else:
-                    mmetrics = classification_metrics(y_test, preds_test, proba_test)
+                    mmetrics = classification_metrics(
+                        y_test, preds_test, proba_test, class_labels=class_labels
+                    )
                     primary = mmetrics["accuracy"]
 
                 fold_row = {
@@ -713,6 +805,7 @@ class ForecastingService(AnalysisService):
                     ],
                     "metrics": mmetrics,
                     "selected_config": selected,
+                    "calibration": calibration_info,
                 }
                 fold_metrics_list.append(fold_row)
                 try:
@@ -773,6 +866,15 @@ class ForecastingService(AnalysisService):
                     "baseline_aggregate_primary": baseline_agg,
                     "improvement_vs_baseline": improvement,
                     "selected_configs": selected_configs,
+                    "calibration_applied_folds": sum(
+                        1
+                        for fold_result in fold_metrics_list
+                        if fold_result.get("calibration", {}).get("status") == "applied"
+                    ),
+                    "calibration_statuses": [
+                        fold_result.get("calibration", {}).get("status", "not_reported")
+                        for fold_result in fold_metrics_list
+                    ],
                 }
             )
         # folds summary for response
