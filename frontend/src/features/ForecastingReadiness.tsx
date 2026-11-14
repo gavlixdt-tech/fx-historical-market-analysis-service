@@ -193,7 +193,8 @@ export function ForecastingReadiness() {
               <div data-testid="calibration-summary">
                 {modelResults.map((model, index) => (
                   <p key={index} className="muted">
-                    {String(model.model_family)} · calibration applied in {String(model.calibration_applied_folds ?? 0)} folds
+                    {String(model.model_family)} · calibration applied in{" "}
+                    {String(model.calibration_applied_folds ?? 0)} folds
                   </p>
                 ))}
               </div>
