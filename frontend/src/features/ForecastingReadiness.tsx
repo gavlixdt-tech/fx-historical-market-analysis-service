@@ -25,6 +25,8 @@ export function ForecastingReadiness() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ExperimentRunResponseData | null>(null);
+  const [targetType, setTargetType] = useState<"future_return" | "direction">("future_return");
+  const [calibrationEnabled, setCalibrationEnabled] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -66,7 +68,7 @@ export function ForecastingReadiness() {
       feature_availability_policy: "point_in_time",
       prediction_reference: "observation_close",
       prediction_horizon: 1,
-      target_type: "future_return",
+      target_type: targetType,
       target_units: "fraction",
       eligibility_rules: [],
       label_generation_method: "exact_future_observation",
@@ -74,7 +76,7 @@ export function ForecastingReadiness() {
       required_historical_coverage: 20,
       evaluation_protocol: "chronological_holdout",
       known_limitations: ["Synthetic demo data - not predictive evidence."],
-      neutral_threshold: null,
+      neutral_threshold: targetType === "direction" ? 0.001 : null,
       volatility_window: null,
       max_features: 64,
     };
@@ -88,9 +90,13 @@ export function ForecastingReadiness() {
       min_train_samples: 30,
       purge: true,
       embargo_periods: 1,
-      model_families: ["ridge_regression", "random_forest"],
+      model_families:
+        targetType === "direction"
+          ? ["ridge_logistic"]
+          : ["ridge_regression", "random_forest"],
       random_seed: 42,
-      calibration: false,
+      calibration: targetType === "direction" && calibrationEnabled,
+      calibration_min_samples: 10,
     };
     try {
       const data = await api.runExperiment(body);
@@ -105,6 +111,7 @@ export function ForecastingReadiness() {
   }
 
   const comparison = (result?.comparison ?? []) as unknown as ComparisonRow[];
+  const modelResults = (result?.models ?? []) as unknown as Array<Record<string, unknown>>;
 
   return (
     <Panel
@@ -126,6 +133,31 @@ export function ForecastingReadiness() {
               <p className="capability-list__detail">{f.description}</p>
             </div>
           ))}
+        </div>
+        <div className="replay-form__grid">
+          <label>
+            Research target
+            <select
+              value={targetType}
+              onChange={(event) => {
+                const next = event.currentTarget.value as "future_return" | "direction";
+                setTargetType(next);
+                if (next !== "direction") setCalibrationEnabled(false);
+              }}
+            >
+              <option value="future_return">Future return (regression)</option>
+              <option value="direction">Market direction (classification)</option>
+            </select>
+          </label>
+          <label className="capability-list__item">
+            <input
+              type="checkbox"
+              checked={calibrationEnabled}
+              disabled={targetType !== "direction"}
+              onChange={(event) => setCalibrationEnabled(event.currentTarget.checked)}
+            />
+            Calibrate direction probabilities using a matured chronological validation segment
+          </label>
         </div>
         <button
           type="button"
@@ -157,6 +189,15 @@ export function ForecastingReadiness() {
               random seed: {result.random_seed ?? "n/a"}; validation:{" "}
               {result.validation_scheme ?? "n/a"}
             </p>
+            {modelResults.length > 0 ? (
+              <div data-testid="calibration-summary">
+                {modelResults.map((model, index) => (
+                  <p key={index} className="muted">
+                    {String(model.model_family)} · calibration applied in {String(model.calibration_applied_folds ?? 0)} folds
+                  </p>
+                ))}
+              </div>
+            ) : null}
             <p className="muted">
               Research evidence only. Not live trading readiness.
             </p>
