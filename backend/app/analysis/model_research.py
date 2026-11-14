@@ -656,9 +656,13 @@ def fit_temperature_scaler(
 ) -> float:
     """Fit scalar multiclass temperature using calibration rows only."""
     if len(probabilities) != len(y_true) or not probabilities:
-        raise ValueError("temperature scaling requires aligned non-empty calibration data")
+        raise ValueError(
+            "temperature scaling requires aligned non-empty calibration data"
+        )
     if len(classes) < 2 or any(len(row) != len(classes) for row in probabilities):
-        raise ValueError("temperature scaling probability dimensions do not match classes")
+        raise ValueError(
+            "temperature scaling probability dimensions do not match classes"
+        )
     class_positions = {label: index for index, label in enumerate(classes)}
     if any(label not in class_positions for label in y_true):
         raise ValueError("calibration labels are outside the model class domain")
@@ -710,7 +714,10 @@ def apply_temperature_scaler(
     epsilon = 1e-12
     calibrated: list[list[float]] = []
     for row in probabilities:
-        logits = [math.log(max(epsilon, min(1.0, float(value)))) / temperature for value in row]
+        logits = [
+            math.log(max(epsilon, min(1.0, float(value)))) / temperature
+            for value in row
+        ]
         maximum = max(logits)
         exponentials = [math.exp(value - maximum) for value in logits]
         total = sum(exponentials)
@@ -787,7 +794,9 @@ def classification_metrics(
         raise ValueError("probability rows must align with the declared class labels")
     class_positions = {label: index for index, label in enumerate(classes)}
     if any(label not in class_positions for label in y_true):
-        raise ValueError("true labels are outside the declared probability class domain")
+        raise ValueError(
+            "true labels are outside the declared probability class domain"
+        )
 
     epsilon = 1e-12
     brier_total = 0.0
@@ -822,7 +831,8 @@ def classification_metrics(
         indices = [
             index
             for index, confidence in enumerate(confidences)
-            if lower <= confidence < upper or (bin_index == n_bins - 1 and confidence == 1.0)
+            if lower <= confidence < upper
+            or (bin_index == n_bins - 1 and confidence == 1.0)
         ]
         if indices:
             mean_confidence = sum(confidences[index] for index in indices) / len(indices)
