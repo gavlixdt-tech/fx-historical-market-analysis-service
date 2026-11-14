@@ -55,7 +55,7 @@ export function SessionLiquidityEventStudy() {
       }
       if (
         Number.isNaN(Date.parse(candidate.analysis_cutoff)) ||
-        !/(?:Z|[+-]\\d{2}:\\d{2})$/i.test(candidate.analysis_cutoff)
+        !/(?:Z|[+-]\d{2}:\d{2})$/i.test(candidate.analysis_cutoff)
       ) {
         throw new Error("analysis_cutoff must be a valid timezone-aware ISO-8601 timestamp.");
       }
