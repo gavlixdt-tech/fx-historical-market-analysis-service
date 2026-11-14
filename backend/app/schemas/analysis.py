@@ -345,6 +345,7 @@ class SeasonalityAnalysisResponseData(BaseModel):
     dataset_fingerprint: str
     analysis_fingerprint: str
     effective_config: dict[str, Any]
+    methodology: dict[str, Any]
     algorithm_id: str
     algorithm_version: str
     global_summary: dict[str, Any]
