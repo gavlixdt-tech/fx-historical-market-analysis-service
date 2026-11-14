@@ -877,6 +877,21 @@ class ForecastingService(AnalysisService):
                     ],
                 }
             )
+        if request.calibration:
+            for model_result in model_results:
+                unapplied = sorted(
+                    {
+                        status
+                        for status in model_result.get("calibration_statuses", [])
+                        if status not in {"applied", "not_applicable_baseline_without_probabilities"}
+                    }
+                )
+                if unapplied:
+                    warnings.append(
+                        f"Probability calibration was not applied to {model_result['model_family']} "
+                        f"in every fold: {', '.join(unapplied)}."
+                    )
+
         # folds summary for response
         fold_summary = []
         for fold in folds:
