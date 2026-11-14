@@ -69,7 +69,7 @@ fx-historical-market-analysis-service/
 │   │   ├── schemas/           # Request/response contracts (incl. upstream.py, replay.py)
 │   │   ├── clients/           # market_data.py: typed upstream client
 │   │   ├── services/          # forecasting_service.py, health_service.py
-│   │   ├── analysis/          # point-in-time features, models, replay, metrics
+│   │   ├── analysis/          # point-in-time features, models, replay, metrics, seasonality
 │   │   ├── observability/     # metrics.py, tracing.py
 │   │   └── main.py            # create_app() factory + entrypoint
 │   │                          (no repositories/ package: nothing is persisted)
@@ -165,6 +165,7 @@ Implemented in this phase:
   and payload shapes; production authentication remains unverified.
 - Explicit provider inventory and selection; synthetic test providers are
   restricted to development/testing and labeled synthetic.
+- Historical regime classification, retrospective change-point detection, bounded pattern research and calendar-seasonality distributions.
 - Forecasting research experiments using chronological walk-forward evaluation.
 - Historical replay at successive point-in-time origins using explicit
   observation-availability timestamps, target-maturity purging and optional
