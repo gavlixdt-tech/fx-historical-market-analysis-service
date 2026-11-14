@@ -232,3 +232,29 @@ def walk_forward_indices(n: int, train_ratio: float = 0.7) -> tuple[range, range
     if split >= n:
         split = n - 1
     return range(0, split), range(split, n)
+
+
+def partition_pattern_events(
+    events: list[int],
+    *,
+    split_index: int,
+    outcome_horizon: int,
+    observation_count: int,
+) -> tuple[list[int], list[int], int, int]:
+    """Partition events without allowing training outcomes to cross the split.
+
+    Training targets must end strictly before the first test observation. Test
+    events without a complete future horizon are excluded from evaluation.
+    Returns train events, test events, purged train count, and incomplete test
+    count.
+    """
+    if not 0 < split_index < observation_count:
+        raise ValueError("split_index must be inside the observation range")
+    if outcome_horizon < 1:
+        raise ValueError("outcome_horizon must be positive")
+
+    raw_train = [event for event in events if 0 <= event < split_index]
+    raw_test = [event for event in events if split_index <= event < observation_count]
+    train = [event for event in raw_train if event + outcome_horizon < split_index]
+    test = [event for event in raw_test if event + outcome_horizon < observation_count]
+    return train, test, len(raw_train) - len(train), len(raw_test) - len(test)
