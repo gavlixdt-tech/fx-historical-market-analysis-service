@@ -310,7 +310,7 @@ export function SeasonalityWorkspace() {
                         {bucket.bucket_label} · n={bucket.observation_count} · {bucket.sample_status.replace(/_/g, " ")}
                       </dt>
                       <dd className="data-row__value">
-                        Mean {numberOrLabel(bucket.mean_return)} · Median {numberOrLabel(bucket.median_return)} · Positive {percentageOrLabel(bucket.positive_return_rate)} · Volatility {numberOrLabel(bucket.realized_volatility)} · 95% interval {numberOrLabel(bucket.mean_return_interval_95_lower)} to {numberOrLabel(bucket.mean_return_interval_95_upper)}
+                        Mean {numberOrLabel(bucket.mean_return)} · Median {numberOrLabel(bucket.median_return)} · Positive {percentageOrLabel(bucket.positive_return_rate)} · Volatility {numberOrLabel(bucket.realized_volatility)} · Mean range {percentageOrLabel(bucket.mean_candle_range_pct)} · Δ vs global {numberOrLabel(bucket.difference_from_global_mean)} · 95% interval {numberOrLabel(bucket.mean_return_interval_95_lower)} to {numberOrLabel(bucket.mean_return_interval_95_upper)}
                       </dd>
                     </div>
                   ))}
