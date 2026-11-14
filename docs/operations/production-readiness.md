@@ -19,7 +19,7 @@ establish production readiness.
 | Service 64 identity | BLOCKED | No approved Service 2 workload identity/grant |
 | Service 65 centralized observability | BLOCKED | Local metrics and optional OTEL exist; central ingestion/authorization/propagation unverified |
 | Service 66 recovery | BLOCKED | No durable artifact service integration or tested restore |
-| Frontend | PASS WITH EXPLICIT LIMITATIONS | Typed backend-only API, OHLC chart/table, provenance, historical regime/pattern research, replay context and caller-supplied event-study workspace; durable experiment history and automatic upstream event ingestion remain unavailable |
+| Frontend | PASS WITH EXPLICIT LIMITATIONS | Typed backend-only API, OHLC chart/table, provenance, historical regime/pattern research, calendar seasonality, direction-calibration controls, replay context and caller-supplied event-study workspace; durable experiment history and automatic upstream event ingestion remain unavailable |
 | CI/container/deployment | NOT_VERIFIED | Local checks do not prove CI, container runtime, or a deployed environment |
 | Trading/execution | NOT_APPLICABLE | Service 2 is research-only and has no order-placement adapter |
 
