@@ -261,3 +261,51 @@ change was pushed or deployed.
 ## License
 
 Private. All rights reserved by the platform owner.
+
+
+## Production environment variables
+
+This reference follows the current runtime settings and repository environment templates. Required means enforced by production startup validation; conditional entries are only needed when the corresponding integration is enabled. Frontend VITE variables are public build-time configuration and must never contain secrets. Keep all backend credentials and trust material in the deployment secret manager.
+
+| Variable | Purpose / production guidance | Requirement |
+|---|---|---|
+| `ENVIRONMENT` | Set to production to activate strict security rules. | Required |
+| `REQUIRE_AUTH` | Must be true in production. | Required |
+| `API_KEY` | At least 32 characters in production. | Required secret |
+| `CORS_ALLOW_ORIGINS` | Explicit non-wildcard origins; replace localhost values. | Required |
+| `ENABLE_LIVE_TRADING` | Must remain false. | Must be false |
+| `SERVICE_MODE` | Must remain `research-simulation`. | Required |
+| `SERVICE_NAME` | Service identity. | Optional |
+| `SERVICE_VERSION` | Version label. | Optional |
+| `API_VERSION` | API version prefix. | Optional |
+| `API_HOST` | Bind host. | Optional |
+| `API_PORT` | Bind port. | Platform/runtime |
+| `LOG_LEVEL` | Logging threshold. | Optional |
+| `LOG_FORMAT` | `json` or `console`. | Optional |
+| `CORS_ALLOW_CREDENTIALS` | CORS credential policy. | Optional |
+| `CORS_ALLOW_METHODS` | Allowed CORS methods. | Optional |
+| `CORS_ALLOW_HEADERS` | Allowed CORS headers. | Optional |
+| `TRUSTED_HOSTS` | Trusted host allowlist. | Set explicitly |
+| `DOCS_ENABLED_IN_PRODUCTION` | Keep false unless approved. | Optional |
+| `MAX_REQUEST_BODY_BYTES` | Maximum request body size. | Optional |
+| `FORECASTING_ARTIFACT_DIR` | Optional directory for reproducible research artifacts. | Conditional |
+| `UPSTREAM_MARKET_DATA_BASE_URL` | Service 1 origin; HTTPS or explicit-port private Railway HTTP in production. | Conditional integration |
+| `UPSTREAM_API_KEY` | Service 1 credential; required when upstream market-data URL is configured in production. | Conditional secret |
+| `UPSTREAM_FEATURE_ENGINEERING_BASE_URL` | Feature engineering origin; HTTPS or explicit-port private Railway HTTP in production. | Conditional integration |
+| `UPSTREAM_FEATURE_ENGINEERING_AUTH_TOKEN` | At least 32 bytes when feature-engineering integration is configured in production. | Conditional secret |
+| `UPSTREAM_TIMEOUT_SECONDS` | Overall upstream timeout. | Optional |
+| `UPSTREAM_CONNECT_TIMEOUT_SECONDS` | Upstream connect timeout. | Optional |
+| `UPSTREAM_READ_TIMEOUT_SECONDS` | Upstream read timeout. | Optional |
+| `UPSTREAM_MAX_RETRIES` | Upstream retry count. | Optional |
+| `UPSTREAM_RETRY_MAX_DURATION_SECONDS` | Maximum retry duration. | Optional |
+| `UPSTREAM_MAX_CONCURRENT_REQUESTS` | Maximum concurrent upstream requests. | Optional |
+| `UPSTREAM_MAX_RESPONSE_BYTES` | Maximum decompressed upstream response size. | Optional |
+| `UPSTREAM_CONNECTIVITY_CHECK_ENABLED` | Enable readiness connectivity check. | Optional |
+| `UPSTREAM_REPLAY_AVAILABILITY_DELAY_SECONDS` | Provider publication-lag assumption required for historical replay when source publish timestamps are unavailable. | Required for market-data replay endpoint |
+| `UPSTREAM_MAX_HISTORY_LIMIT` | Maximum permitted historical request limit. | Optional |
+| `UPSTREAM_ALLOWED_HISTORY_START` | Optional earliest permitted history timestamp. | Optional |
+| `UPSTREAM_ALLOWED_HISTORY_END` | Optional latest permitted history timestamp. | Optional |
+| `OTEL_ENABLED` | Enable OpenTelemetry trace export. | Optional |
+| `OTEL_ENDPOINT` | OTLP HTTP endpoint. | Conditional |
+| `METRICS_ENABLED` | Expose Prometheus metrics. | Optional |
+| `DATABASE_URL` | Reserved/unused by current implementation; no database is provisioned. | Do not configure as active persistence |
