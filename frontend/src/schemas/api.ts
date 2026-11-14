@@ -393,6 +393,38 @@ export type SessionLiquidityEventStudyResponseData = z.infer<
   typeof SessionLiquidityEventStudyResponseDataSchema
 >;
 
+export const ResearchSummaryResponseDataSchema = z.object({
+  status: z.string(),
+  analysis_id: z.string(),
+  instrument: z.string().nullable().optional(),
+  timeframe: z.string().nullable().optional(),
+  observation_count: z.number(),
+  dominant_regime: z.string().nullable().optional(),
+  regime_share: z.number().nullable().optional(),
+  volatility_state: z.string(),
+  trend_state: z.string(),
+  pattern_id: z.string().nullable().optional(),
+  pattern_effect_size: z.number().nullable().optional(),
+  pattern_significance: z.boolean(),
+  confidence: z.number().nullable().optional(),
+  confidence_status: z.string(),
+  narrative: z.string(),
+  recommendations: z.array(z.string()),
+  regime_summary: z.record(z.unknown()).nullable().optional(),
+  pattern_summary: z.record(z.unknown()).nullable().optional(),
+  historical_interval: z.record(z.string().nullable()),
+  dataset_fingerprint: z.string().nullable().optional(),
+  data_provenance: z.record(z.unknown()),
+  source_quality: z.record(z.unknown()).nullable().optional(),
+  warnings: z.array(z.string()),
+  limitations: z.array(z.string()),
+  duration_ms: z.number(),
+});
+
+export type ResearchSummaryResponseData = z.infer<
+  typeof ResearchSummaryResponseDataSchema
+>;
+
 /** Envelope schemas for the new endpoints. */
 export const DataSourceEnvelopeSchema = ApiEnvelopeSchema.extend({
   data: DataSourceResponseDataSchema,
@@ -424,4 +456,8 @@ export const HistoricalReplayEnvelopeSchema = ApiEnvelopeSchema.extend({
 
 export const SessionLiquidityEventStudyEnvelopeSchema = ApiEnvelopeSchema.extend({
   data: SessionLiquidityEventStudyResponseDataSchema,
+});
+
+export const ResearchSummaryEnvelopeSchema = ApiEnvelopeSchema.extend({
+  data: ResearchSummaryResponseDataSchema,
 });
