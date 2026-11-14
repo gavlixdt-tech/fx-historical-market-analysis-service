@@ -51,3 +51,16 @@ validation data are already used for model/hyperparameter selection, and test
 targets must not be used for fitting. A future implementation should add a
 dedicated calibration segment or an out-of-fold procedure that fits calibrators
 without using final test targets.
+
+## Historical replay context feature cap
+
+The base point-in-time forecasting catalog contains 11 ordered features.
+Historical replay may append optional session-context and liquidity-lifecycle
+features when those records are supplied and available at the replay decision
+time. These optional context features are subject to the same total
+`max_features` upper bound: the replay uses base features first, then appends
+context features in the declared order until the cap is reached. Missing or
+late context values remain unavailable and are handled by the existing replay
+preprocessor. The replay response records the effective feature names and
+reproducibility configuration. This does not change the 11-feature base
+forecasting dataset contract.
