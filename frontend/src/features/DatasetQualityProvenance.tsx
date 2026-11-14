@@ -19,7 +19,7 @@ function displayValue(value: unknown): string {
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (typeof value === "number") return Number.isFinite(value) ? value.toLocaleString() : "Not valid";
   if (typeof value === "string") return value;
-  return JSON.stringify(value);
+  return JSON.stringify(value) ?? String(value);
 }
 
 function DetailList({ title, values }: { title: string; values: JsonRecord }) {
