@@ -168,11 +168,15 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Audit Python dependencies
+      - name: Install and audit Python dependencies
+        working-directory: backend
         run: |
-          pip install pip-audit
-          pip-audit -r backend/pyproject.toml || true
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]" pip-audit
+          pip-audit --local
 
       - name: Audit npm dependencies
         working-directory: frontend
-        run: npm audit --audit-level=high || true
+        run: |
+          npm ci --no-audit --no-fund
+          npm audit --audit-level=high
