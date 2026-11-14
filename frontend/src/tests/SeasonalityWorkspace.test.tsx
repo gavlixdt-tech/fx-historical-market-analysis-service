@@ -53,6 +53,8 @@ const seasonalityResult = {
   excluded_gap_return_count: 0,
   interval: { start: "2026-01-01T00:00:00Z", end: "2026-01-05T23:00:00Z" },
   dataset_fingerprint: "fingerprint-123",
+  analysis_fingerprint: "analysis-fingerprint-123",
+  effective_config: { maximum_gap_multiple: 1.5 },
   algorithm_id: "calendar_seasonality_research",
   algorithm_version: "1.0.0",
   global_summary: {
