@@ -233,6 +233,7 @@ class ExperimentRunRequest(BaseModel):
     model_families: list[str] = Field(default_factory=list)
     random_seed: int = Field(default=42, ge=0)
     calibration: bool = False
+    calibration_min_samples: int = Field(default=10, ge=5, le=1000)
     data_source: str | None = Field(
         default=None,
         description="Declared origin of supplied observations",
