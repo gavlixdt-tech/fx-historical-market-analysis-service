@@ -387,6 +387,13 @@ class ForecastingService(AnalysisService):
         for mf in request_model_families:
             if mf not in allowed:
                 errors.append(f"unsupported model family for target: {mf}")
+        if getattr(request, "calibration", False) and not any(
+            family in {"ridge_logistic", "random_forest", "histogram_gradient_boosting"}
+            for family in request_model_families
+        ):
+            errors.append(
+                "calibration requires at least one classification model with probability output"
+            )
         _n_folds = cast(int | None, getattr(request, "n_folds", None))
         if _n_folds is not None and (_n_folds < 1 or _n_folds > 5):
             errors.append("n_folds must be between 1 and 5")
