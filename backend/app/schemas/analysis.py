@@ -121,14 +121,8 @@ def _default_pattern_ids() -> list[PatternId]:
 class PatternConfigInput(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    pattern_ids: list[
-        Literal[
-            "volatility_compression_expansion",
-            "directional_persistence",
-            "reversal_after_large_move",
-        ]
-    ] = Field(
-        default_factory=lambda: ["volatility_compression_expansion"], min_length=1, max_length=3
+    pattern_ids: list[PatternId] = Field(
+        default_factory=_default_pattern_ids, min_length=1, max_length=3
     )
     lookback: int = Field(default=20, ge=5, le=200)
     outcome_horizon: int = Field(default=5, ge=1, le=60)
