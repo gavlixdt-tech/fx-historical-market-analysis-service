@@ -867,6 +867,11 @@ class AnalysisService:
             "block_size": request.block_size,
             "seed": request.seed,
             "maximum_gap_multiple": request.maximum_gap_multiple,
+            "provider_id": (source_quality or {}).get("provider_id"),
+            "price_basis": (request.price_basis or "bid") if source_quality else None,
+            "start": request.start.isoformat() if request.start is not None else None,
+            "end": request.end.isoformat() if request.end is not None else None,
+            "limit": (request.limit or 500) if source_quality else None,
         }
         analysis_fingerprint = hashlib.sha256(
             json.dumps(
