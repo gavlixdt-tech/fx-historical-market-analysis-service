@@ -12,6 +12,8 @@ from backend.app.schemas.analysis import (
     RegimeAnalysisResponseData,
     ResearchSummaryData,
     ResearchSummaryRequest,
+    SeasonalityAnalysisRequest,
+    SeasonalityAnalysisResponseData,
 )
 from backend.app.schemas.common import ApiResponse
 from backend.app.services.analysis_service import AnalysisService
@@ -63,6 +65,20 @@ async def research_summary(
     service = get_analysis_service(request)
     request_id = getattr(request.state, "request_id", "unknown")
     data = await service.research_summary(payload, request_id=request_id)
+    return ApiResponse(data=data, meta=build_meta(request.app.state.settings, request_id))
+
+
+@router.post(
+    "/analysis/seasonality",
+    response_model=ApiResponse[SeasonalityAnalysisResponseData],
+    summary="Calendar seasonality research",
+)
+async def analyze_seasonality(
+    request: Request, payload: SeasonalityAnalysisRequest
+) -> ApiResponse[SeasonalityAnalysisResponseData]:
+    service = get_analysis_service(request)
+    request_id = getattr(request.state, "request_id", "unknown")
+    data = await service.analyze_seasonality(payload, request_id=request_id)
     return ApiResponse(data=data, meta=build_meta(request.app.state.settings, request_id))
 
 
