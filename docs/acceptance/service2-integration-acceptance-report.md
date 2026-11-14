@@ -26,7 +26,7 @@ claimed.
 | Service 64 | BLOCKED | Approved workload identity/grant absent |
 | Service 65 | PASS WITH EXPLICIT LIMITATIONS | Local metrics/tracing only; central ingestion unverified |
 | Service 66 | BLOCKED | No durable integration or tested restore |
-| Frontend | PASS WITH EXPLICIT LIMITATIONS | Provider inventory and selection plus error/loading/provenance display; no full artifact/dependency history workbench |
+| Frontend | PASS WITH EXPLICIT LIMITATIONS | Historical OHLC chart/table, dataset quality/provenance, retrospective regime/pattern research, replay context display, and caller-supplied event-study view are integrated; durable experiment history and automatic Service 18 event ingestion remain unavailable |
 | Production/deployment | BLOCKED | No production identity, live provider, recovery, or deployed verification |
 | Trading/order execution | NOT_APPLICABLE | This service does not place orders or trade |
 
