@@ -44,6 +44,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
+      - name: Diagnose Ruff import ordering
+        run: |
+          ruff check --select I001 --fix --diff app/services/forecasting_service.py tests/integration/test_analysis_api.py || true
+
       - name: Lint (ruff check)
         run: ruff check app tests
 
