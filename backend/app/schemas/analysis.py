@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -109,17 +110,29 @@ class RegimeAnalysisResponseData(BaseModel):
 class PatternConfigInput(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    pattern_ids: list[str] = Field(default_factory=lambda: ["volatility_compression_expansion"])
+    pattern_ids: list[
+        Literal[
+            "volatility_compression_expansion",
+            "directional_persistence",
+            "reversal_after_large_move",
+        ]
+    ] = Field(default_factory=lambda: ["volatility_compression_expansion"], min_length=1, max_length=3)
     lookback: int = Field(default=20, ge=5, le=200)
     outcome_horizon: int = Field(default=5, ge=1, le=60)
-    overlap_policy: str = Field(default="no_overlap_outcome")
+    overlap_policy: Literal["allow", "min_gap", "no_overlap_outcome"] = "no_overlap_outcome"
     min_gap: int = Field(default=1, ge=1)
     bootstrap_samples: int = Field(default=200, ge=10, le=2000)
     block_size: int = Field(default=5, ge=1, le=50)
     permutations: int = Field(default=200, ge=10, le=2000)
     alpha: float = Field(default=0.05, gt=0.0, lt=1.0)
     walk_forward_train_ratio: float = Field(default=0.7, gt=0.0, lt=1.0)
-    seed: int = Field(default=42)
+    seed: int = Field(default=42, ge=0)
+
+    @model_validator(mode="after")
+    def validate_pattern_ids(self) -> PatternConfigInput:
+        if len(set(self.pattern_ids)) != len(self.pattern_ids):
+            raise ValueError("pattern_ids must be unique")
+        return self
 
 
 class PatternResearchRequest(BaseModel):
@@ -249,3 +262,95 @@ class CapabilityDiscoveryData(BaseModel):
     features: list[str]
     patterns: list[str]
     notes: list[str]
+
+
+class SeasonalityAnalysisRequest(BaseModel):
+    """Bounded historical calendar-seasonality research request."""
+
+    model_config = ConfigDict(frozen=True)
+
+    observations: list[ObservationInput] | None = Field(default=None, max_length=5000)
+    instrument: str | None = None
+    timeframe: Literal["M1", "M5", "M15", "M30", "H1", "H4", "D1", "W1"]
+    start: datetime | None = None
+    end: datetime | None = None
+    provider_id: str | None = None
+    price_basis: str | None = None
+    limit: int | None = Field(default=None, ge=2, le=5000)
+    timezone: str = Field(default="UTC", min_length=1, max_length=64)
+    bucket_types: list[Literal["weekday", "hour_of_day", "month_of_year"]] = Field(
+        default_factory=lambda: ["weekday", "hour_of_day", "month_of_year"],
+        min_length=1,
+        max_length=3,
+    )
+    minimum_bucket_samples: int = Field(default=20, ge=5, le=500)
+    bootstrap_samples: int = Field(default=300, ge=100, le=1000)
+    block_size: int = Field(default=5, ge=1, le=50)
+    seed: int = Field(default=42, ge=0)
+    maximum_gap_multiple: float = Field(default=1.5, ge=1.0, le=4.0)
+
+    @model_validator(mode="after")
+    def validate_seasonality_request(self) -> SeasonalityAnalysisRequest:
+        try:
+            ZoneInfo(self.timezone)
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            raise ValueError("timezone must be a valid IANA timezone identifier") from exc
+        if len(set(self.bucket_types)) != len(self.bucket_types):
+            raise ValueError("bucket_types must be unique")
+        if self.start is not None and (
+            self.start.tzinfo is None or self.start.utcoffset() is None
+        ):
+            raise ValueError("start must include a timezone")
+        if self.end is not None and (
+            self.end.tzinfo is None or self.end.utcoffset() is None
+        ):
+            raise ValueError("end must include a timezone")
+        if self.start is not None and self.end is not None and self.start >= self.end:
+            raise ValueError("start must be earlier than end")
+        return self
+
+
+class SeasonalityBucketResult(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    dimension: str
+    bucket_key: str
+    bucket_label: str
+    observation_count: int
+    sample_status: str
+    mean_return: float | None = None
+    median_return: float | None = None
+    positive_return_rate: float | None = None
+    realized_volatility: float | None = None
+    mean_candle_range_pct: float | None = None
+    mean_return_interval_95_lower: float | None = None
+    mean_return_interval_95_upper: float | None = None
+    difference_from_global_mean: float | None = None
+
+
+class SeasonalityAnalysisResponseData(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    status: str
+    analysis_id: str
+    instrument: str | None = None
+    timeframe: str
+    timezone: str
+    observation_count: int
+    return_observation_count: int
+    excluded_gap_return_count: int
+    interval: dict[str, str | None]
+    dataset_fingerprint: str
+    algorithm_id: str
+    algorithm_version: str
+    global_summary: dict[str, Any]
+    buckets: list[SeasonalityBucketResult]
+    minimum_bucket_samples: int
+    bootstrap: dict[str, Any]
+    insufficient_bucket_count: int
+    data_provenance: dict[str, Any]
+    source_quality: dict[str, Any] | None = None
+    forecast_eligible: bool = False
+    warnings: list[str] = Field(default_factory=list)
+    limitations: list[str] = Field(default_factory=list)
+    duration_ms: float
