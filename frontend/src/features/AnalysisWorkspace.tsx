@@ -175,7 +175,7 @@ export function AnalysisWorkspace({ capabilities, isLoading }: AnalysisWorkspace
           </section>
         ) : !running ? (
           <EmptyState title="No analysis run yet" message="Select a historical provider and run a bounded retrospective analysis. Results will be displayed here only after the backend responds." />
-        )}
+        ) : null}
       </div>
     </Panel>
   );
