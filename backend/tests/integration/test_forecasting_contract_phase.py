@@ -177,7 +177,10 @@ def test_calibration_rejected_deterministically(client):
     rv = client.post("/api/v1/forecasting/experiment/validate", json=body)
     assert rv.status_code == 200
     assert rv.json()["data"]["valid"] is False
-    assert any("probability calibration is supported only for classification targets" in e for e in rv.json()["data"]["errors"])
+    assert any(
+        "probability calibration is supported only for classification targets" in error
+        for error in rv.json()["data"]["errors"]
+    )
     rr = client.post("/api/v1/forecasting/experiment/run", json=body)
     assert rr.status_code in {400, 422, 500}
 
@@ -202,7 +205,8 @@ def test_direction_experiment_calibrates_on_matured_validation_data(client):
     data = response.json()["data"]
     assert data["effective_config"]["calibration"] is True
     assert (
-        data["effective_config"]["calibration_method"] == "multiclass_temperature_scaling"
+        data["effective_config"]["calibration_method"]
+        == "multiclass_temperature_scaling"
     )
     model = data["models"][0]
     applied = [
@@ -240,7 +244,10 @@ def test_direction_calibration_reports_insufficient_mature_samples(client):
         fold["calibration"]["status"] == "insufficient_mature_calibration_samples"
         for fold in model["folds"]
     )
-    assert any("Probability calibration was not applied" in warning for warning in data["warnings"])
+    assert any(
+        "Probability calibration was not applied" in warning
+        for warning in data["warnings"]
+    )
 
 
 def test_calibration_requires_probability_capable_model(client):
