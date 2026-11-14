@@ -24,6 +24,7 @@ import {
   ReadyEnvelopeSchema,
   ResearchReadinessEnvelopeSchema,
   StatusEnvelopeSchema,
+  SessionLiquidityEventStudyEnvelopeSchema,
   VersionEnvelopeSchema,
   type DataSourceResponseData,
   type ErrorDetail,
@@ -36,6 +37,7 @@ import {
   type ReadyResponseData,
   type ResearchReadinessResponseData,
   type StatusResponseData,
+  type SessionLiquidityEventStudyResponseData,
   type VersionResponseData,
 } from "@/schemas/api";
 
@@ -253,6 +255,14 @@ export const api = {
       body: payload,
     }).then((r) => r.data),
 
+  runSessionLiquidityEventStudy: (payload: unknown, options?: RequestOptions) =>
+    request("/market-session-liquidity/event-study", SessionLiquidityEventStudyEnvelopeSchema, {
+      ...options,
+      method: "POST",
+      timeoutMs: options?.timeoutMs ?? 60_000,
+      body: payload,
+    }).then((r) => r.data),
+
   getExperiment: (experimentId: string, options?: RequestOptions) =>
     request(
       `/forecasting/experiment/${encodeURIComponent(experimentId)}`,
@@ -273,5 +283,6 @@ export type {
   ReadyResponseData,
   ResearchReadinessResponseData,
   StatusResponseData,
+  SessionLiquidityEventStudyResponseData,
   VersionResponseData,
 };
