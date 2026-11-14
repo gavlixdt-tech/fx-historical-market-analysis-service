@@ -1,4 +1,5 @@
 import math
+from datetime import datetime, timedelta, timezone
 
 
 def _observations(n: int = 120) -> list[dict]:
@@ -21,6 +22,25 @@ def _observations(n: int = 120) -> list[dict]:
             }
         )
     return obs
+
+
+def _direction_observations(n: int = 240) -> list[dict]:
+    observations = []
+    for index in range(n):
+        close = 1.0 + 0.0001 * index + math.sin(index * 0.5) * 0.005
+        observations.append(
+            {
+                "timestamp": (
+                    datetime(2024, 1, 1, tzinfo=timezone.utc) + timedelta(days=index)
+                ).isoformat(),
+                "open": close,
+                "high": close + 0.001,
+                "low": close - 0.001,
+                "close": close,
+                "volume": 1000,
+            }
+        )
+    return observations
 
 
 def _problem(target_type: str = "future_return", eligibility_rules=None, max_features=64):
@@ -187,7 +207,7 @@ def test_calibration_rejected_deterministically(client):
 
 def test_direction_experiment_calibrates_on_matured_validation_data(client):
     body = {
-        "observations": _observations(240),
+        "observations": _direction_observations(240),
         "problem": _problem(target_type="direction"),
         "lookback": 20,
         "n_folds": 3,
