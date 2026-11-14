@@ -51,6 +51,7 @@ const seasonalityResult = {
   observation_count: 120,
   return_observation_count: 119,
   excluded_gap_return_count: 0,
+  excluded_short_interval_return_count: 0,
   interval: { start: "2026-01-01T00:00:00Z", end: "2026-01-05T23:00:00Z" },
   dataset_fingerprint: "fingerprint-123",
   analysis_fingerprint: "analysis-fingerprint-123",
