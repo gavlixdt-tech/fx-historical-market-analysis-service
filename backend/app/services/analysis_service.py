@@ -877,7 +877,12 @@ class AnalysisService:
         }
         analysis_fingerprint = hashlib.sha256(
             json.dumps(
-                {"dataset_fingerprint": dataset_fingerprint, "effective_config": effective_config},
+                {
+                    "algorithm_id": "calendar_seasonality_research",
+                    "algorithm_version": "1.0.0",
+                    "dataset_fingerprint": dataset_fingerprint,
+                    "effective_config": effective_config,
+                },
                 sort_keys=True,
                 separators=(",", ":"),
                 allow_nan=False,
@@ -910,6 +915,13 @@ class AnalysisService:
             dataset_fingerprint=dataset_fingerprint,
             analysis_fingerprint=analysis_fingerprint,
             effective_config=effective_config,
+            methodology={
+                "return_definition": "Simple close-to-close return from the prior candle close to the current candle close.",
+                "bucket_assignment": "The ending candle timestamp converted to the requested IANA timezone.",
+                "realized_volatility": "Sample standard deviation of per-observation returns; not annualized.",
+                "candle_range": "(high - low) / close for the ending candle.",
+                "bootstrap_interval": "Circular moving-block bootstrap within each calendar bucket; descriptive only.",
+            },
             algorithm_id="calendar_seasonality_research",
             algorithm_version="1.0.0",
             global_summary=global_summary,
