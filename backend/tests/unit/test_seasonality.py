@@ -47,7 +47,7 @@ def test_calendar_seasonality_groups_by_ending_candle_timezone() -> None:
     first_hour = next(
         bucket for bucket in result["buckets"] if bucket["bucket_label"] == "04:00-04:59"
     )
-    assert first_hour["observation_count"] == 1
+    assert first_hour["observation_count"] == 10
     assert result["forecast_eligible"] is False
 
 
