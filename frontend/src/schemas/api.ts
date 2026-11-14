@@ -425,6 +425,53 @@ export type ResearchSummaryResponseData = z.infer<
   typeof ResearchSummaryResponseDataSchema
 >;
 
+
+export const SeasonalityBucketResultSchema = z.object({
+  dimension: z.enum(["weekday", "hour_of_day", "month_of_year"]),
+  bucket_key: z.string(),
+  bucket_label: z.string(),
+  observation_count: z.number(),
+  sample_status: z.string(),
+  mean_return: z.number().nullable(),
+  median_return: z.number().nullable(),
+  positive_return_rate: z.number().nullable(),
+  realized_volatility: z.number().nullable(),
+  mean_candle_range_pct: z.number().nullable(),
+  mean_return_interval_95_lower: z.number().nullable(),
+  mean_return_interval_95_upper: z.number().nullable(),
+  difference_from_global_mean: z.number().nullable(),
+});
+
+export const SeasonalityAnalysisResponseDataSchema = z.object({
+  status: z.string(),
+  analysis_id: z.string(),
+  instrument: z.string().nullable().optional(),
+  timeframe: z.string(),
+  timezone: z.string(),
+  observation_count: z.number(),
+  return_observation_count: z.number(),
+  excluded_gap_return_count: z.number(),
+  interval: z.object({ start: z.string().nullable(), end: z.string().nullable() }),
+  dataset_fingerprint: z.string(),
+  algorithm_id: z.string(),
+  algorithm_version: z.string(),
+  global_summary: z.record(z.unknown()),
+  buckets: z.array(SeasonalityBucketResultSchema),
+  minimum_bucket_samples: z.number(),
+  bootstrap: z.record(z.unknown()),
+  insufficient_bucket_count: z.number(),
+  data_provenance: z.record(z.unknown()),
+  source_quality: z.record(z.unknown()).nullable().optional(),
+  forecast_eligible: z.boolean(),
+  warnings: z.array(z.string()),
+  limitations: z.array(z.string()),
+  duration_ms: z.number(),
+});
+
+export type SeasonalityAnalysisResponseData = z.infer<
+  typeof SeasonalityAnalysisResponseDataSchema
+>;
+
 /** Envelope schemas for the new endpoints. */
 export const DataSourceEnvelopeSchema = ApiEnvelopeSchema.extend({
   data: DataSourceResponseDataSchema,
@@ -460,4 +507,8 @@ export const SessionLiquidityEventStudyEnvelopeSchema = ApiEnvelopeSchema.extend
 
 export const ResearchSummaryEnvelopeSchema = ApiEnvelopeSchema.extend({
   data: ResearchSummaryResponseDataSchema,
+});
+
+export const SeasonalityAnalysisEnvelopeSchema = ApiEnvelopeSchema.extend({
+  data: SeasonalityAnalysisResponseDataSchema,
 });
