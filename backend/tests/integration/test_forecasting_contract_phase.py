@@ -155,7 +155,10 @@ def test_experiment_run_with_eligibility_and_max_features(client):
     rv = client.post("/api/v1/forecasting/experiment/validate", json=body)
     assert rv.status_code == 200
     assert rv.json()["data"]["valid"] is False
-    assert any("probability calibration is supported only for classification targets" in e for e in rv.json()["data"]["errors"])
+    assert any(
+        "probability calibration is supported only for classification targets" in error
+        for error in rv.json()["data"]["errors"]
+    )
     rr = client.post("/api/v1/forecasting/experiment/run", json=body)
     assert rr.status_code in {400, 422, 500}
 
