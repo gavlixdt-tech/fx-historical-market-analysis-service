@@ -635,7 +635,11 @@ class ForecastingService(AnalysisService):
                     "status": "not_requested" if not request.calibration else "not_applied",
                     "method": "multiclass_temperature_scaling" if request.calibration else None,
                 }
-                class_labels = [-1.0, 0.0, 1.0] if spec.target_type == "direction" else sorted(set(y_train))
+                class_labels = (
+                    [-1.0, 0.0, 1.0]
+                    if spec.target_type == "direction"
+                    else sorted(set(y_train))
+                )
                 if mf == "zero_return":
                     preds_test = [0.0 for _ in y_test]
                     selected = {"model": mf}
@@ -720,8 +724,12 @@ class ForecastingService(AnalysisService):
                                     for position, index in enumerate(va)
                                     if outcome_ends[index] < test_start
                                 ]
-                                calibration_indices = [va[position] for position in calibration_positions]
-                                calibration_labels = [y_vals[index] for index in calibration_indices]
+                                calibration_indices = [
+                                    va[position] for position in calibration_positions
+                                ]
+                                calibration_labels = [
+                                    y_vals[index] for index in calibration_indices
+                                ]
                                 calibration_class_support = set(calibration_labels)
                                 if len(calibration_indices) < request.calibration_min_samples:
                                     calibration_info.update(
@@ -769,8 +777,12 @@ class ForecastingService(AnalysisService):
                                             "status": "applied",
                                             "temperature": temperature,
                                             "calibration_sample_count": len(calibration_indices),
-                                            "calibration_start": ts_list[calibration_indices[0]].isoformat(),
-                                            "calibration_end": ts_list[calibration_indices[-1]].isoformat(),
+                                            "calibration_start": ts_list[
+                                                calibration_indices[0]
+                                            ].isoformat(),
+                                            "calibration_end": ts_list[
+                                                calibration_indices[-1]
+                                            ].isoformat(),
                                             "calibration_max_label_maturity": max(
                                                 outcome_ends[index] for index in calibration_indices
                                             ).isoformat(),
@@ -890,12 +902,14 @@ class ForecastingService(AnalysisService):
                     {
                         status
                         for status in model_result.get("calibration_statuses", [])
-                        if status not in {"applied", "not_applicable_baseline_without_probabilities"}
+                        if status
+                        not in {"applied", "not_applicable_baseline_without_probabilities"}
                     }
                 )
                 if unapplied:
                     warnings.append(
-                        f"Probability calibration was not applied to {model_result['model_family']} "
+                        "Probability calibration was not applied to "
+                        f"{model_result['model_family']} "
                         f"in every fold: {', '.join(unapplied)}."
                     )
 
