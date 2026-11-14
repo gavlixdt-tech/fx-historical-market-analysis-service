@@ -53,3 +53,21 @@ Contract fixtures are synthetic and do not count as live integration evidence.
 Only the primary Service 2 repository is modified by this implementation.
 Supporting repositories were inspected read-only. Pre-existing unrelated
 worktree changes must remain separate from any Service 2 commit.
+
+
+## 2026-11-14 dashboard and integration implementation addendum
+
+The following changes were committed directly to `master` after the earlier acceptance snapshot:
+
+- Added a historical OHLC candlestick chart and recent-candle table driven by the retrieved dataset response.
+- Added a dataset quality/provenance panel that consumes the actual retrieval response and does not assume a separate `/provenance` endpoint.
+- Replaced the reserved historical analysis workspace with a form backed by the existing `POST /api/v1/analysis/research-summary` endpoint.
+- Added a provider-sourced replay workspace backed by `POST /api/v1/historical-replay/run-from-market-data`, which invokes the existing server-side Service 1 retrieval and optional Service 61 session-context integration.
+- Added a view-only session/liquidity event-study workspace backed by `POST /api/v1/market-session-liquidity/event-study`, accepting caller-supplied JSON and rendering group statistics and Kaplan-Meier survival curves.
+- Extended the frontend replay schemas to retain the existing session-context and liquidity-lifecycle fields and display market context at prediction origins.
+- Added dashboard section navigation and focused tests for the provenance and OHLC views.
+- Changed dependency audit steps so Python and npm vulnerability scan failures are no longer suppressed.
+
+**Verification boundary:** the pre-existing test counts in this report predate these 2026-11-14 commits. The current changes were committed through the GitHub integration, but no local frontend/backend test or production build was executed during this repository session. The latest commit's combined GitHub status response contained no status entries, and the available workflow-run lookup did not return push-triggered runs. Therefore, the new implementation is **committed but CI-unverified** until the repository's push-triggered workflow completes.
+
+**External integration limitations remain:** Service 61 session context is optional and depends on its configured contract and credentials; Service 18 event ingestion is not automatic; provider identity and original historical publication time are not independently authenticated by the current Service 1 contract; experiment/replay results are not a durable history registry. These must not be described as complete production integrations.
