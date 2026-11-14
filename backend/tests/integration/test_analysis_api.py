@@ -1,6 +1,5 @@
 from datetime import datetime, timedelta
 
-
 def _obs(n: int = 80) -> list[dict]:
     out = []
     price = 1.0
@@ -19,14 +18,12 @@ def _obs(n: int = 80) -> list[dict]:
         )
     return out
 
-
 def test_regime_endpoint(client) -> None:
     response = client.post("/api/v1/analysis/regimes", json={"observations": _obs()})
     assert response.status_code == 200
     data = response.json()["data"]
     assert data["status"] == "completed"
     assert data["observation_count"] == 80
-
 
 def test_pattern_endpoint(client) -> None:
     response = client.post(
@@ -38,7 +35,6 @@ def test_pattern_endpoint(client) -> None:
     assert data["patterns"][0]["pattern_id"] == "directional_persistence"
     assert data["patterns"][0]["significant"] is False
     assert data["patterns"][0]["statistical_uncertainty"]["inference_status"] == "exploratory_only_no_serial_dependence_adjustment"
-
 
 def test_research_summary_endpoint(client) -> None:
     response = client.post(
@@ -58,7 +54,6 @@ def test_research_summary_endpoint(client) -> None:
     assert any("trading instruction" in item.lower() for item in data["recommendations"])
     assert data["regime_summary"]["status"] == "completed"
     assert data["pattern_significance"] is False
-
 
 def test_seasonality_endpoint_returns_descriptive_calendar_buckets(client) -> None:
     response = client.post(
@@ -84,11 +79,12 @@ def test_seasonality_endpoint_returns_descriptive_calendar_buckets(client) -> No
     assert len(data["buckets"]) == 19
     assert data["analysis_fingerprint"]
     assert data["effective_config"]["maximum_gap_multiple"] == 1.5
+    assert data["effective_config"]["minimum_interval_multiple"] == 0.9
     assert data["effective_config"]["price_basis"] is None
     assert data["effective_config"]["provider_id"] is None
     assert data["global_summary"]["return_observation_count"] > 0
+    assert data["excluded_short_interval_return_count"] == 0
     assert all("sample_status" in bucket for bucket in data["buckets"])
-
 
 def test_seasonality_analysis_fingerprint_is_deterministic(client) -> None:
     payload = {
@@ -116,7 +112,6 @@ def test_seasonality_analysis_fingerprint_is_deterministic(client) -> None:
     assert third.status_code == 200
     assert third.json()["data"]["analysis_fingerprint"] != first_data["analysis_fingerprint"]
 
-
 def test_seasonality_endpoint_rejects_mixed_observation_and_provider_inputs(client) -> None:
     response = client.post(
         "/api/v1/analysis/seasonality",
@@ -130,7 +125,6 @@ def test_seasonality_endpoint_rejects_mixed_observation_and_provider_inputs(clie
 
     assert response.status_code == 422
 
-
 def test_seasonality_endpoint_requires_explicit_provider_selection(client) -> None:
     response = client.post(
         "/api/v1/analysis/seasonality",
@@ -139,7 +133,6 @@ def test_seasonality_endpoint_requires_explicit_provider_selection(client) -> No
 
     assert response.status_code == 422
 
-
 def test_seasonality_endpoint_rejects_invalid_timezone(client) -> None:
     response = client.post(
         "/api/v1/analysis/seasonality",
@@ -147,7 +140,6 @@ def test_seasonality_endpoint_rejects_invalid_timezone(client) -> None:
     )
 
     assert response.status_code == 422
-
 
 def test_pattern_endpoint_rejects_unsupported_pattern_and_overlap_policy(client) -> None:
     unsupported_pattern = client.post(
@@ -167,7 +159,6 @@ def test_pattern_endpoint_rejects_unsupported_pattern_and_overlap_policy(client)
 
     assert unsupported_pattern.status_code == 422
     assert unsupported_overlap.status_code == 422
-
 
 def test_capabilities_endpoint(client) -> None:
     response = client.get("/api/v1/analysis/capabilities")
