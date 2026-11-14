@@ -902,11 +902,10 @@ class ForecastingService(AnalysisService):
                     {
                         status
                         for status in model_result.get("calibration_statuses", [])
-                        if status
-                        not in {
+                        if status not in (
                             "applied",
                             "not_applicable_baseline_without_probabilities",
-                        }
+                        )
                     }
                 )
                 if unapplied:
