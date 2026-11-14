@@ -978,7 +978,7 @@ class AnalysisService:
             ],
             notes=[
                 "Calendar seasonality is descriptive only; it is not a forecast or trading signal.",
-                "Retrospective research only; no forecasting or trading signals.",
+                "These analysis endpoints are retrospective; forecasting experiments are separate research workflows and do not produce live trading signals.",
             ],
         )
 
