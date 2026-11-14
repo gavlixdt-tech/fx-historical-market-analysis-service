@@ -84,6 +84,7 @@ const seasonalityResult = {
     },
   ],
   minimum_bucket_samples: 20,
+  maximum_gap_multiple: 1.5,
   bootstrap: {
     method: "circular moving-block bootstrap within each calendar bucket",
     samples: 300,
