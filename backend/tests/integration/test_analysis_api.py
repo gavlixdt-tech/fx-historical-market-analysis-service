@@ -1,6 +1,5 @@
 from datetime import datetime, timedelta
 
-
 def _obs(n: int = 80) -> list[dict]:
     out = []
     price = 1.0
@@ -110,6 +109,27 @@ def test_seasonality_analysis_fingerprint_is_deterministic(client) -> None:
     third = client.post("/api/v1/analysis/seasonality", json=changed_config)
     assert third.status_code == 200
     assert third.json()["data"]["analysis_fingerprint"] != first_data["analysis_fingerprint"]
+
+def test_seasonality_endpoint_rejects_mixed_observation_and_provider_inputs(client) -> None:
+    response = client.post(
+        "/api/v1/analysis/seasonality",
+        json={
+            "observations": _obs(80),
+            "instrument": "EUR/USD",
+            "timeframe": "D1",
+            "provider_id": "fixture-provider",
+        },
+    )
+
+    assert response.status_code == 422
+
+def test_seasonality_endpoint_requires_explicit_provider_selection(client) -> None:
+    response = client.post(
+        "/api/v1/analysis/seasonality",
+        json={"instrument": "EUR/USD", "timeframe": "H1"},
+    )
+
+    assert response.status_code == 422
 
 def test_seasonality_endpoint_rejects_invalid_timezone(client) -> None:
     response = client.post(
