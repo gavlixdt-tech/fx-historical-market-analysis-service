@@ -109,7 +109,7 @@ describe("SeasonalityWorkspace", () => {
     render(<SeasonalityWorkspace />);
 
     await waitFor(() => {
-      expect(mocks.listHistoricalProviders).toHaveBeenCalledTimes(1);
+      expect(screen.getByLabelText("Historical provider")).toHaveValue("fixture-provider");
     });
 
     await user.selectOptions(screen.getByLabelText("Calendar timezone"), "Africa/Nairobi");
