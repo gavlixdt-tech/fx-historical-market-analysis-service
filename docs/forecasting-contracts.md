@@ -72,7 +72,7 @@ When calibration is enabled:
 - The majority-class baseline has no per-observation probability output and is
   marked not applicable.
 
-Classification metrics report multiclass Brier score, log loss and
+Classification metrics report normalized multiclass Brier score, log loss and
 top-label expected calibration error. Calibration is evaluated on the held-out
 test segment; these metrics do not imply predictive value or trading readiness.
 
