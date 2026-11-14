@@ -34,7 +34,7 @@ _MONTHS = (
     "November",
     "December",
 )
-_MINIMUM_INTERVAL_MULTIPLE = 0.9
+MINIMUM_INTERVAL_MULTIPLE = 0.9
 
 _TIMEFRAME_SECONDS = {
     "M1": 60,
@@ -137,7 +137,7 @@ def analyze_calendar_seasonality(
         elapsed = (current.timestamp - previous.timestamp).total_seconds()
         if elapsed <= 0:
             raise ValueError("seasonality observations must be strictly chronological")
-        if elapsed < expected_seconds * _MINIMUM_INTERVAL_MULTIPLE:
+        if elapsed < expected_seconds * MINIMUM_INTERVAL_MULTIPLE:
             excluded_short_interval_count += 1
             continue
         if elapsed > maximum_gap_seconds:
@@ -237,7 +237,7 @@ def analyze_calendar_seasonality(
         "limitations": [
             "This is retrospective descriptive seasonality research, not a forecast or trading signal.",
             "Returns are close-to-close and are assigned to the local calendar bucket of the ending candle timestamp.",
-            "Returns with intervals shorter than 0.9 times the declared timeframe or longer than the configured maximum gap are excluded.",
+            "Returns with intervals shorter than the configured minimum interval multiple of the declared timeframe or longer than the configured maximum gap are excluded.",
             "The moving-block bootstrap interval is descriptive and does not establish statistical significance or predictive value.",
             "Calendar buckets can be affected by daylight-saving changes, market holidays, missing candles and provider sampling conventions.",
             "Source identity and original historical publication times remain subject to the upstream provenance contract.",
