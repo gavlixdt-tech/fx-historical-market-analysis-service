@@ -9,6 +9,8 @@ import { api, ApiError, type SessionLiquidityEventStudyResponseData } from "@/se
 
 type JsonRecord = Record<string, unknown>;
 
+const MAXIMUM_UPLOAD_BYTES = 900_000;
+
 function asRecord(value: unknown): JsonRecord {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as JsonRecord)
@@ -38,6 +40,9 @@ export function SessionLiquidityEventStudy() {
     setResult(null);
     if (!file) return;
     try {
+      if (file.size > MAXIMUM_UPLOAD_BYTES) {
+        throw new Error("Event-study file exceeds 900 KB. Split the events into smaller batches.");
+      }
       const parsed: unknown = JSON.parse(await file.text());
       const candidate = asRecord(parsed);
       if (
@@ -48,8 +53,11 @@ export function SessionLiquidityEventStudy() {
       ) {
         throw new Error("Expected { analysis_cutoff, events, minimum_group_sample? } with 1–10,000 events.");
       }
-      if (Number.isNaN(Date.parse(candidate.analysis_cutoff))) {
-        throw new Error("analysis_cutoff must be a valid timestamp.");
+      if (
+        Number.isNaN(Date.parse(candidate.analysis_cutoff)) ||
+        !/(?:Z|[+-]\\d{2}:\\d{2})$/i.test(candidate.analysis_cutoff)
+      ) {
+        throw new Error("analysis_cutoff must be a valid timezone-aware ISO-8601 timestamp.");
       }
       setPayload(candidate);
       setFileName(file.name);
