@@ -12,6 +12,7 @@ import {
 
 const MINIMUM_OBSERVATIONS = 52;
 const MAXIMUM_OBSERVATIONS = 2000;
+const MAXIMUM_UPLOAD_BYTES = 900_000;
 
 export function HistoricalReplayWorkbench() {
   const [observations, setObservations] = useState<ReplayObservation[]>([]);
@@ -36,6 +37,9 @@ export function HistoricalReplayWorkbench() {
     setResult(null);
     if (!file) return;
     try {
+      if (file.size > MAXIMUM_UPLOAD_BYTES) {
+        throw new Error("Replay file exceeds 900 KB. Split the data into smaller chronological datasets before upload.");
+      }
       const parsed: unknown = JSON.parse(await file.text());
       const rows = ReplayObservationSchema.array()
         .min(MINIMUM_OBSERVATIONS)
