@@ -133,7 +133,7 @@ export function AnalysisWorkspace({ capabilities, isLoading }: AnalysisWorkspace
             <label>
               Price basis
               <select value={priceBasis} onChange={(event) => setPriceBasis(event.currentTarget.value)}>
-                <option value="bid">Bid</option><option value="ask">Ask</option><option value="mid">Mid</option>
+                <option value="bid">Bid</option><option value="ask">Ask</option><option value="midpoint">Midpoint</option>
               </select>
             </label>
             <label>Start (optional)<input type="datetime-local" value={start} onChange={(event) => setStart(event.currentTarget.value)} /></label>
@@ -168,7 +168,7 @@ export function AnalysisWorkspace({ capabilities, isLoading }: AnalysisWorkspace
             {result.warnings.length ? <><h4>Warnings</h4><ul>{result.warnings.map((item) => <li key={item}>{item}</li>)}</ul></> : null}
             {result.limitations.length ? <><h4>Limitations</h4><ul>{result.limitations.map((item) => <li key={item}>{item}</li>)}</ul></> : null}
           </section>
-        ) : (
+        ) : !running ? (
           <EmptyState title="No analysis run yet" message="Select a historical provider and run a bounded retrospective analysis. Results will be displayed here only after the backend responds." />
         )}
       </div>
