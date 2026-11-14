@@ -283,11 +283,11 @@ export function SeasonalityWorkspace() {
               <StatusBadge tone="warn" label="descriptive only" />
             </div>
             <p className="muted small">
-              {result.observation_count.toLocaleString()} observations · {result.return_observation_count.toLocaleString()} valid returns · {result.excluded_gap_return_count.toLocaleString()} gap-excluded returns
+              {result.observation_count.toLocaleString()} observations · {result.return_observation_count.toLocaleString()} valid returns · {result.excluded_gap_return_count.toLocaleString()} long-gap exclusions · {result.excluded_short_interval_return_count.toLocaleString()} short-interval exclusions
             </p>
             <p className="muted small">Dataset fingerprint: <code>{result.dataset_fingerprint}</code></p>
             <p className="muted small">Analysis fingerprint: <code>{result.analysis_fingerprint}</code></p>
-            <p className="muted small">Maximum accepted candle gap: {String(result.effective_config.maximum_gap_multiple)} × {result.timeframe}</p>
+            <p className="muted small">Accepted interval: 0.9× to {String(result.effective_config.maximum_gap_multiple)}× {result.timeframe}</p>
             <div className="overview-grid">
               <div className="overview-card"><p className="overview-card__label">Mean return</p><p className="overview-card__value">{percentageOrLabel(result.global_summary.mean_return)}</p></div>
               <div className="overview-card"><p className="overview-card__label">Median return</p><p className="overview-card__value">{percentageOrLabel(result.global_summary.median_return)}</p></div>
