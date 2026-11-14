@@ -44,13 +44,37 @@ dataset manifests, and feature-spec responses.
 
 ## Calibration
 
-Calibration is explicitly not implemented in the current evaluation path.
-`calibration=true` is rejected deterministically because the existing
-walk-forward pipeline has no independent chronological calibration segment:
-validation data are already used for model/hyperparameter selection, and test
-targets must not be used for fitting. A future implementation should add a
-dedicated calibration segment or an out-of-fold procedure that fits calibrators
-without using final test targets.
+Probability calibration is supported for classification experiments through
+multiclass temperature scaling. It is not supported for regression targets;
+`calibration=true` on a regression problem is rejected during validation.
+
+When calibration is enabled:
+
+- The chronological validation segment is reserved exclusively for calibration
+  and is not used for hyperparameter selection. Ridge logistic uses its declared
+  default regularization value in this mode.
+- The model and preprocessing pipeline are fitted on the earlier training
+  segment only.
+- Validation rows are eligible for calibration only when their target outcomes
+  have matured strictly before the first test timestamp. Immature validation
+  labels are excluded from calibrator fitting.
+- The calibrator is fitted on validation probabilities and labels only, then
+  applied to test probabilities. Test targets are never passed to the fitting
+  routine.
+- The default minimum is 10 mature calibration observations per fold and can
+  be configured with `calibration_min_samples`.
+- The service records the fitted temperature, calibration sample count and
+  time range, maximum label-maturity timestamp, test-start timestamp and an
+  explicit maturity-order assertion in each fold result.
+- Calibration may be unavailable in a fold when the sample is too small or the
+  training/calibration segment does not contain all direction classes. The
+  response reports the reason; it does not silently claim calibration succeeded.
+- The majority-class baseline has no per-observation probability output and is
+  marked not applicable.
+
+Classification metrics report multiclass Brier score, log loss and
+top-label expected calibration error. Calibration is evaluated on the held-out
+test segment; these metrics do not imply predictive value or trading readiness.
 
 ## Historical replay context feature cap
 
