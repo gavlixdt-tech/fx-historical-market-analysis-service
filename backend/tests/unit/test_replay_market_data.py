@@ -6,8 +6,6 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 import pytest
 
 from backend.app.clients.historical_attestation import canonical_json
@@ -119,6 +117,9 @@ def _upstream_data(*, complete: bool = True) -> UpstreamHistoricalCandleData:
 
 
 def _attested_data() -> tuple[UpstreamHistoricalCandleData, str]:
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
     private_key = Ed25519PrivateKey.generate()
     public_bytes = private_key.public_key().public_bytes(
         encoding=serialization.Encoding.Raw,
