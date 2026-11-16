@@ -112,3 +112,26 @@ Console consumer must still be created in the deployed Service 64/Admin Console,
 Railway backend origins and credentials provisioned, and a real cross-service
 request/acknowledgement/active-settings replay performed. This code-level CI
 result is not a live-provider or deployment acceptance result.
+
+
+
+## 2026-11-17 active settings layer provenance addendum
+
+The Service 2 settings integration now records more than the final effective
+snapshot digest. The Admin Console active endpoint returns the active version
+ID and content digest for every existing inherited layer (global, instrument,
+timeframe and instrument-timeframe). Service 2 validates the layer list,
+scope IDs, ordering, version ID consistency and SHA-256 syntax, then persists
+the layer provenance in replay reproducibility metadata. Admin Console verifies
+each layer's stored content digest before returning it.
+
+**Latest strict CI evidence:** run `43979721402` for commit
+`5e350f9212b7460eaf3ca43eff4855e8e8b965ce` completed successfully, including
+the strict `ruff format --check`, lint, mypy, all backend tests, frontend
+checks/build, container build/smoke test, and dependency/secret audit.
+
+The Admin Console repository includes tests for the new pending-acknowledgement
+deduplication and active-layer response, but its GitHub Actions jobs have been
+failing before runner assignment (empty runner name and no executed steps).
+Those tests therefore remain unverified by CI; this is a GitHub Actions
+execution/runner availability blocker, not a passing test result.
