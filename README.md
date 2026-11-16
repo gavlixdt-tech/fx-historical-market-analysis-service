@@ -309,3 +309,14 @@ This reference follows the current runtime settings and repository environment t
 | `OTEL_ENDPOINT` | OTLP HTTP endpoint. | Conditional |
 | `METRICS_ENABLED` | Expose Prometheus metrics. | Optional |
 | `DATABASE_URL` | Reserved/unused by current implementation; no database is provisioned. | Do not configure as active persistence |
+
+
+## GFX Service 9 lifecycle evidence integration — deployment gate
+
+**Status: PROPOSED CONTRACT / NOT ENABLED.** The shared [Liquidity Lifecycle Evidence v1 contract](https://github.com/gavlixdt-tech/fx-api-contracts/tree/main/schemas/liquidity-lifecycle-evidence/v1) is a technical proposal only. It is not an approved Service 9→Service 2 contract, and this repository does not yet automatically ingest authenticated Service 9 lifecycle evidence. The existing caller-supplied event-study endpoint remains research-only and explicitly reports `provenance_status=caller_asserted_unverified` and `forecast_eligible=false`.
+
+Do not add a Service 9 URL, shared API key, caller-provided producer identity, or manually supplied `available_at` to production and treat it as trusted evidence. Before activation, implementation must include Service 9 authenticated workload identity, independently verifiable event signatures, key rotation/revocation, source lineage, immutable first-availability timestamps, instrument/timeframe/price-basis compatibility, durable deduplication, bounded replay, and leakage tests. A valid JSON Schema or successful HTTP request is not provenance verification.
+
+### Deployment instructions for this boundary
+
+No new environment variable is currently required or supported for this proposed integration. Do not invent or configure one. When the boundary is approved and implemented, obtain the Service 9 backend origin from Railway → GFX project → `fx-liquidity-analysis-service` → Networking; use its private `.railway.internal` address for same-project backend traffic. Any future trust bundle must be distributed through Railway backend Variables/secret management from an authority-approved public-key registry; private signing keys must remain only with the producer/key custodian. The exact variable names and provisioning steps must be added here before enabling the integration.
