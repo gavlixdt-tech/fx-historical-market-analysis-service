@@ -5,6 +5,10 @@ from typing import Any, cast
 from fastapi import APIRouter, Request
 from starlette.concurrency import run_in_threadpool
 
+from backend.app.clients.operational_settings import (
+    ReplayOperationalParameters,
+    resolve_historical_replay_settings,
+)
 from backend.app.schemas.common import ApiResponse
 from backend.app.schemas.forecasting import (
     BaselineRequest,
@@ -57,12 +61,63 @@ async def run_historical_replay(
     from backend.app.core.errors import ValidationError as AppValidationError
 
     rid = getattr(request.state, "request_id", "unknown")
-    if payload.synthetic and request.app.state.settings.is_production:
+    settings = request.app.state.settings
+    if payload.synthetic and settings.is_production:
         raise AppValidationError("Synthetic replay fixtures are not accepted in production.")
+    resolved_settings = await run_in_threadpool(
+        resolve_historical_replay_settings,
+        settings=settings,
+        instrument=payload.instrument,
+        timeframe=payload.timeframe,
+    )
+    if resolved_settings is not None:
+        operational_parameters = resolved_settings.parameters
+        settings_source = "admin_console"
+    else:
+        operational_parameters = ReplayOperationalParameters(
+            lookback=payload.lookback,
+            min_train_samples=payload.min_train_samples,
+            validation_mode=payload.validation_mode,
+            rolling_window=payload.rolling_window or max(payload.min_train_samples, 250),
+            embargo_periods=payload.embargo_periods,
+            random_seed=payload.random_seed,
+        )
+        settings_source = (
+            "request_fallback_settings_unavailable"
+            if settings.gfx_settings_enabled
+            else "request"
+        )
+    effective_payload = payload.model_copy(update={
+        "lookback": operational_parameters.lookback,
+        "min_train_samples": operational_parameters.min_train_samples,
+        "validation_mode": operational_parameters.validation_mode,
+        "rolling_window": (
+            operational_parameters.rolling_window
+            if operational_parameters.validation_mode == "rolling"
+            else None
+        ),
+        "embargo_periods": operational_parameters.embargo_periods,
+        "random_seed": operational_parameters.random_seed,
+    })
     try:
-        result = await run_in_threadpool(execute_replay, payload)
+        result = await run_in_threadpool(execute_replay, effective_payload)
     except ValueError as exc:
         raise AppValidationError(str(exc)) from exc
+    result["reproducibility"]["operational_settings"] = {
+        "source": settings_source,
+        "scope_id": resolved_settings.scope_id if resolved_settings is not None else None,
+        "active_version_id": (
+            resolved_settings.active_version_id if resolved_settings is not None else None
+        ),
+        "content_sha256": (
+            resolved_settings.content_sha256 if resolved_settings is not None else None
+        ),
+        "parameters": operational_parameters.model_dump(mode="json"),
+    }
+    if settings_source == "request_fallback_settings_unavailable":
+        result["warnings"].append(
+            "Central Admin Console replay settings were unavailable; explicit request parameters were used."
+        )
     data = HistoricalReplayResponseData(**result)
     return ApiResponse(data=data, meta=build_meta(request.app.state.settings, rid))
 
