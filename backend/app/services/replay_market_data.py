@@ -11,8 +11,8 @@ from typing import Any
 from starlette.concurrency import run_in_threadpool
 
 from backend.app.analysis.replay import run_historical_replay
-from backend.app.clients.market_data import MarketDataClient
 from backend.app.clients.historical_attestation import verify_historical_dataset_attestation
+from backend.app.clients.market_data import MarketDataClient
 from backend.app.clients.session_context import (
     SessionContextIntegrationError,
     fetch_historical_session_contexts,
@@ -75,6 +75,13 @@ async def run_market_data_replay(
         request_id=request_id,
     )
     service2_received_at = datetime.now(UTC).isoformat()
+    if (
+        data.provider_id != provider.provider_id
+        or data.canonical_instrument != expected_instrument
+        or data.timeframe.value != payload.timeframe
+        or data.price_basis.value != payload.price_basis
+    ):
+        raise ValidationError("Market-data response identity does not match the replay request.")
     retrieved_at_attestation = (
         data.retrieved_at.astimezone(UTC).isoformat().replace("+00:00", "Z")
     )
@@ -91,13 +98,6 @@ async def run_market_data_replay(
         validation_summary=data.validation_summary.model_dump(mode="json"),
         limitations=data.limitations,
     )
-    if (
-        data.provider_id != provider.provider_id
-        or data.canonical_instrument != expected_instrument
-        or data.timeframe.value != payload.timeframe
-        or data.price_basis.value != payload.price_basis
-    ):
-        raise ValidationError("Market-data response identity does not match the replay request.")
     if not data.coverage.complete:
         raise ValidationError(
             "Market-data coverage is incomplete; replay requires a complete validated interval."
