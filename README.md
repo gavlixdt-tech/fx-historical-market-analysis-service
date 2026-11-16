@@ -137,24 +137,42 @@ directly in the Service 2 environment.
 #### One-time deployment setup
 
 1. **Create a dedicated Service 2 workload identity in Service 64.** Use a
-   Server Admin account to create a service identity with:
-   - Service number: `2`
-   - Name: `fx-historical-market-analysis-service`
-   - Scopes: `gfx:settings:read` and `gfx:settings:ack` only
-   Save the returned `client_id` and `client_secret` immediately; the secret
-   is displayed once. Do not reuse a human JWT, API key, or another service's
-   credentials. The Service 64 API endpoint is
-   `POST /api/v1/service-identities`; it requires Server Admin authorization.
+   Server Admin account and call `POST /api/v1/service-identities` on the
+   Service 64 backend. The request body is:
 
-2. **Register Service 2 as a consumer in the Admin Console.** In the Admin
-   Console's consumer management interface, register the exact Service 64
-   identity ID, service number `2`, and name
-   `fx-historical-market-analysis-service`. Subscribe it to all four scope types: `global`, `instrument`, `timeframe`,
-   and `instrument_timeframe`; mark it required/enabled. Service 2 validates
-   pending candidates and posts version-bound READY/REJECTED acknowledgements
-   before reading the active effective snapshot. The Admin
-   Console verifies the identity against Service 64 before registration.
-   Do not create a second identity for the same service number.
+   ```json
+   {
+     "service_number": 2,
+     "name": "fx-historical-market-analysis-service",
+     "scopes": ["gfx:settings:read", "gfx:settings:ack"]
+   }
+   ```
+
+   The Server Admin bearer token is required. Save the returned `id`,
+   `client_id`, and `client_secret` immediately; the secret is displayed
+   once. Do not reuse a human JWT, API key, or another service's credentials.
+
+2. **Register Service 2 as a consumer in the Admin Console.** Call
+   `POST /api/v1/settings/consumers` on the Admin Console backend using a
+   Server Admin bearer token. Use the exact identity `id` returned by Service
+   64:
+
+   ```json
+   {
+     "identity_id": "<service64-identity-id>",
+     "service_number": 2,
+     "name": "fx-historical-market-analysis-service",
+     "scope_types": ["global", "instrument", "timeframe", "instrument_timeframe"],
+     "required": true
+   }
+   ```
+
+   The Admin Console verifies the identity against Service 64 before
+   registration. Confirm it appears in `GET /api/v1/settings/consumers` with
+   `enabled=true`, `required=true`, and all four scope types. Service 2
+   validates pending candidates and posts version-bound READY/REJECTED
+   acknowledgements before reading the active effective snapshot. Do not
+   create a second identity for the same service number.
 
 3. **Configure the Service 2 backend Railway Variables.** These are backend
    variables only; never put them in Vercel `VITE_*` variables or browser
