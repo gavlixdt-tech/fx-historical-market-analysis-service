@@ -97,7 +97,7 @@ def _workload_token(
                 json={
                     "client_id": client_id,
                     "client_secret": client_secret,
-                    "scopes": [_SCOPE],
+                    "scopes": [_SCOPE, "gfx:settings:ack"],
                 },
             )
             response.raise_for_status()
@@ -126,6 +126,77 @@ def _workload_token(
             "expires_at": time.monotonic() + max(1, expires - 30),
         })
         return token
+
+
+def _acknowledge_pending_settings(client: httpx.Client, admin_url: str, token: str) -> None:
+    """Validate and acknowledge every pending candidate for subscribed scopes."""
+    try:
+        response = client.get(
+            admin_url + "/api/v1/settings/consumer/pending",
+            headers={"Authorization": "Bearer " + token},
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        raise UpstreamError(
+            "Admin Console pending settings could not be retrieved.",
+            details={"dependency": "fx-admin-console"},
+        ) from exc
+    items = payload.get("items") if isinstance(payload, dict) else None
+    if not isinstance(items, list) or len(items) > 100:
+        raise UpstreamError(
+            "Admin Console returned an invalid pending settings collection.",
+            details={"dependency": "fx-admin-console"},
+        )
+
+    required_keys = {
+        "historical_replay.lookback": "lookback",
+        "historical_replay.min_train_samples": "min_train_samples",
+        "historical_replay.validation_mode": "validation_mode",
+        "historical_replay.rolling_window": "rolling_window",
+        "historical_replay.embargo_periods": "embargo_periods",
+        "historical_replay.random_seed": "random_seed",
+    }
+    for candidate in items:
+        if not isinstance(candidate, dict):
+            raise UpstreamError("Admin Console returned a malformed pending settings candidate.", details={"dependency": "fx-admin-console"})
+        version_id = candidate.get("id")
+        digest = candidate.get("content_sha256")
+        snapshot = candidate.get("settings")
+        if not isinstance(version_id, str) or not version_id or not isinstance(digest, str) or len(digest) != 64 or not isinstance(snapshot, dict):
+            raise UpstreamError("Admin Console pending settings candidate is missing integrity metadata.", details={"dependency": "fx-admin-console"})
+        try:
+            actual_digest = _canonical_digest(snapshot)
+        except (TypeError, ValueError) as exc:
+            raise UpstreamError("Admin Console pending settings candidate is not canonical JSON.", details={"dependency": "fx-admin-console"}) from exc
+        if not hmac.compare_digest(actual_digest, digest):
+            raise UpstreamError("Admin Console pending settings candidate digest mismatch.", details={"dependency": "fx-admin-console", "error_type": "settings_digest_mismatch"})
+
+        missing = set(required_keys) - set(snapshot)
+        if missing:
+            status = "REJECTED"
+            detail = "Required historical replay controls are missing: " + ", ".join(sorted(missing))
+        else:
+            values = {target: snapshot[source] for source, target in required_keys.items()}
+            try:
+                ReplayOperationalParameters.model_validate(values)
+            except ValueError:
+                status = "REJECTED"
+                detail = "Historical replay controls failed Service 2 bounds or cross-field validation."
+            else:
+                status = "READY"
+                detail = "Service 2 validated the candidate digest and all historical replay controls."
+        try:
+            ack = client.post(
+                admin_url + "/api/v1/settings/consumer/acknowledgements",
+                headers={"Authorization": "Bearer " + token},
+                json={"version_id": version_id, "content_sha256": digest, "status": status, "detail": detail},
+            )
+            ack.raise_for_status()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise UpstreamError("Service 2 could not acknowledge a pending Admin Console settings version.", details={"dependency": "fx-admin-console", "version_id": version_id}) from exc
+        if status != "READY":
+            raise UpstreamError("Service 2 rejected an invalid Admin Console replay settings candidate.", details={"dependency": "fx-admin-console", "version_id": version_id})
 
 
 def resolve_historical_replay_settings(
@@ -164,6 +235,11 @@ def resolve_historical_replay_settings(
                 settings.fx_security_service_url,
                 settings.gfx_settings_client_id,
                 settings.gfx_settings_client_secret,
+            )
+            _acknowledge_pending_settings(
+                client,
+                settings.gfx_settings_service_url,
+                token,
             )
             response = client.get(
                 f"{settings.gfx_settings_service_url}/api/v1/settings/consumer/active",
