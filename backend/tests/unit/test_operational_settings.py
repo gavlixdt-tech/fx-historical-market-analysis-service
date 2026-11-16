@@ -155,6 +155,8 @@ def test_enabled_settings_reject_a_tampered_snapshot(monkeypatch: pytest.MonkeyP
             headers: dict[str, str],
         ) -> _Response:
             response = super().get(url, params=params, headers=headers)
+            if url.endswith("/settings/consumer/pending"):
+                return response
             payload = response.json()
             payload["settings"]["historical_replay.lookback"] = 99
             return _Response(payload)
@@ -171,33 +173,39 @@ def test_enabled_settings_reject_a_tampered_snapshot(monkeypatch: pytest.MonkeyP
         )
 
 
-def test_enabled_settings_reject_invalid_rolling_window(monkeypatch: pytest.MonkeyPatch) -> None:
-    class InvalidClient(_FakeClient):
-        def get(self, url: str, *, params: dict[str, str], headers: dict[str, str]) -> _Response:
-            response = super().get(url, params=params, headers=headers)
-            payload = response.json()
-            payload["settings"]["historical_replay.validation_mode"] = "rolling"
-            payload["settings"]["historical_replay.rolling_window"] = 20
-            payload["content_sha256"] = hashlib.sha256(
-                json.dumps(
-                    payload["settings"],
-                    sort_keys=True,
-                    separators=(",", ":"),
-                    ensure_ascii=False,
-                ).encode()
-            ).hexdigest()
-            return _Response(payload)
-
-    fake = InvalidClient()
+def test_pending_candidate_with_invalid_rolling_window_is_rejected_but_active_settings_remain_usable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidate_snapshot = _snapshot()
+    candidate_snapshot["historical_replay.validation_mode"] = "rolling"
+    candidate_snapshot["historical_replay.rolling_window"] = 20
+    digest = hashlib.sha256(
+        json.dumps(
+            candidate_snapshot,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode()
+    ).hexdigest()
+    candidate = {
+        "id": "invalid-rolling-version",
+        "content_sha256": digest,
+        "settings": candidate_snapshot,
+    }
+    fake = _FakeClient(pending_items=[candidate])
     monkeypatch.setattr(client_module.httpx, "Client", lambda **_kwargs: fake)
     client_module._TOKEN_CACHE.update({"token": None, "cache_key": None, "expires_at": 0.0})
 
-    with pytest.raises(UpstreamError, match="failed validation"):
-        resolve_historical_replay_settings(
-            settings=_settings(),
-            instrument="EUR/USD",
-            timeframe="H1",
-        )
+    resolved = resolve_historical_replay_settings(
+        settings=_settings(),
+        instrument="EUR/USD",
+        timeframe="H1",
+    )
+
+    assert resolved is not None
+    assert resolved.parameters.validation_mode == "expanding"
+    assert resolved.rejected_candidate_version_ids == ["invalid-rolling-version"]
+    assert fake.posts[1][1]["status"] == "REJECTED"
 
 
 def test_settings_disabled_does_not_call_remote_services(monkeypatch: pytest.MonkeyPatch) -> None:
