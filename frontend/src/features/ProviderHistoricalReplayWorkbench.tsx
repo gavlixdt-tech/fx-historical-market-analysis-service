@@ -155,7 +155,7 @@ export function ProviderHistoricalReplayWorkbench() {
             <label>
               Price basis
               <select value={priceBasis} onChange={(event) => setPriceBasis(event.currentTarget.value)}>
-                <option value="bid">Bid</option><option value="ask">Ask</option><option value="midpoint">Midpoint</option>
+                <option value="bid">Bid</option><option value="ask">Ask</option><option value="midpoint">Midpoint</option><option value="vendor_defined">Provider-defined</option>
               </select>
             </label>
             <label>Start (local browser time)<input type="datetime-local" required value={start} onChange={(event) => setStart(event.currentTarget.value)} /></label>
