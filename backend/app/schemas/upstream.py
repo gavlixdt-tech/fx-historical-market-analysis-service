@@ -147,6 +147,7 @@ class UpstreamCoverageReport(BaseModel):
     rejected_count: int
     duplicate_count: int
     missing_intervals: list[str] = Field(default_factory=list)
+    max_consecutive_missing_intervals: int | None = None
     status: str
     complete: bool
     provider_limited: bool = False
