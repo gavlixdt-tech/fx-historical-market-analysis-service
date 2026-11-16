@@ -59,6 +59,7 @@ class ResolvedReplaySettings(BaseModel):
     scope_id: str
     content_sha256: str
     active_version_id: str | None = None
+    rejected_candidate_version_ids: list[str] = Field(default_factory=list)
 
 
 def _canonical_digest(settings: dict[str, Any]) -> str:
@@ -136,8 +137,10 @@ def _invalidate_workload_token(token: str) -> None:
             _TOKEN_CACHE.update({"token": None, "cache_key": None, "expires_at": 0.0})
 
 
-def _acknowledge_pending_settings(client: httpx.Client, admin_url: str, token: str) -> None:
-    """Validate and acknowledge every pending candidate for subscribed scopes."""
+def _acknowledge_pending_settings(
+    client: httpx.Client, admin_url: str, token: str
+) -> list[str]:
+    """Validate and acknowledge pending candidates; return rejected version IDs."""
     try:
         response = client.get(
             admin_url + "/api/v1/settings/consumer/pending",
@@ -169,6 +172,7 @@ def _acknowledge_pending_settings(client: httpx.Client, admin_url: str, token: s
         "historical_replay.embargo_periods": "embargo_periods",
         "historical_replay.random_seed": "random_seed",
     }
+    rejected_version_ids: list[str] = []
     for candidate in items:
         if not isinstance(candidate, dict):
             raise UpstreamError("Admin Console returned a malformed pending settings candidate.", details={"dependency": "fx-admin-console"})
@@ -211,8 +215,9 @@ def _acknowledge_pending_settings(client: httpx.Client, admin_url: str, token: s
             ack.raise_for_status()
         except (httpx.HTTPError, ValueError) as exc:
             raise UpstreamError("Service 2 could not acknowledge a pending Admin Console settings version.", details={"dependency": "fx-admin-console", "version_id": version_id}) from exc
-        if status != "READY":
-            raise UpstreamError("Service 2 rejected an invalid Admin Console replay settings candidate.", details={"dependency": "fx-admin-console", "version_id": version_id})
+        if status == "REJECTED":
+            rejected_version_ids.append(version_id)
+    return rejected_version_ids
 
 
 def resolve_historical_replay_settings(
@@ -262,7 +267,7 @@ def resolve_historical_replay_settings(
                 client_id,
                 client_secret,
             )
-            _acknowledge_pending_settings(
+            rejected_candidate_version_ids = _acknowledge_pending_settings(
                 client,
                 admin_url,
                 token,
@@ -333,4 +338,5 @@ def resolve_historical_replay_settings(
         scope_id=scope_id,
         content_sha256=digest,
         active_version_id=active_version_id if isinstance(active_version_id, str) else None,
+        rejected_candidate_version_ids=rejected_candidate_version_ids,
     )
