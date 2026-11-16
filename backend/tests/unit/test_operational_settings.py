@@ -67,7 +67,7 @@ class _FakeClient:
         self.posts: list[tuple[str, dict[str, Any]]] = []
         self.gets: list[tuple[str, dict[str, Any]]] = []
 
-    def __enter__(self) -> "_FakeClient":
+    def __enter__(self) -> _FakeClient:
         return self
 
     def __exit__(self, *_args: Any) -> None:
