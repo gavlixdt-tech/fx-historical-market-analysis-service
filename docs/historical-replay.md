@@ -23,10 +23,19 @@ Service 1's current candle contract has `open_time`, `close_time`, and
 the provider-sourced replay requires `UPSTREAM_REPLAY_AVAILABILITY_DELAY_SECONDS`
 to be explicitly configured and derives `available_at` as
 `close_time + configured delay`. The delay is included in reproducibility
-metadata, and the response always marks its status as
-`provider_asserted_unverified`. This is an assumption, not verified historical
-availability; it cannot establish that the replay had access only to the
-information that was actually published at each historical decision time.
+metadata. When Service 1 supplies its `indicator-candle-dataset/v1`
+attestation, Service 2 verifies the exact dataset SHA-256 and Ed25519 signature
+against the out-of-band
+`UPSTREAM_HISTORICAL_ATTESTATION_PUBLIC_KEYS_JSON` trust bundle. Production
+replay with Service 1 configured requires
+`UPSTREAM_HISTORICAL_ATTESTATION_REQUIRED=true` and fails closed when the
+attestation is missing, untrusted or invalid. The result reports
+`service1_attestation_verified` only when verification succeeds; missing or
+untrusted keys in non-production remain explicitly unverified. This signature
+authenticates the configured Service 1 signer, not the upstream vendor's
+truth or a vendor signature. The assumed publication lag still cannot
+establish that the replay had access only to information actually published
+at each historical decision time.
 
 The caller-supplied endpoint does not generate market observations, submit
 orders, or call other GFX services. Records must include:
@@ -106,12 +115,19 @@ training sample count, target timestamp, target availability, forecast, and
 realized target, including a distinct frozen training cutoff for the declared
 holdout.
 
-Results and model artifacts are not persisted. Source dataset identity and
-availability timestamps are caller assertions; this service does not verify
-upstream source signatures, historical revisions, or original model artifacts.
-The output is a model-class replay performed now, not a reconstruction of a
-forecast that the production platform actually emitted at that historical
-time.
+Results and model artifacts are not persisted. The provider-sourced path
+verifies Service 1's Ed25519 signature over the exact normalized candle
+dataset, source metadata, coverage and quality fields using a trusted
+out-of-band key ID/public-key map. A successful result exposes
+`source_authenticity=service1_signer_authenticated` and
+`source_content_integrity=sha256_and_ed25519_verified`; it also explicitly
+sets `vendor_signature_verified=false`,
+`forecast_eligible=false` and `trading_authorization=false`. This is not a
+vendor signature, proof of vendor truth, historical revision chain, or
+first-available-time attestation. Caller-supplied dataset identity and
+availability timestamps remain assertions. The output is a model-class
+replay performed now, not a reconstruction of a forecast that the production
+platform actually emitted at that historical time.
 
 ## Explicit scope limits
 
