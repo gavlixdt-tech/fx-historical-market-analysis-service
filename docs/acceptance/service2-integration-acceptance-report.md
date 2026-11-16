@@ -87,7 +87,7 @@ The following code changes were committed directly to `master`:
 
 **Evidence boundary:** this signature authenticates the configured Service 1 signer and the exact dataset/quality projection. It does not prove the vendor digitally signed the prices, prove upstream source truth, or supply the original first-available timestamp. Replay availability therefore remains `availability_assumed` (candle close plus a configured lag), and replay outputs are explicitly marked `forecast_eligible=false` and `trading_authorization=false`.
 
-**Verification boundary:** verifier and configuration tests have been added but were not executed in this editing session. No successful local test run, push-triggered CI result, provider entitlement, production identity, or deployed replay is claimed. Production integration remains blocked until the public trust key is provisioned, the Service 1 signing key is active, the provider is entitled, and the full test/acceptance suite passes.
+**Initial verification boundary (superseded by the CI evidence below):** at the time this addendum was first written, the verifier and configuration tests had been added but had not yet run. The subsequent CI run below provides code-level verification; it does not establish provider entitlement, production identity, vendor authenticity, or deployed replay acceptance.
 
 
 
