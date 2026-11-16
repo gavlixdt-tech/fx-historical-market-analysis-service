@@ -269,3 +269,28 @@ def test_pending_candidate_with_bad_digest_blocks_settings_resolution(
             instrument="EUR/USD",
             timeframe="H1",
         )
+
+
+
+def test_rejected_workload_token_is_invalidated_without_clearing_a_replacement() -> None:
+    client_module._TOKEN_CACHE.update({
+        "token": "replacement-token",
+        "cache_key": "replacement-key",
+        "expires_at": 9999999999.0,
+    })
+
+    client_module._invalidate_workload_token("revoked-old-token")
+
+    assert client_module._TOKEN_CACHE == {
+        "token": "replacement-token",
+        "cache_key": "replacement-key",
+        "expires_at": 9999999999.0,
+    }
+
+    client_module._invalidate_workload_token("replacement-token")
+
+    assert client_module._TOKEN_CACHE == {
+        "token": None,
+        "cache_key": None,
+        "expires_at": 0.0,
+    }
