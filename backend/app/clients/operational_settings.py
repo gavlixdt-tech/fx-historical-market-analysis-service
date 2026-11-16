@@ -156,7 +156,7 @@ def _acknowledge_pending_settings(
             details={"dependency": "fx-admin-console"},
         ) from exc
     items = payload.get("items") if isinstance(payload, dict) else None
-    if not isinstance(items, list) or len(items) > 100:
+    if not isinstance(items, list) or len(items) > 1000:
         raise UpstreamError(
             "Admin Console returned an invalid pending settings collection.",
             details={"dependency": "fx-admin-console"},
