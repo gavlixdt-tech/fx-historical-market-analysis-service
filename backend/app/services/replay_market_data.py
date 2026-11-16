@@ -230,6 +230,11 @@ async def run_market_data_replay(
         "active_version_id": (
             resolved_settings.active_version_id if resolved_settings is not None else None
         ),
+        "active_scope_versions": (
+            [layer.model_dump(mode="json") for layer in resolved_settings.active_scope_versions]
+            if resolved_settings is not None
+            else []
+        ),
         "content_sha256": (
             resolved_settings.content_sha256 if resolved_settings is not None else None
         ),
