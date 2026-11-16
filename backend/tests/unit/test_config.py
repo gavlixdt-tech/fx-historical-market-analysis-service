@@ -248,7 +248,6 @@ def test_production_central_replay_settings_allow_railway_private_origins() -> N
     assert settings.gfx_settings_enabled is True
 
 
-
 def test_blank_optional_central_settings_credentials_are_allowed_when_disabled() -> None:
     settings = Settings(
         gfx_settings_enabled=False,

@@ -386,16 +386,20 @@ def resolve_historical_replay_settings(
     if not isinstance(raw_active_layers, list) or len(raw_active_layers) > 4:
         raise UpstreamError(
             "Admin Console active settings response is missing bounded layer provenance.",
-            details={"dependency": "fx-admin-console", "error_type": "settings_layer_provenance_invalid"},
+            details={
+                "dependency": "fx-admin-console",
+                "error_type": "settings_layer_provenance_invalid",
+            },
         )
     try:
-        active_layers = [
-            ActiveSettingsLayer.model_validate(item) for item in raw_active_layers
-        ]
+        active_layers = [ActiveSettingsLayer.model_validate(item) for item in raw_active_layers]
     except ValueError as exc:
         raise UpstreamError(
             "Admin Console active settings layer provenance failed validation.",
-            details={"dependency": "fx-admin-console", "error_type": "settings_layer_provenance_invalid"},
+            details={
+                "dependency": "fx-admin-console",
+                "error_type": "settings_layer_provenance_invalid",
+            },
         ) from exc
     expected_layer_ids = {
         "global": "global",
@@ -413,7 +417,10 @@ def resolve_historical_replay_settings(
         ):
             raise UpstreamError(
                 "Admin Console active settings layers do not match the requested scope.",
-                details={"dependency": "fx-admin-console", "error_type": "settings_layer_scope_mismatch"},
+                details={
+                    "dependency": "fx-admin-console",
+                    "error_type": "settings_layer_scope_mismatch",
+                },
             )
         previous_layer_index = current_layer_index
     if active_version_id is not None and not any(
@@ -422,7 +429,10 @@ def resolve_historical_replay_settings(
     ):
         raise UpstreamError(
             "Admin Console active settings version does not match its layer provenance.",
-            details={"dependency": "fx-admin-console", "error_type": "settings_layer_version_mismatch"},
+            details={
+                "dependency": "fx-admin-console",
+                "error_type": "settings_layer_version_mismatch",
+            },
         )
     return ResolvedReplaySettings(
         parameters=parameters,
