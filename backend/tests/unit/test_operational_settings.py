@@ -73,7 +73,13 @@ class _FakeClient:
     def __exit__(self, *_args: Any) -> None:
         return None
 
-    def post(self, url: str, *, json: dict[str, Any]) -> _Response:
+    def post(
+        self,
+        url: str,
+        *,
+        json: dict[str, Any],
+        headers: dict[str, str] | None = None,
+    ) -> _Response:
         self.posts.append((url, json))
         if url.endswith("/service-tokens/issue"):
             return _Response({"access_token": "workload-token", "expires_in_seconds": 300})
