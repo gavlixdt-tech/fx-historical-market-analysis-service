@@ -58,8 +58,14 @@ def verify_historical_dataset_attestation(
             )
         return "missing"
 
+    expected_attestation_fields = {
+        "version", "purpose", "algorithm", "provider_id", "source_id", "key_id",
+        "issued_at", "observed_at", "instrument", "timeframe", "dataset_sha256",
+        "quality", "volume_semantics", "source_metadata", "signature",
+    }
     if (
-        attestation.get("version") != "1"
+        set(attestation) != expected_attestation_fields
+        or attestation.get("version") != "1"
         or attestation.get("purpose") != "indicator-candle-dataset"
         or attestation.get("algorithm") != "Ed25519"
         or attestation.get("provider_id") != provider_id
@@ -84,9 +90,21 @@ def verify_historical_dataset_attestation(
     signed_timeframe = attestation.get("timeframe")
     source_metadata = attestation.get("source_metadata")
     quality = attestation.get("quality")
+    expected_source_fields = {
+        "provider_id", "service1_timeframe", "indicator_timeframe", "price_basis",
+        "retrieved_at", "coverage", "validation_summary", "candle_sources",
+        "volume_kinds", "limitations",
+    }
+    expected_quality_fields = {
+        "is_final", "valid", "coverage_complete", "rejected_count",
+        "duplicate_count", "candle_count",
+    }
     if (
         signed_timeframe != timeframe_map.get(timeframe)
         or not isinstance(source_metadata, dict)
+        or set(source_metadata) != expected_source_fields
+        or not isinstance(quality, dict)
+        or set(quality) != expected_quality_fields
         or source_metadata.get("service1_timeframe") != timeframe
         or source_metadata.get("indicator_timeframe") != signed_timeframe
         or source_metadata.get("provider_id") != provider_id
@@ -110,6 +128,18 @@ def verify_historical_dataset_attestation(
         raise UpstreamError(
             "Service 1 historical dataset attestation quality or vintage metadata is inconsistent.",
             details={"dependency": "fx-market-data-service", "error_type": "attestation_metadata_mismatch"},
+        )
+
+    has_volume = any(raw.get("volume") is not None for raw in candles)
+    volume_semantics = attestation.get("volume_semantics")
+    if (
+        not isinstance(volume_semantics, str)
+        or (not has_volume and volume_semantics != "not_supplied")
+        or (has_volume and not volume_semantics.startswith("provider_reported:"))
+    ):
+        raise UpstreamError(
+            "Service 1 historical attestation volume semantics do not match the candle dataset.",
+            details={"dependency": "fx-market-data-service", "error_type": "attestation_volume_semantics_invalid"},
         )
 
     expected_sources = sorted({
