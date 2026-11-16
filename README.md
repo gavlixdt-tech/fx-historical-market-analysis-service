@@ -44,7 +44,7 @@ This service consumes Service 1's data through a documented contract and does
 For Railway deployments in the same private network, configure
 `UPSTREAM_MARKET_DATA_BASE_URL=http://fx-market-data-service.railway.internal:8000`
 (or the actual Service 1 private DNS name and listening port) and set
-`UPSTREAM_API_KEY` to the same secret as Service 1's `API_KEY`. The Service 2
+`UPSTREAM_API_KEY` to the dedicated Service 2 `historical-analysis` key configured in Service 1's `MARKET_DATA_CLIENT_API_KEYS_JSON`; do not reuse Service 1's legacy `API_KEY`. The Service 2
 production validator permits plain HTTP only for an explicit-port
 `*.railway.internal` origin; public production upstream URLs must use HTTPS.
 Do not route private service credentials through browser configuration.
