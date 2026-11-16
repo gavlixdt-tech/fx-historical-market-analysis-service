@@ -111,6 +111,16 @@ class Settings(BaseSettings):
         repr=False,
     )
 
+    upstream_historical_attestation_public_keys_json: str = Field(
+        default="{}",
+        description="Out-of-band trusted Service 1 Ed25519 historical dataset public keys, keyed by key ID",
+        repr=False,
+    )
+    upstream_historical_attestation_required: bool = Field(
+        default=False,
+        description="Reject historical replay unless the Service 1 dataset signature verifies",
+    )
+
     # ---- Upstream integration: fx-feature-engineering-service ----
     upstream_feature_engineering_base_url: str | None = Field(
         default=None,
@@ -233,6 +243,33 @@ class Settings(BaseSettings):
             raise ValueError("service_mode must be 'research-simulation' for this scaffold phase")
         return value
 
+    @field_validator("upstream_historical_attestation_public_keys_json")
+    @classmethod
+    def _validate_historical_attestation_public_keys(cls, value: str) -> str:
+        import base64
+        import binascii
+        import json
+
+        try:
+            keys = json.loads(value)
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise ValueError("upstream historical attestation public keys must be valid JSON") from exc
+        if not isinstance(keys, dict) or any(
+            not isinstance(key_id, str)
+            or not key_id.strip()
+            or not isinstance(encoded, str)
+            for key_id, encoded in keys.items()
+        ):
+            raise ValueError("public key bundle must map non-empty key IDs to base64 Ed25519 public keys")
+        for encoded in keys.values():
+            try:
+                raw = base64.b64decode(encoded, validate=True)
+            except (ValueError, binascii.Error) as exc:
+                raise ValueError("historical attestation public keys must be valid base64") from exc
+            if len(raw) != 32:
+                raise ValueError("Ed25519 public keys must decode to exactly 32 bytes")
+        return value
+
     @field_validator("upstream_feature_engineering_base_url")
     @classmethod
     def _validate_feature_engineering_base_url(cls, value: str | None) -> str | None:
@@ -341,6 +378,16 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "upstream_api_key is required when the production market-data URL is configured"
                 )
+            if self.upstream_market_data_base_url:
+                import json
+
+                trusted_keys = json.loads(self.upstream_historical_attestation_public_keys_json)
+                if not self.upstream_historical_attestation_required or not trusted_keys:
+                    raise ValueError(
+                        "production historical replay requires "
+                        "UPSTREAM_HISTORICAL_ATTESTATION_REQUIRED=true and a non-empty "
+                        "UPSTREAM_HISTORICAL_ATTESTATION_PUBLIC_KEYS_JSON trust bundle"
+                    )
         if (
             self.upstream_allowed_history_start is not None
             and self.upstream_allowed_history_end is not None
