@@ -253,7 +253,7 @@ async def test_market_data_replay_blocks_unapproved_production_workload_identity
         upstream_api_key="u" * 32,
         upstream_replay_availability_delay_seconds=60,
         upstream_historical_attestation_public_keys_json='{"service1-key":"'
-        + "aw==" * 16
+        + "a2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2s="
         + '"}',
         upstream_historical_attestation_required=True,
     )
