@@ -140,7 +140,7 @@ directly in the Service 2 environment.
    Server Admin account to create a service identity with:
    - Service number: `2`
    - Name: `fx-historical-market-analysis-service`
-   - Scope: `gfx:settings:read` only
+   - Scopes: `gfx:settings:read` and `gfx:settings:ack` only
    Save the returned `client_id` and `client_secret` immediately; the secret
    is displayed once. Do not reuse a human JWT, API key, or another service's
    credentials. The Service 64 API endpoint is
@@ -149,8 +149,10 @@ directly in the Service 2 environment.
 2. **Register Service 2 as a consumer in the Admin Console.** In the Admin
    Console's consumer management interface, register the exact Service 64
    identity ID, service number `2`, and name
-   `fx-historical-market-analysis-service`. Subscribe it to
-   `instrument_timeframe` scope and mark it required/enabled. The Admin
+   `fx-historical-market-analysis-service`. Subscribe it to all four scope types: `global`, `instrument`, `timeframe`,
+   and `instrument_timeframe`; mark it required/enabled. Service 2 validates
+   pending candidates and posts version-bound READY/REJECTED acknowledgements
+   before reading the active effective snapshot. The Admin
    Console verifies the identity against Service 64 before registration.
    Do not create a second identity for the same service number.
 
@@ -176,9 +178,9 @@ directly in the Service 2 environment.
    A missing or invalid dependency must return a dependency error, not fall
    back to request settings.
 
-**Current implementation boundary:** the client, workload-token exchange,
-scope resolution, digest validation, bounded parameter model, fail-closed
-configuration and unit tests are committed. The live identity creation,
+**Current implementation boundary:** the client, workload-token exchange, pending-version validation and
+acknowledgement, scoped resolution, digest validation, bounded parameter
+model, fail-closed configuration and unit tests are committed. The live identity creation,
 Admin Console consumer registration, Railway URL/secret provisioning and
 runtime test require access to the actual deployment and authorized admin
 credentials. This repository edit does not claim those external steps have
