@@ -111,10 +111,12 @@ control plane.
 
 **Fail-closed behavior:** when `GFX_SETTINGS_ENABLED=true`, the
 `GFX_SETTINGS_REQUIRED=true` flag is mandatory. Authentication failures,
-missing consumer registration, unavailable services, invalid settings,
-unsupported scopes, and digest mismatches block the replay. Service 2 never
-silently falls back to caller-supplied tuning parameters after central settings
-have been enabled. With the integration disabled, the existing request-level
+missing consumer registration, unavailable services, invalid active settings,
+unsupported scopes, and active/candidate digest mismatches block the replay.
+A well-formed but out-of-bounds pending candidate is acknowledged as
+`REJECTED`, recorded in replay metadata, and cannot be activated; the last
+active valid snapshot remains usable. Service 2 never silently falls back to
+caller-supplied tuning parameters after central settings have been enabled. With the integration disabled, the existing request-level
 research controls remain available.
 
 **Settings available in the Admin Console** (bounded and cross-validated):
