@@ -88,3 +88,27 @@ The following code changes were committed directly to `master`:
 **Evidence boundary:** this signature authenticates the configured Service 1 signer and the exact dataset/quality projection. It does not prove the vendor digitally signed the prices, prove upstream source truth, or supply the original first-available timestamp. Replay availability therefore remains `availability_assumed` (candle close plus a configured lag), and replay outputs are explicitly marked `forecast_eligible=false` and `trading_authorization=false`.
 
 **Verification boundary:** verifier and configuration tests have been added but were not executed in this editing session. No successful local test run, push-triggered CI result, provider entitlement, production identity, or deployed replay is claimed. Production integration remains blocked until the public trust key is provisioned, the Service 1 signing key is active, the provider is entitled, and the full test/acceptance suite passes.
+
+
+
+## 2026-11-17 Service 2 historical attestation and operator-settings implementation
+
+The following additional implementation is now committed to `master`:
+
+- Service 1 historical dataset attestation is preserved by the typed Service 2 client and verified with an out-of-band Ed25519 trust bundle. Verification binds the exact normalized OHLCV projection and source-quality metadata. It does not claim a vendor signature, vendor truth, or historical first-available timestamp.
+- Service 2 has a dedicated Admin Console settings client. It obtains a short-lived Service 64 workload token, validates the token response, polls unacknowledged pending versions, verifies canonical SHA-256 digests, validates the six replay controls, and submits exact-version READY/REJECTED acknowledgements.
+- Admin Console pending-version retrieval now excludes versions already acknowledged by the same consumer with the same content digest and has a bounded 1,000-version backlog. This prevents repeated processing of acknowledged versions and ensures rejected candidates do not permanently block later valid candidates.
+- The active effective settings snapshot is digest-verified before use. The client is fail-closed whenever central settings are enabled; a rejected pending candidate is recorded in replay reproducibility metadata while the last active valid snapshot remains in use.
+- Added bounded, versioned Admin Console controls for lookback, minimum training samples, expanding/rolling validation, rolling window, embargo periods and random seed, with cross-field validation.
+- Added deployment instructions and variable ownership to the Service 2, Admin Console and Service 64 main READMEs. The Service 2 identity requires only `gfx:settings:read` and `gfx:settings:ack`.
+
+**CI evidence:** GitHub Actions run `43978565479` for commit
+`6c7678202b8ff5f2ddb8cf1adaa77dd8a641624c` completed successfully for backend
+lint, formatting, mypy and tests; frontend tests/type-check/build; container
+build/smoke checks; and dependency/secret audit.
+
+**Not yet accepted in production:** the Service 2 workload identity and Admin
+Console consumer must still be created in the deployed Service 64/Admin Console,
+Railway backend origins and credentials provisioned, and a real cross-service
+request/acknowledgement/active-settings replay performed. This code-level CI
+result is not a live-provider or deployment acceptance result.
