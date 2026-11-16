@@ -102,7 +102,7 @@ service's.
 | `start` | string | – | ISO-8601 UTC start timestamp |
 | `end` | string | – | ISO-8601 UTC end timestamp |
 | `timeframe` | string | `D1` | `M1 M5 M15 M30 H1 H4 D1 W1 MN1` |
-| `price_basis` | string | `bid` | `bid`, `ask`, `midpoint` |
+| `price_basis` | string | `bid` | `bid`, `ask`, `midpoint`, `vendor_defined`, `unknown`; Service 1 returns the actual provider basis, which may be `vendor_defined` even when a legacy selector was used |
 | `limit` | integer | `500` | Bounds: `ge=1`, `le=5000` |
 
 Path parameter: `{instrument}` — a canonical instrument identifier. The exact
@@ -135,7 +135,7 @@ either input form is supported.
       "actual_start": "...", "actual_end": "...",
       "expected_intervals": 0, "returned_count": 0,
       "valid_count": 0, "rejected_count": 0, "duplicate_count": 0,
-      "missing_intervals": [], "status": "complete",
+      "missing_intervals": [], "max_consecutive_missing_intervals": 0, "status": "complete",
       "complete": true, "provider_limited": false, "notes": []
     },
     "validation_summary": {
@@ -143,12 +143,43 @@ either input form is supported.
     },
     "pagination": { "limit": 500, "has_more": false },
     "retrieved_at": "...",
-    "limitations": []
+    "limitations": [],
+    "provenance": {
+      "version": "1",
+      "purpose": "indicator-candle-dataset",
+      "algorithm": "Ed25519",
+      "provider_id": "...",
+      "source_id": "...",
+      "key_id": "...",
+      "issued_at": "...",
+      "observed_at": "...",
+      "instrument": "...",
+      "timeframe": "1D",
+      "dataset_sha256": "...",
+      "quality": {},
+      "volume_semantics": "not_supplied",
+      "source_metadata": {},
+      "signature": "ed25519=..."
+    },
+    "canonical_record_reference": null
   },
   "meta": { "api_version": "v1", "request_id": "...", "timestamp_utc": "..." },
   "errors": []
 }
 ```
+
+**Historical dataset attestation.** Service 1 may include
+`data.provenance`, an Ed25519 signature over the exact normalized candle
+projection and source-quality metadata under the
+`indicator-candle-dataset/v1` contract. Service 2 now preserves this field and
+verifies it using `UPSTREAM_HISTORICAL_ATTESTATION_PUBLIC_KEYS_JSON`, a
+trusted key-ID-to-base64-public-key map provisioned out of band. Production
+replay with Service 1 configured requires
+`UPSTREAM_HISTORICAL_ATTESTATION_REQUIRED=true` and fails closed on a missing
+or untrusted attestation. This authenticates the configured Service 1 signer,
+not a vendor signature or provider truth. It does not supply the original
+historical first-available timestamp; replay availability remains a separate
+configured candle-close-plus-lag assumption.
 
 **Quality metadata ownership.** `coverage`, `validation_summary`, and
 `limitations` are Service 1's source-quality output. This service consumes
