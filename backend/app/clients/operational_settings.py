@@ -145,6 +145,8 @@ def _acknowledge_pending_settings(client: httpx.Client, admin_url: str, token: s
         )
         if response.status_code in {401, 403}:
             _invalidate_workload_token(token)
+        if response.status_code in {401, 403}:
+            _invalidate_workload_token()
         response.raise_for_status()
         payload = response.json()
     except (httpx.HTTPError, ValueError) as exc:
@@ -204,6 +206,8 @@ def _acknowledge_pending_settings(client: httpx.Client, admin_url: str, token: s
             )
             if ack.status_code in {401, 403}:
                 _invalidate_workload_token(token)
+            if ack.status_code in {401, 403}:
+                _invalidate_workload_token()
             ack.raise_for_status()
         except (httpx.HTTPError, ValueError) as exc:
             raise UpstreamError("Service 2 could not acknowledge a pending Admin Console settings version.", details={"dependency": "fx-admin-console", "version_id": version_id}) from exc
