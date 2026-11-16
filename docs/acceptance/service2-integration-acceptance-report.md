@@ -13,7 +13,7 @@ claimed.
 | Area | Result | Evidence / limitation |
 |---|---|---|
 | Existing implementation | PASS WITH EXPLICIT LIMITATIONS | Existing analysis, forecasting research, and replay preserved |
-| Service 1 contract | PASS WITH EXPLICIT LIMITATIONS | Route/schema source cross-check and synthetic fixtures; auth unverified |
+| Service 1 contract | PASS WITH EXPLICIT LIMITATIONS | Typed response now preserves and verifies the Service 1 Ed25519 historical dataset attestation against out-of-band keys; runtime provider/auth verification remains outstanding |
 | Provider selection | PASS WITH EXPLICIT LIMITATIONS | Explicit provider, type/config/capability checks, connection test; no real entitlement verified |
 | Historical quality | PASS WITH EXPLICIT LIMITATIONS | Coverage and validation evidence preserved; producer remains authority |
 | Availability provenance | BLOCKED | Close-plus-lag is an assumption; no original first-available timestamp |
@@ -71,3 +71,20 @@ The following changes were committed directly to `master` after the earlier acce
 **Verification boundary:** the pre-existing test counts in this report predate these 2026-11-14 commits. The current changes were committed through the GitHub integration, but no local frontend/backend test or production build was executed during this repository session. The latest commit's combined GitHub status response contained no status entries, and the available workflow-run lookup did not return push-triggered runs. Therefore, the new implementation is **committed but CI-unverified** until the repository's push-triggered workflow completes.
 
 **External integration limitations remain:** Service 61 session context is optional and depends on its configured contract and credentials; Service 18 event ingestion is not automatic; provider identity and original historical publication time are not independently authenticated by the current Service 1 contract; experiment/replay results are not a durable history registry. These must not be described as complete production integrations.
+
+
+
+## 2026-11-17 historical source-attestation implementation addendum
+
+The following code changes were committed directly to `master`:
+
+- Added the Service 1 `provenance` and `canonical_record_reference` fields to the typed historical response model, including the complete coverage metadata field `max_consecutive_missing_intervals`.
+- Added a purpose-specific Ed25519 verifier for the shared `indicator-candle-dataset/v1` contract. It checks signer key ID, signature, exact canonical candle projection and SHA-256, source ID, provider/instrument/timeframe identity, retrieval vintage, price basis, source metadata, coverage and validation quality.
+- Wired verification into provider-sourced replay after the returned provider/instrument/timeframe/price-basis identity is matched to the request and before replay observations are constructed.
+- Production configuration with Service 1 enabled now requires `UPSTREAM_HISTORICAL_ATTESTATION_REQUIRED=true` and a non-empty out-of-band `UPSTREAM_HISTORICAL_ATTESTATION_PUBLIC_KEYS_JSON` trust bundle. Unknown keys, missing attestations and invalid signatures fail closed.
+- Added the `cryptography` runtime dependency, environment template entries, a documented Service 1 public-key export procedure, and tests for valid signatures, tampering, unknown keys, missing attestations, metadata mismatch and production configuration.
+- Added the explicit `vendor_defined` price-basis enum and request/UI option so Service 2 can represent Service 1's actual provider-defined price basis without mislabelling it as midpoint.
+
+**Evidence boundary:** this signature authenticates the configured Service 1 signer and the exact dataset/quality projection. It does not prove the vendor digitally signed the prices, prove upstream source truth, or supply the original first-available timestamp. Replay availability therefore remains `availability_assumed` (candle close plus a configured lag), and replay outputs are explicitly marked `forecast_eligible=false` and `trading_authorization=false`.
+
+**Verification boundary:** verifier and configuration tests have been added but were not executed in this editing session. No successful local test run, push-triggered CI result, provider entitlement, production identity, or deployed replay is claimed. Production integration remains blocked until the public trust key is provisioned, the Service 1 signing key is active, the provider is entitled, and the full test/acceptance suite passes.
