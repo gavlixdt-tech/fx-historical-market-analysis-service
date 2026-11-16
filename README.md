@@ -140,6 +140,26 @@ features and returns a warning.
   tests, linting, type checking, builds, and container checks, and an
   `.env.example` containing placeholders only.
 
+### Service 1 historical dataset attestation verification
+
+The typed Service 1 response now preserves its `provenance` attestation, and
+Service 2 verifies the Ed25519 signature against a public-key trust bundle
+provisioned out of band before provider-sourced historical replay. Production
+replay with Service 1 configured requires
+`UPSTREAM_HISTORICAL_ATTESTATION_REQUIRED=true` and a non-empty
+`UPSTREAM_HISTORICAL_ATTESTATION_PUBLIC_KEYS_JSON` mapping key IDs to base64
+raw Ed25519 public keys.
+
+Run `python scripts/export_historical_attestation_public_key.py` in a trusted
+Service 1 administrative environment where the historical signing private key
+is available. Verify the script's SHA-256 fingerprint out of band and copy
+only the public key and exact key ID to Service 2 Railway backend Variables.
+Never copy the private key to Service 2. The verified signature authenticates
+the configured Service 1 signer and the exact dataset projection; it does not
+prove a vendor signature or original historical publication time. Replay
+availability therefore remains an explicit candle-close-plus-lag assumption,
+and replay output remains `forecast_eligible=false`.
+
 ## Forecasting readiness (Prompt 5)
 
 - Typed forecasting-problem specifications, prediction targets, point-in-time features.
