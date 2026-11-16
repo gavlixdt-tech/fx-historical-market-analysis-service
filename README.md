@@ -104,10 +104,10 @@ instrument/timeframe scope. It obtains a short-lived workload token from
 Service 64, calls the Admin Console's authenticated
 `GET /api/v1/settings/consumer/active` endpoint, verifies the returned
 canonical SHA-256 snapshot digest, validates all six replay controls, and
-records the active settings version, scope and digest in replay reproducibility
-metadata. The Admin Console resolves global, instrument, timeframe and
-instrument-timeframe layers using its existing versioned/approved settings
-control plane.
+records the effective settings digest and every contributing global,
+instrument, timeframe and instrument-timeframe version in replay
+reproducibility metadata. The Admin Console resolves these layers using its
+existing versioned/approved settings control plane.
 
 **Fail-closed behavior:** when `GFX_SETTINGS_ENABLED=true`, the
 `GFX_SETTINGS_REQUIRED=true` flag is mandatory. Authentication failures,
