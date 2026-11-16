@@ -140,14 +140,10 @@ class Settings(BaseSettings):
     )
     gfx_settings_client_id: str | None = Field(
         default=None,
-        min_length=16,
-        max_length=64,
         description="Dedicated Service 2 Service 64 workload identity client ID",
     )
     gfx_settings_client_secret: str | None = Field(
         default=None,
-        min_length=32,
-        max_length=256,
         repr=False,
         description="Dedicated Service 2 Service 64 workload secret",
     )
@@ -410,6 +406,12 @@ class Settings(BaseSettings):
                     "central replay settings require GFX_SETTINGS_SERVICE_URL, "
                     "FX_SECURITY_SERVICE_URL, GFX_SETTINGS_CLIENT_ID and GFX_SETTINGS_CLIENT_SECRET"
                 )
+            client_id_length = len(self.gfx_settings_client_id or "")
+            secret_length = len(self.gfx_settings_client_secret or "")
+            if not 16 <= client_id_length <= 64:
+                raise ValueError("GFX_SETTINGS_CLIENT_ID must contain 16 to 64 characters")
+            if not 32 <= secret_length <= 256:
+                raise ValueError("GFX_SETTINGS_CLIENT_SECRET must contain 32 to 256 characters")
             if self.is_production:
                 for name, raw_url in (
                     ("GFX_SETTINGS_SERVICE_URL", self.gfx_settings_service_url),
