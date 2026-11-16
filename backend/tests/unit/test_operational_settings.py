@@ -79,7 +79,13 @@ class _FakeClient:
             return _Response({"access_token": "workload-token", "expires_in_seconds": 300})
         return _Response({"status": json.get("status"), "idempotent_replay": False})
 
-    def get(self, url: str, *, params: dict[str, str], headers: dict[str, str]) -> _Response:
+    def get(
+        self,
+        url: str,
+        *,
+        params: dict[str, str] | None = None,
+        headers: dict[str, str],
+    ) -> _Response:
         self.gets.append((url, {"params": params, "headers": headers}))
         if url.endswith("/settings/consumer/pending"):
             return _Response({"items": self.pending_items})
@@ -141,7 +147,13 @@ def test_enabled_settings_fail_closed_when_admin_console_is_unavailable(
 
 def test_enabled_settings_reject_a_tampered_snapshot(monkeypatch: pytest.MonkeyPatch) -> None:
     class TamperedClient(_FakeClient):
-        def get(self, url: str, *, params: dict[str, str], headers: dict[str, str]) -> _Response:
+        def get(
+            self,
+            url: str,
+            *,
+            params: dict[str, str] | None = None,
+            headers: dict[str, str],
+        ) -> _Response:
             response = super().get(url, params=params, headers=headers)
             payload = response.json()
             payload["settings"]["historical_replay.lookback"] = 99
