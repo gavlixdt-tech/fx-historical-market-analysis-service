@@ -388,6 +388,11 @@ class Settings(BaseSettings):
             )
         if self.gfx_settings_required and not self.gfx_settings_enabled:
             raise ValueError("GFX_SETTINGS_REQUIRED=true requires GFX_SETTINGS_ENABLED=true")
+        if self.gfx_settings_enabled and not self.gfx_settings_required:
+            raise ValueError(
+                "GFX_SETTINGS_ENABLED=true requires GFX_SETTINGS_REQUIRED=true; "
+                "enabled operator settings must never silently fall back to request parameters"
+            )
         if self.gfx_settings_enabled:
             if not all((
                 self.gfx_settings_service_url,
