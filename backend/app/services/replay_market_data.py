@@ -12,6 +12,7 @@ from starlette.concurrency import run_in_threadpool
 
 from backend.app.analysis.replay import run_historical_replay
 from backend.app.clients.market_data import MarketDataClient
+from backend.app.clients.historical_attestation import verify_historical_dataset_attestation
 from backend.app.clients.session_context import (
     SessionContextIntegrationError,
     fetch_historical_session_contexts,
@@ -74,6 +75,22 @@ async def run_market_data_replay(
         request_id=request_id,
     )
     service2_received_at = datetime.now(UTC).isoformat()
+    retrieved_at_attestation = (
+        data.retrieved_at.astimezone(UTC).isoformat().replace("+00:00", "Z")
+    )
+    attestation_status = verify_historical_dataset_attestation(
+        settings=settings,
+        attestation=data.provenance,
+        instrument=data.canonical_instrument,
+        timeframe=data.timeframe.value,
+        provider_id=data.provider_id,
+        candles=[candle.model_dump(mode="json") for candle in data.candles],
+        retrieved_at=retrieved_at_attestation,
+        effective_price_basis=data.price_basis.value,
+        coverage=data.coverage.model_dump(mode="json"),
+        validation_summary=data.validation_summary.model_dump(mode="json"),
+        limitations=data.limitations,
+    )
     if (
         data.provider_id != provider.provider_id
         or data.canonical_instrument != expected_instrument
@@ -179,15 +196,38 @@ async def run_market_data_replay(
         final_holdout_start=payload.final_holdout_start,
     )
     result = await run_in_threadpool(run_historical_replay, replay_request)
-    result["provenance_status"] = "provider_asserted_unverified"
+    result["provenance_status"] = (
+        "service1_attestation_verified"
+        if attestation_status == "verified"
+        else f"service1_attestation_{attestation_status}"
+    )
+    result["source_authenticity"] = (
+        "service1_signer_authenticated"
+        if attestation_status == "verified"
+        else "not_independently_attested"
+    )
+    result["source_content_integrity"] = (
+        "sha256_and_ed25519_verified"
+        if attestation_status == "verified"
+        else "not_independently_verified"
+    )
+    result["vendor_signature_verified"] = False
+    result["forecast_eligible"] = False
+    result["trading_authorization"] = False
     result["warnings"].append(
         "Historical availability uses candle close time plus a configured lag; "
         "the provider does not supply original publication timestamps."
     )
+    result["warnings"].append(
+        "The Service 1 Ed25519 signature authenticates the configured Service 1 "
+        "signer and exact dataset; it is not a vendor signature over market prices."
+        if attestation_status == "verified"
+        else "Historical dataset provenance is not independently attested for this replay."
+    )
     result["limitations"].extend(
         [
-            "Market-data provider identity is configured and connection-tested, "
-            "but source records and historical revisions are not independently signed.",
+            "The Service 1 signature, when verified, authenticates the configured Service 1 signer; it does not prove that the vendor digitally signed the market prices.",
+            "Historical source revisions and original provider publication timestamps are not independently available.",
             "Availability timestamps are derived from bar close time and the configured "
             "publication-lag assumption; this is not point-in-time proof.",
             "Fetched candles and model artifacts are not durably archived by this service.",
@@ -203,6 +243,12 @@ async def run_market_data_replay(
         "availability_policy": "candle_close_plus_configured_publication_lag",
         "availability_delay_seconds": availability_delay,
         "availability_provenance": "availability_assumed",
+        "historical_attestation_status": attestation_status,
+        "historical_attestation_key_id": (
+            data.provenance.get("key_id")
+            if isinstance(data.provenance, dict)
+            else None
+        ),
         "availability_assumption": (
             "available_at is candle close time plus the configured delay; "
             "Service 1 does not provide original historical publication timestamps."
