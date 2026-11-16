@@ -120,7 +120,7 @@ def test_resolves_digest_verified_instrument_timeframe_settings(monkeypatch: pyt
     assert resolved.parameters.lookback == 20
     assert resolved.parameters.embargo_periods == 1
     assert fake.posts[0][0] == "https://security.example/api/v1/service-tokens/issue"
-    assert fake.posts[0][1]["scopes"] == ["gfx:settings:read"]
+    assert fake.posts[0][1]["scopes"] == ["gfx:settings:read", "gfx:settings:ack"]
     assert fake.gets[0][0] == "https://admin.example/api/v1/settings/consumer/pending"
     assert fake.gets[1][0] == "https://admin.example/api/v1/settings/consumer/active"
     assert fake.gets[1][1]["params"] == {
