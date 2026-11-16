@@ -128,6 +128,14 @@ def _workload_token(
         return token
 
 
+def _invalidate_workload_token(token: str) -> None:
+    """Drop only the cached token that the upstream explicitly rejected."""
+    with _TOKEN_LOCK:
+        cached = _TOKEN_CACHE.get("token")
+        if isinstance(cached, str) and hmac.compare_digest(cached, token):
+            _TOKEN_CACHE.update({"token": None, "cache_key": None, "expires_at": 0.0})
+
+
 def _acknowledge_pending_settings(client: httpx.Client, admin_url: str, token: str) -> None:
     """Validate and acknowledge every pending candidate for subscribed scopes."""
     try:
@@ -135,6 +143,8 @@ def _acknowledge_pending_settings(client: httpx.Client, admin_url: str, token: s
             admin_url + "/api/v1/settings/consumer/pending",
             headers={"Authorization": "Bearer " + token},
         )
+        if response.status_code in {401, 403}:
+            _invalidate_workload_token(token)
         response.raise_for_status()
         payload = response.json()
     except (httpx.HTTPError, ValueError) as exc:
@@ -192,6 +202,8 @@ def _acknowledge_pending_settings(client: httpx.Client, admin_url: str, token: s
                 headers={"Authorization": "Bearer " + token},
                 json={"version_id": version_id, "content_sha256": digest, "status": status, "detail": detail},
             )
+            if ack.status_code in {401, 403}:
+                _invalidate_workload_token(token)
             ack.raise_for_status()
         except (httpx.HTTPError, ValueError) as exc:
             raise UpstreamError("Service 2 could not acknowledge a pending Admin Console settings version.", details={"dependency": "fx-admin-console", "version_id": version_id}) from exc
@@ -257,12 +269,7 @@ def resolve_historical_replay_settings(
                 headers={"Authorization": f"Bearer {token}"},
             )
             if response.status_code in {401, 403}:
-                with _TOKEN_LOCK:
-                    _TOKEN_CACHE.update({
-                        "token": None,
-                        "cache_key": None,
-                        "expires_at": 0.0,
-                    })
+                _invalidate_workload_token(token)
             response.raise_for_status()
             payload = response.json()
     except UpstreamError:
