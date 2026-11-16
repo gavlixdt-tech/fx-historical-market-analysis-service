@@ -149,7 +149,7 @@ def _acknowledge_pending_settings(
         if response.status_code in {401, 403}:
             _invalidate_workload_token(token)
         if response.status_code in {401, 403}:
-            _invalidate_workload_token()
+            _invalidate_workload_token(token)
         response.raise_for_status()
         payload = response.json()
     except (httpx.HTTPError, ValueError) as exc:
