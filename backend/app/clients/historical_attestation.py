@@ -130,13 +130,21 @@ def verify_historical_dataset_attestation(
             details={"dependency": "fx-market-data-service", "error_type": "attestation_metadata_mismatch"},
         )
 
+    volume_kinds = sorted({
+        raw.get("volume_kind")
+        for raw in candles
+        if isinstance(raw.get("volume_kind"), str) and raw.get("volume_kind")
+    })
     has_volume = any(raw.get("volume") is not None for raw in candles)
+    expected_volume_semantics = (
+        "not_supplied"
+        if not has_volume
+        else f"provider_reported:{volume_kinds[0]}"
+        if len(volume_kinds) == 1
+        else "provider_reported:unknown_or_mixed"
+    )
     volume_semantics = attestation.get("volume_semantics")
-    if (
-        not isinstance(volume_semantics, str)
-        or (not has_volume and volume_semantics != "not_supplied")
-        or (has_volume and not volume_semantics.startswith("provider_reported:"))
-    ):
+    if volume_semantics != expected_volume_semantics:
         raise UpstreamError(
             "Service 1 historical attestation volume semantics do not match the candle dataset.",
             details={"dependency": "fx-market-data-service", "error_type": "attestation_volume_semantics_invalid"},
