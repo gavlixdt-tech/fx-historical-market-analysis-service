@@ -498,3 +498,28 @@ Do not add a Service 9 URL, shared API key, caller-provided producer identity, o
 ### Deployment instructions for this boundary
 
 No new environment variable is currently required or supported for this proposed integration. Do not invent or configure one. When the boundary is approved and implemented, obtain the Service 9 backend origin from Railway → GFX project → `fx-liquidity-analysis-service` → Networking; use its private `.railway.internal` address for same-project backend traffic. Any future trust bundle must be distributed through Railway backend Variables/secret management from an authority-approved public-key registry; private signing keys must remain only with the producer/key custodian. The exact variable names and provisioning steps must be added here before enabling the integration.
+
+
+
+## Current implementation and verification snapshot
+
+The Service 2 historical-attestation and Admin Console replay-settings code
+was verified by GitHub Actions run
+[43978565479](https://github.com/gavlixdt-tech/fx-historical-market-analysis-service/actions/runs/43978565479)
+on commit `6c7678202b8ff5f2ddb8cf1adaa77dd8a641624c`:
+
+- Ruff lint and strict format check: passed.
+- Mypy: passed.
+- Backend tests: **212 passed, 2 skipped**.
+- OpenAPI generation: passed.
+- Frontend type check, unit tests and production build: passed.
+- Backend/frontend container build and backend smoke test: passed.
+- Dependency and secret audit: passed.
+
+This verifies the Service 2 code and its isolated tests. It does **not** mean
+that Service 64 identity registration, Admin Console consumer registration,
+Railway environment variables, live market-provider entitlement, vendor
+attestation, or deployed cross-service replay have been completed. Follow the
+deployment steps above and keep the production feature flags disabled until
+the external identity, trust key, provider credentials and live acceptance
+checks are complete.
