@@ -372,3 +372,33 @@ def test_invalid_pending_candidate_is_rejected_and_active_settings_remain_usable
     )
     assert acknowledgement["status"] == "REJECTED"
     assert acknowledgement["version_id"] == "invalid-candidate-version-123"
+
+
+def test_active_settings_reject_layer_provenance_for_another_scope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class MismatchedLayerClient(_FakeClient):
+        def get(
+            self,
+            url: str,
+            *,
+            params: dict[str, str] | None = None,
+            headers: dict[str, str],
+        ) -> _Response:
+            response = super().get(url, params=params, headers=headers)
+            if url.endswith("/settings/consumer/pending"):
+                return response
+            payload = response.json()
+            payload["active_scope_versions"][0]["scope_id"] = "EURUSD|4h"
+            return _Response(payload)
+
+    fake = MismatchedLayerClient()
+    monkeypatch.setattr(client_module.httpx, "Client", lambda **_kwargs: fake)
+    client_module._TOKEN_CACHE.update({"token": None, "cache_key": None, "expires_at": 0.0})
+
+    with pytest.raises(UpstreamError, match="do not match the requested scope"):
+        resolve_historical_replay_settings(
+            settings=_settings(),
+            instrument="EUR/USD",
+            timeframe="H1",
+        )
