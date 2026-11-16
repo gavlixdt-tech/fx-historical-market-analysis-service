@@ -206,13 +206,14 @@ def test_central_replay_settings_require_all_service_credentials() -> None:
 def test_central_replay_settings_accept_valid_origins_and_workload_identity() -> None:
     settings = Settings(
         gfx_settings_enabled=True,
+        gfx_settings_required=True,
         gfx_settings_service_url="https://admin.example",
         fx_security_service_url="https://security.example",
         gfx_settings_client_id="service-two-client-123",
         gfx_settings_client_secret="s" * 48,
     )
     assert settings.gfx_settings_enabled is True
-    assert settings.gfx_settings_required is False
+    assert settings.gfx_settings_required is True
     assert "s" * 48 not in repr(settings)
 
 
@@ -226,6 +227,7 @@ def test_production_central_replay_settings_require_secure_origins() -> None:
         Settings(
             environment="production",
             gfx_settings_enabled=True,
+            gfx_settings_required=True,
             gfx_settings_service_url="http://admin.example",
             fx_security_service_url="https://security.example",
             gfx_settings_client_id="service-two-client-123",
@@ -239,6 +241,7 @@ def test_production_central_replay_settings_allow_railway_private_origins() -> N
         require_auth=True,
         api_key="x" * 32,
         gfx_settings_enabled=True,
+        gfx_settings_required=True,
         gfx_settings_service_url="http://fx-admin-console.railway.internal:8000",
         fx_security_service_url="http://fx-security-access-service.railway.internal:8000",
         gfx_settings_client_id="service-two-client-123",
