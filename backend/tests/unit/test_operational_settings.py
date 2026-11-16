@@ -302,3 +302,46 @@ def test_rejected_workload_token_is_invalidated_without_clearing_a_replacement()
         "cache_key": None,
         "expires_at": 0.0,
     }
+
+
+
+def test_invalid_pending_candidate_is_rejected_and_active_settings_remain_usable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    invalid_snapshot = _snapshot()
+    invalid_snapshot["historical_replay.validation_mode"] = "rolling"
+    invalid_snapshot["historical_replay.rolling_window"] = 20
+    digest = hashlib.sha256(
+        json.dumps(
+            invalid_snapshot,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode()
+    ).hexdigest()
+    candidate = {
+        "id": "invalid-candidate-version-123",
+        "content_sha256": digest,
+        "settings": invalid_snapshot,
+        "scope": "global",
+    }
+    fake = _FakeClient(pending_items=[candidate])
+    monkeypatch.setattr(client_module.httpx, "Client", lambda **_kwargs: fake)
+    client_module._TOKEN_CACHE.update({"token": None, "cache_key": None, "expires_at": 0.0})
+
+    resolved = resolve_historical_replay_settings(
+        settings=_settings(),
+        instrument="EUR/USD",
+        timeframe="H1",
+    )
+
+    assert resolved is not None
+    assert resolved.active_version_id == "version-123"
+    assert resolved.parameters.validation_mode == "expanding"
+    assert resolved.rejected_candidate_version_ids == ["invalid-candidate-version-123"]
+    acknowledgement = next(
+        payload for url, payload in fake.posts
+        if url.endswith("/settings/consumer/acknowledgements")
+    )
+    assert acknowledgement["status"] == "REJECTED"
+    assert acknowledgement["version_id"] == "invalid-candidate-version-123"
