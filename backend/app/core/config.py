@@ -254,13 +254,21 @@ class Settings(BaseSettings):
             keys = json.loads(value)
         except (TypeError, json.JSONDecodeError) as exc:
             raise ValueError("upstream historical attestation public keys must be valid JSON") from exc
-        if not isinstance(keys, dict) or any(
-            not isinstance(key_id, str)
-            or not key_id.strip()
-            or not isinstance(encoded, str)
-            for key_id, encoded in keys.items()
+        if (
+            not isinstance(keys, dict)
+            or len(keys) > 16
+            or any(
+                not isinstance(key_id, str)
+                or not key_id.strip()
+                or len(key_id) > 128
+                or not isinstance(encoded, str)
+                for key_id, encoded in keys.items()
+            )
         ):
-            raise ValueError("public key bundle must map non-empty key IDs to base64 Ed25519 public keys")
+            raise ValueError(
+                "public key bundle must map at most 16 non-empty key IDs (max 128 chars) "
+                "to base64 Ed25519 public keys"
+            )
         for encoded in keys.values():
             try:
                 raw = base64.b64decode(encoded, validate=True)
