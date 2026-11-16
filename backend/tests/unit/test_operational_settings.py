@@ -1,0 +1,194 @@
+from __future__ import annotations
+
+import hashlib
+import json
+from typing import Any
+
+import httpx
+import pytest
+
+from backend.app.clients import operational_settings as client_module
+from backend.app.clients.operational_settings import resolve_historical_replay_settings
+from backend.app.core.config import Settings
+from backend.app.core.errors import UpstreamError
+
+
+def _settings(**overrides: Any) -> Settings:
+    values: dict[str, Any] = {
+        "environment": "testing",
+        "gfx_settings_enabled": True,
+        "gfx_settings_required": True,
+        "gfx_settings_service_url": "https://admin.example",
+        "fx_security_service_url": "https://security.example",
+        "gfx_settings_client_id": "service2-client-identity",
+        "gfx_settings_client_secret": "s" * 48,
+    }
+    values.update(overrides)
+    return Settings(**values)
+
+
+def _snapshot() -> dict[str, Any]:
+    return {
+        "historical_replay.lookback": 20,
+        "historical_replay.min_train_samples": 30,
+        "historical_replay.validation_mode": "expanding",
+        "historical_replay.rolling_window": 250,
+        "historical_replay.embargo_periods": 1,
+        "historical_replay.random_seed": 42,
+    }
+
+
+class _Response:
+    def __init__(self, payload: dict[str, Any], status_code: int = 200) -> None:
+        self._payload = payload
+        self.status_code = status_code
+
+    def raise_for_status(self) -> None:
+        if self.status_code >= 400:
+            raise httpx.HTTPStatusError(
+                "upstream error",
+                request=httpx.Request("GET", "https://example.test"),
+                response=httpx.Response(self.status_code),
+            )
+
+    def json(self) -> dict[str, Any]:
+        return self._payload
+
+
+class _FakeClient:
+    def __init__(self, *, settings_status: int = 200) -> None:
+        self.settings_status = settings_status
+        self.posts: list[tuple[str, dict[str, Any]]] = []
+        self.gets: list[tuple[str, dict[str, Any]]] = []
+
+    def __enter__(self) -> "_FakeClient":
+        return self
+
+    def __exit__(self, *_args: Any) -> None:
+        return None
+
+    def post(self, url: str, *, json: dict[str, Any]) -> _Response:
+        self.posts.append((url, json))
+        return _Response({"access_token": "workload-token", "expires_in_seconds": 300})
+
+    def get(self, url: str, *, params: dict[str, str], headers: dict[str, str]) -> _Response:
+        self.gets.append((url, {"params": params, "headers": headers}))
+        snapshot = _snapshot()
+        digest = hashlib.sha256(
+            json.dumps(snapshot, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+        ).hexdigest()
+        return _Response(
+            {
+                "active_version_id": "version-123",
+                "content_sha256": digest,
+                "settings": snapshot,
+            },
+            self.settings_status,
+        )
+
+
+def test_resolves_digest_verified_instrument_timeframe_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _FakeClient()
+    monkeypatch.setattr(client_module.httpx, "Client", lambda **_kwargs: fake)
+    client_module._TOKEN_CACHE.update({"token": None, "cache_key": None, "expires_at": 0.0})
+
+    resolved = resolve_historical_replay_settings(
+        settings=_settings(),
+        instrument="EUR/USD",
+        timeframe="H1",
+    )
+
+    assert resolved is not None
+    assert resolved.scope_id == "EURUSD|1h"
+    assert resolved.active_version_id == "version-123"
+    assert resolved.parameters.lookback == 20
+    assert resolved.parameters.embargo_periods == 1
+    assert fake.posts[0][0] == "https://security.example/api/v1/service-tokens/issue"
+    assert fake.posts[0][1]["scopes"] == ["gfx:settings:read"]
+    assert fake.gets[0][0] == "https://admin.example/api/v1/settings/consumer/active"
+    assert fake.gets[0][1]["params"] == {
+        "scope": "instrument_timeframe",
+        "scope_id": "EURUSD|1h",
+    }
+    assert fake.gets[0][1]["headers"]["Authorization"] == "Bearer workload-token"
+
+
+def test_enabled_settings_fail_closed_when_admin_console_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake = _FakeClient(settings_status=503)
+    monkeypatch.setattr(client_module.httpx, "Client", lambda **_kwargs: fake)
+    client_module._TOKEN_CACHE.update({"token": None, "cache_key": None, "expires_at": 0.0})
+
+    with pytest.raises(UpstreamError, match="Enabled Admin Console replay settings are unavailable"):
+        resolve_historical_replay_settings(
+            settings=_settings(),
+            instrument="EUR/USD",
+            timeframe="H1",
+        )
+
+
+def test_enabled_settings_reject_a_tampered_snapshot(monkeypatch: pytest.MonkeyPatch) -> None:
+    class TamperedClient(_FakeClient):
+        def get(self, url: str, *, params: dict[str, str], headers: dict[str, str]) -> _Response:
+            response = super().get(url, params=params, headers=headers)
+            payload = response.json()
+            payload["settings"]["historical_replay.lookback"] = 99
+            return _Response(payload)
+
+    fake = TamperedClient()
+    monkeypatch.setattr(client_module.httpx, "Client", lambda **_kwargs: fake)
+    client_module._TOKEN_CACHE.update({"token": None, "cache_key": None, "expires_at": 0.0})
+
+    with pytest.raises(UpstreamError, match="snapshot digest mismatch"):
+        resolve_historical_replay_settings(
+            settings=_settings(),
+            instrument="EUR/USD",
+            timeframe="H1",
+        )
+
+
+def test_enabled_settings_reject_invalid_rolling_window(monkeypatch: pytest.MonkeyPatch) -> None:
+    class InvalidClient(_FakeClient):
+        def get(self, url: str, *, params: dict[str, str], headers: dict[str, str]) -> _Response:
+            response = super().get(url, params=params, headers=headers)
+            payload = response.json()
+            payload["settings"]["historical_replay.validation_mode"] = "rolling"
+            payload["settings"]["historical_replay.rolling_window"] = 20
+            payload["content_sha256"] = hashlib.sha256(
+                json.dumps(
+                    payload["settings"],
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                ).encode()
+            ).hexdigest()
+            return _Response(payload)
+
+    fake = InvalidClient()
+    monkeypatch.setattr(client_module.httpx, "Client", lambda **_kwargs: fake)
+    client_module._TOKEN_CACHE.update({"token": None, "cache_key": None, "expires_at": 0.0})
+
+    with pytest.raises(UpstreamError, match="failed validation"):
+        resolve_historical_replay_settings(
+            settings=_settings(),
+            instrument="EUR/USD",
+            timeframe="H1",
+        )
+
+
+def test_settings_disabled_does_not_call_remote_services(monkeypatch: pytest.MonkeyPatch) -> None:
+    def unexpected_client(**_kwargs: Any) -> None:
+        raise AssertionError("remote services must not be called when settings are disabled")
+
+    monkeypatch.setattr(client_module.httpx, "Client", unexpected_client)
+    assert resolve_historical_replay_settings(
+        settings=Settings(environment="testing"),
+        instrument="EUR/USD",
+        timeframe="H1",
+    ) is None
+
+
+def test_settings_enabled_requires_required_flag() -> None:
+    with pytest.raises(ValueError, match="requires GFX_SETTINGS_REQUIRED=true"):
+        _settings(gfx_settings_required=False)
