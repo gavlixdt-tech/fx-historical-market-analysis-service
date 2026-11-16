@@ -83,22 +83,22 @@ async def run_historical_replay(
             random_seed=payload.random_seed,
         )
         settings_source = (
-            "request_fallback_settings_unavailable"
-            if settings.gfx_settings_enabled
-            else "request"
+            "request_fallback_settings_unavailable" if settings.gfx_settings_enabled else "request"
         )
-    effective_payload = payload.model_copy(update={
-        "lookback": operational_parameters.lookback,
-        "min_train_samples": operational_parameters.min_train_samples,
-        "validation_mode": operational_parameters.validation_mode,
-        "rolling_window": (
-            operational_parameters.rolling_window
-            if operational_parameters.validation_mode == "rolling"
-            else None
-        ),
-        "embargo_periods": operational_parameters.embargo_periods,
-        "random_seed": operational_parameters.random_seed,
-    })
+    effective_payload = payload.model_copy(
+        update={
+            "lookback": operational_parameters.lookback,
+            "min_train_samples": operational_parameters.min_train_samples,
+            "validation_mode": operational_parameters.validation_mode,
+            "rolling_window": (
+                operational_parameters.rolling_window
+                if operational_parameters.validation_mode == "rolling"
+                else None
+            ),
+            "embargo_periods": operational_parameters.embargo_periods,
+            "random_seed": operational_parameters.random_seed,
+        }
+    )
     try:
         result = await run_in_threadpool(execute_replay, effective_payload)
     except ValueError as exc:

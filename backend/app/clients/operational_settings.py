@@ -1,4 +1,5 @@
 """Read and verify versioned GFX Admin Console replay settings."""
+
 from __future__ import annotations
 
 import hashlib
@@ -81,8 +82,13 @@ def _workload_token(
 ) -> str:
     now = time.monotonic()
     cache_key = hashlib.sha256(
-        (security_url + "|" + client_id + "|" +
-         hashlib.sha256(client_secret.encode("utf-8")).hexdigest()).encode("utf-8")
+        (
+            security_url
+            + "|"
+            + client_id
+            + "|"
+            + hashlib.sha256(client_secret.encode("utf-8")).hexdigest()
+        ).encode("utf-8")
     ).hexdigest()
     with _TOKEN_LOCK:
         cached = _TOKEN_CACHE.get("token")
@@ -121,11 +127,13 @@ def _workload_token(
                 "Service 64 returned an invalid workload-token response.",
                 details={"dependency": "fx-security-access-service"},
             )
-        _TOKEN_CACHE.update({
-            "token": token,
-            "cache_key": cache_key,
-            "expires_at": time.monotonic() + max(1, expires - 30),
-        })
+        _TOKEN_CACHE.update(
+            {
+                "token": token,
+                "cache_key": cache_key,
+                "expires_at": time.monotonic() + max(1, expires - 30),
+            }
+        )
         return token
 
 
@@ -137,9 +145,7 @@ def _invalidate_workload_token(token: str) -> None:
             _TOKEN_CACHE.update({"token": None, "cache_key": None, "expires_at": 0.0})
 
 
-def _acknowledge_pending_settings(
-    client: httpx.Client, admin_url: str, token: str
-) -> list[str]:
+def _acknowledge_pending_settings(client: httpx.Client, admin_url: str, token: str) -> list[str]:
     """Validate and acknowledge pending candidates; return rejected version IDs."""
     try:
         response = client.get(
@@ -173,44 +179,79 @@ def _acknowledge_pending_settings(
     rejected_version_ids: list[str] = []
     for candidate in items:
         if not isinstance(candidate, dict):
-            raise UpstreamError("Admin Console returned a malformed pending settings candidate.", details={"dependency": "fx-admin-console"})
+            raise UpstreamError(
+                "Admin Console returned a malformed pending settings candidate.",
+                details={"dependency": "fx-admin-console"},
+            )
         version_id = candidate.get("id")
         digest = candidate.get("content_sha256")
         snapshot = candidate.get("settings")
-        if not isinstance(version_id, str) or not version_id or not isinstance(digest, str) or len(digest) != 64 or not isinstance(snapshot, dict):
-            raise UpstreamError("Admin Console pending settings candidate is missing integrity metadata.", details={"dependency": "fx-admin-console"})
+        if (
+            not isinstance(version_id, str)
+            or not version_id
+            or not isinstance(digest, str)
+            or len(digest) != 64
+            or not isinstance(snapshot, dict)
+        ):
+            raise UpstreamError(
+                "Admin Console pending settings candidate is missing integrity metadata.",
+                details={"dependency": "fx-admin-console"},
+            )
         try:
             actual_digest = _canonical_digest(snapshot)
         except (TypeError, ValueError) as exc:
-            raise UpstreamError("Admin Console pending settings candidate is not canonical JSON.", details={"dependency": "fx-admin-console"}) from exc
+            raise UpstreamError(
+                "Admin Console pending settings candidate is not canonical JSON.",
+                details={"dependency": "fx-admin-console"},
+            ) from exc
         if not hmac.compare_digest(actual_digest, digest):
-            raise UpstreamError("Admin Console pending settings candidate digest mismatch.", details={"dependency": "fx-admin-console", "error_type": "settings_digest_mismatch"})
+            raise UpstreamError(
+                "Admin Console pending settings candidate digest mismatch.",
+                details={
+                    "dependency": "fx-admin-console",
+                    "error_type": "settings_digest_mismatch",
+                },
+            )
 
         missing = set(required_keys) - set(snapshot)
         if missing:
             status = "REJECTED"
-            detail = "Required historical replay controls are missing: " + ", ".join(sorted(missing))
+            detail = "Required historical replay controls are missing: " + ", ".join(
+                sorted(missing)
+            )
         else:
             values = {target: snapshot[source] for source, target in required_keys.items()}
             try:
                 ReplayOperationalParameters.model_validate(values)
             except ValueError:
                 status = "REJECTED"
-                detail = "Historical replay controls failed Service 2 bounds or cross-field validation."
+                detail = (
+                    "Historical replay controls failed Service 2 bounds or cross-field validation."
+                )
             else:
                 status = "READY"
-                detail = "Service 2 validated the candidate digest and all historical replay controls."
+                detail = (
+                    "Service 2 validated the candidate digest and all historical replay controls."
+                )
         try:
             ack = client.post(
                 admin_url + "/api/v1/settings/consumer/acknowledgements",
                 headers={"Authorization": "Bearer " + token},
-                json={"version_id": version_id, "content_sha256": digest, "status": status, "detail": detail},
+                json={
+                    "version_id": version_id,
+                    "content_sha256": digest,
+                    "status": status,
+                    "detail": detail,
+                },
             )
             if ack.status_code in {401, 403}:
                 _invalidate_workload_token(token)
             ack.raise_for_status()
         except (httpx.HTTPError, ValueError) as exc:
-            raise UpstreamError("Service 2 could not acknowledge a pending Admin Console settings version.", details={"dependency": "fx-admin-console", "version_id": version_id}) from exc
+            raise UpstreamError(
+                "Service 2 could not acknowledge a pending Admin Console settings version.",
+                details={"dependency": "fx-admin-console", "version_id": version_id},
+            ) from exc
         if status == "REJECTED":
             rejected_version_ids.append(version_id)
     return rejected_version_ids

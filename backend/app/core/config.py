@@ -289,7 +289,9 @@ class Settings(BaseSettings):
             or parsed.query
             or parsed.fragment
         ):
-            raise ValueError("settings service URLs must not contain credentials, path, query or fragment")
+            raise ValueError(
+                "settings service URLs must not contain credentials, path, query or fragment"
+            )
         try:
             _ = parsed.port
         except ValueError as exc:
@@ -306,7 +308,9 @@ class Settings(BaseSettings):
         try:
             keys = json.loads(value)
         except (TypeError, json.JSONDecodeError) as exc:
-            raise ValueError("upstream historical attestation public keys must be valid JSON") from exc
+            raise ValueError(
+                "upstream historical attestation public keys must be valid JSON"
+            ) from exc
         if (
             not isinstance(keys, dict)
             or len(keys) > 16
@@ -394,12 +398,14 @@ class Settings(BaseSettings):
                 "enabled operator settings must never silently fall back to request parameters"
             )
         if self.gfx_settings_enabled:
-            if not all((
-                self.gfx_settings_service_url,
-                self.fx_security_service_url,
-                self.gfx_settings_client_id,
-                self.gfx_settings_client_secret,
-            )):
+            if not all(
+                (
+                    self.gfx_settings_service_url,
+                    self.fx_security_service_url,
+                    self.gfx_settings_client_id,
+                    self.gfx_settings_client_secret,
+                )
+            ):
                 raise ValueError(
                     "central replay settings require GFX_SETTINGS_SERVICE_URL, "
                     "FX_SECURITY_SERVICE_URL, GFX_SETTINGS_CLIENT_ID and GFX_SETTINGS_CLIENT_SECRET"

@@ -23,25 +23,29 @@ def _fixture():
     )
     public_encoded = base64.b64encode(public_bytes).decode("ascii")
     retrieved_at = "2026-11-16T10:00:00Z"
-    raw_candles = [{
-        "close_time": "2026-11-15T00:00:00Z",
-        "open": "1.1000",
-        "high": "1.1100",
-        "low": "1.0900",
-        "close": "1.1050",
-        "volume": None,
-        "source": "twelve-data",
-        "volume_kind": None,
-        "price_basis": "vendor_defined",
-    }]
-    projected = [{
-        "timestamp": "2026-11-15T00:00:00Z",
-        "open": "1.1000",
-        "high": "1.1100",
-        "low": "1.0900",
-        "close": "1.1050",
-        "volume": None,
-    }]
+    raw_candles = [
+        {
+            "close_time": "2026-11-15T00:00:00Z",
+            "open": "1.1000",
+            "high": "1.1100",
+            "low": "1.0900",
+            "close": "1.1050",
+            "volume": None,
+            "source": "twelve-data",
+            "volume_kind": None,
+            "price_basis": "vendor_defined",
+        }
+    ]
+    projected = [
+        {
+            "timestamp": "2026-11-15T00:00:00Z",
+            "open": "1.1000",
+            "high": "1.1100",
+            "low": "1.0900",
+            "close": "1.1050",
+            "volume": None,
+        }
+    ]
     digest = hashlib.sha256(
         canonical_json({"instrument": "EUR/USD", "timeframe": "1D", "candles": projected})
     ).hexdigest()
@@ -166,7 +170,6 @@ def test_modified_price_basis_is_rejected() -> None:
             validation_summary=attestation["source_metadata"]["validation_summary"],
             limitations=attestation["source_metadata"]["limitations"],
         )
-
 
 
 def test_invalid_ed25519_signature_is_rejected() -> None:

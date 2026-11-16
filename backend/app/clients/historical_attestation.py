@@ -4,6 +4,7 @@ The public-key trust bundle is provisioned out of band. A verified signature
 authenticates the configured Service 1 signer and exact response projection;
 it does not prove that the upstream vendor digitally signed the market prices.
 """
+
 from __future__ import annotations
 
 import base64
@@ -19,9 +20,7 @@ from backend.app.core.config import Settings
 from backend.app.core.errors import UpstreamError
 
 
-def _sorted_nonempty_strings(
-    records: list[dict[str, Any]], field: str
-) -> list[str]:
+def _sorted_nonempty_strings(records: list[dict[str, Any]], field: str) -> list[str]:
     """Return a deterministic set of non-empty string values from records."""
     values: set[str] = set()
     for record in records:
@@ -66,14 +65,29 @@ def verify_historical_dataset_attestation(
         if required:
             raise UpstreamError(
                 "Service 1 did not provide the required historical dataset attestation.",
-                details={"dependency": "fx-market-data-service", "error_type": "attestation_missing"},
+                details={
+                    "dependency": "fx-market-data-service",
+                    "error_type": "attestation_missing",
+                },
             )
         return "missing"
 
     expected_attestation_fields = {
-        "version", "purpose", "algorithm", "provider_id", "source_id", "key_id",
-        "issued_at", "observed_at", "instrument", "timeframe", "dataset_sha256",
-        "quality", "volume_semantics", "source_metadata", "signature",
+        "version",
+        "purpose",
+        "algorithm",
+        "provider_id",
+        "source_id",
+        "key_id",
+        "issued_at",
+        "observed_at",
+        "instrument",
+        "timeframe",
+        "dataset_sha256",
+        "quality",
+        "volume_semantics",
+        "source_metadata",
+        "signature",
     }
     if (
         set(attestation) != expected_attestation_fields
@@ -85,7 +99,10 @@ def verify_historical_dataset_attestation(
     ):
         raise UpstreamError(
             "Service 1 historical dataset attestation identity or purpose is invalid.",
-            details={"dependency": "fx-market-data-service", "error_type": "attestation_identity_invalid"},
+            details={
+                "dependency": "fx-market-data-service",
+                "error_type": "attestation_identity_invalid",
+            },
         )
 
     timeframe_map = {
@@ -103,13 +120,24 @@ def verify_historical_dataset_attestation(
     source_metadata = attestation.get("source_metadata")
     quality = attestation.get("quality")
     expected_source_fields = {
-        "provider_id", "service1_timeframe", "indicator_timeframe", "price_basis",
-        "retrieved_at", "coverage", "validation_summary", "candle_sources",
-        "volume_kinds", "limitations",
+        "provider_id",
+        "service1_timeframe",
+        "indicator_timeframe",
+        "price_basis",
+        "retrieved_at",
+        "coverage",
+        "validation_summary",
+        "candle_sources",
+        "volume_kinds",
+        "limitations",
     }
     expected_quality_fields = {
-        "is_final", "valid", "coverage_complete", "rejected_count",
-        "duplicate_count", "candle_count",
+        "is_final",
+        "valid",
+        "coverage_complete",
+        "rejected_count",
+        "duplicate_count",
+        "candle_count",
     }
     if (
         signed_timeframe != timeframe_map.get(timeframe)
@@ -122,7 +150,8 @@ def verify_historical_dataset_attestation(
         or source_metadata.get("provider_id") != provider_id
         or source_metadata.get("price_basis") != effective_price_basis
         or canonical_json(source_metadata.get("coverage")) != canonical_json(coverage)
-        or canonical_json(source_metadata.get("validation_summary")) != canonical_json(validation_summary)
+        or canonical_json(source_metadata.get("validation_summary"))
+        != canonical_json(validation_summary)
         or canonical_json(source_metadata.get("limitations")) != canonical_json(limitations)
         or source_metadata.get("retrieved_at") != retrieved_at
         or attestation.get("observed_at") != retrieved_at
@@ -139,7 +168,10 @@ def verify_historical_dataset_attestation(
     ):
         raise UpstreamError(
             "Service 1 historical dataset attestation quality or vintage metadata is inconsistent.",
-            details={"dependency": "fx-market-data-service", "error_type": "attestation_metadata_mismatch"},
+            details={
+                "dependency": "fx-market-data-service",
+                "error_type": "attestation_metadata_mismatch",
+            },
         )
 
     volume_kinds = _sorted_nonempty_strings(candles, "volume_kind")
@@ -155,7 +187,10 @@ def verify_historical_dataset_attestation(
     if volume_semantics != expected_volume_semantics:
         raise UpstreamError(
             "Service 1 historical attestation volume semantics do not match the candle dataset.",
-            details={"dependency": "fx-market-data-service", "error_type": "attestation_volume_semantics_invalid"},
+            details={
+                "dependency": "fx-market-data-service",
+                "error_type": "attestation_volume_semantics_invalid",
+            },
         )
 
     expected_sources = _sorted_nonempty_strings(candles, "source")
@@ -166,7 +201,10 @@ def verify_historical_dataset_attestation(
     ):
         raise UpstreamError(
             "Service 1 historical dataset source metadata does not match the returned candles.",
-            details={"dependency": "fx-market-data-service", "error_type": "attestation_source_mismatch"},
+            details={
+                "dependency": "fx-market-data-service",
+                "error_type": "attestation_source_mismatch",
+            },
         )
 
     projected: list[dict[str, Any]] = []
@@ -175,16 +213,21 @@ def verify_historical_dataset_attestation(
         if not isinstance(close_time, str):
             raise UpstreamError(
                 "Attested historical candle is missing close_time.",
-                details={"dependency": "fx-market-data-service", "error_type": "attestation_candle_invalid"},
+                details={
+                    "dependency": "fx-market-data-service",
+                    "error_type": "attestation_candle_invalid",
+                },
             )
-        projected.append({
-            "timestamp": close_time.replace("+00:00", "Z"),
-            "open": _encoded_price(raw.get("open")),
-            "high": _encoded_price(raw.get("high")),
-            "low": _encoded_price(raw.get("low")),
-            "close": _encoded_price(raw.get("close")),
-            "volume": _encoded_price(raw.get("volume")),
-        })
+        projected.append(
+            {
+                "timestamp": close_time.replace("+00:00", "Z"),
+                "open": _encoded_price(raw.get("open")),
+                "high": _encoded_price(raw.get("high")),
+                "low": _encoded_price(raw.get("low")),
+                "close": _encoded_price(raw.get("close")),
+                "volume": _encoded_price(raw.get("volume")),
+            }
+        )
 
     dataset_payload = {
         "instrument": instrument,
@@ -195,12 +238,18 @@ def verify_historical_dataset_attestation(
     if attestation.get("dataset_sha256") != digest:
         raise UpstreamError(
             "Service 1 historical dataset digest does not match the returned candles.",
-            details={"dependency": "fx-market-data-service", "error_type": "attestation_digest_mismatch"},
+            details={
+                "dependency": "fx-market-data-service",
+                "error_type": "attestation_digest_mismatch",
+            },
         )
     if attestation.get("source_id") != f"historical:{provider_id}:{digest[:24]}":
         raise UpstreamError(
             "Service 1 historical dataset source ID is inconsistent.",
-            details={"dependency": "fx-market-data-service", "error_type": "attestation_source_id_invalid"},
+            details={
+                "dependency": "fx-market-data-service",
+                "error_type": "attestation_source_id_invalid",
+            },
         )
 
     try:
@@ -208,7 +257,10 @@ def verify_historical_dataset_attestation(
     except (TypeError, json.JSONDecodeError) as exc:
         raise UpstreamError(
             "Trusted Service 1 historical attestation key bundle is invalid.",
-            details={"dependency": "fx-market-data-service", "error_type": "attestation_trust_bundle_invalid"},
+            details={
+                "dependency": "fx-market-data-service",
+                "error_type": "attestation_trust_bundle_invalid",
+            },
         ) from exc
     key_id = attestation.get("key_id")
     encoded_key = keys.get(key_id) if isinstance(keys, dict) and isinstance(key_id, str) else None
@@ -216,7 +268,10 @@ def verify_historical_dataset_attestation(
         if required:
             raise UpstreamError(
                 "No trusted Service 1 historical attestation key is configured for this key ID.",
-                details={"dependency": "fx-market-data-service", "error_type": "attestation_key_untrusted"},
+                details={
+                    "dependency": "fx-market-data-service",
+                    "error_type": "attestation_key_untrusted",
+                },
             )
         return "unverified_key_missing"
 
@@ -224,20 +279,27 @@ def verify_historical_dataset_attestation(
     if not isinstance(signature_value, str) or not signature_value.startswith("ed25519="):
         raise UpstreamError(
             "Service 1 historical dataset signature is malformed.",
-            details={"dependency": "fx-market-data-service", "error_type": "attestation_signature_malformed"},
+            details={
+                "dependency": "fx-market-data-service",
+                "error_type": "attestation_signature_malformed",
+            },
         )
     try:
         public_key_bytes = base64.b64decode(encoded_key, validate=True)
-        signature = base64.b64decode(signature_value[len("ed25519="):], validate=True)
+        signature = base64.b64decode(signature_value[len("ed25519=") :], validate=True)
         public_key = Ed25519PublicKey.from_public_bytes(public_key_bytes)
     except (ValueError, TypeError, binascii.Error) as exc:
         raise UpstreamError(
             "Trusted Service 1 key or historical signature encoding is invalid.",
-            details={"dependency": "fx-market-data-service", "error_type": "attestation_encoding_invalid"},
+            details={
+                "dependency": "fx-market-data-service",
+                "error_type": "attestation_encoding_invalid",
+            },
         ) from exc
 
     signed_payload = {
-        key: value for key, value in attestation.items()
+        key: value
+        for key, value in attestation.items()
         if key not in {"signature", "_dataset_candles"}
     }
     try:
@@ -245,6 +307,9 @@ def verify_historical_dataset_attestation(
     except InvalidSignature as exc:
         raise UpstreamError(
             "Service 1 historical dataset Ed25519 signature verification failed.",
-            details={"dependency": "fx-market-data-service", "error_type": "attestation_signature_invalid"},
+            details={
+                "dependency": "fx-market-data-service",
+                "error_type": "attestation_signature_invalid",
+            },
         ) from exc
     return "verified"

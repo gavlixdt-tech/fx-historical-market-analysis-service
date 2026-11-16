@@ -109,7 +109,9 @@ class _FakeClient:
         )
 
 
-def test_resolves_digest_verified_instrument_timeframe_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_resolves_digest_verified_instrument_timeframe_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     fake = _FakeClient()
     monkeypatch.setattr(client_module.httpx, "Client", lambda **_kwargs: fake)
     client_module._TOKEN_CACHE.update({"token": None, "cache_key": None, "expires_at": 0.0})
@@ -143,7 +145,9 @@ def test_enabled_settings_fail_closed_when_admin_console_is_unavailable(
     monkeypatch.setattr(client_module.httpx, "Client", lambda **_kwargs: fake)
     client_module._TOKEN_CACHE.update({"token": None, "cache_key": None, "expires_at": 0.0})
 
-    with pytest.raises(UpstreamError, match="Enabled Admin Console replay settings are unavailable"):
+    with pytest.raises(
+        UpstreamError, match="Enabled Admin Console replay settings are unavailable"
+    ):
         resolve_historical_replay_settings(
             settings=_settings(),
             instrument="EUR/USD",
@@ -219,17 +223,19 @@ def test_settings_disabled_does_not_call_remote_services(monkeypatch: pytest.Mon
         raise AssertionError("remote services must not be called when settings are disabled")
 
     monkeypatch.setattr(client_module.httpx, "Client", unexpected_client)
-    assert resolve_historical_replay_settings(
-        settings=Settings(environment="testing"),
-        instrument="EUR/USD",
-        timeframe="H1",
-    ) is None
+    assert (
+        resolve_historical_replay_settings(
+            settings=Settings(environment="testing"),
+            instrument="EUR/USD",
+            timeframe="H1",
+        )
+        is None
+    )
 
 
 def test_settings_enabled_requires_required_flag() -> None:
     with pytest.raises(ValueError, match="requires GFX_SETTINGS_REQUIRED=true"):
         _settings(gfx_settings_required=False)
-
 
 
 def test_pending_candidate_is_digest_checked_and_acknowledged_ready(
@@ -269,11 +275,15 @@ def test_pending_candidate_is_digest_checked_and_acknowledged_ready(
 def test_pending_candidate_with_bad_digest_blocks_settings_resolution(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    fake = _FakeClient(pending_items=[{
-        "id": "candidate-version-123",
-        "content_sha256": "0" * 64,
-        "settings": _snapshot(),
-    }])
+    fake = _FakeClient(
+        pending_items=[
+            {
+                "id": "candidate-version-123",
+                "content_sha256": "0" * 64,
+                "settings": _snapshot(),
+            }
+        ]
+    )
     monkeypatch.setattr(client_module.httpx, "Client", lambda **_kwargs: fake)
     client_module._TOKEN_CACHE.update({"token": None, "cache_key": None, "expires_at": 0.0})
 
@@ -285,13 +295,14 @@ def test_pending_candidate_with_bad_digest_blocks_settings_resolution(
         )
 
 
-
 def test_rejected_workload_token_is_invalidated_without_clearing_a_replacement() -> None:
-    client_module._TOKEN_CACHE.update({
-        "token": "replacement-token",
-        "cache_key": "replacement-key",
-        "expires_at": 9999999999.0,
-    })
+    client_module._TOKEN_CACHE.update(
+        {
+            "token": "replacement-token",
+            "cache_key": "replacement-key",
+            "expires_at": 9999999999.0,
+        }
+    )
 
     client_module._invalidate_workload_token("revoked-old-token")
 
@@ -308,7 +319,6 @@ def test_rejected_workload_token_is_invalidated_without_clearing_a_replacement()
         "cache_key": None,
         "expires_at": 0.0,
     }
-
 
 
 def test_invalid_pending_candidate_is_rejected_and_active_settings_remain_usable(
@@ -346,7 +356,8 @@ def test_invalid_pending_candidate_is_rejected_and_active_settings_remain_usable
     assert resolved.parameters.validation_mode == "expanding"
     assert resolved.rejected_candidate_version_ids == ["invalid-candidate-version-123"]
     acknowledgement = next(
-        payload for url, payload in fake.posts
+        payload
+        for url, payload in fake.posts
         if url.endswith("/settings/consumer/acknowledgements")
     )
     assert acknowledgement["status"] == "REJECTED"

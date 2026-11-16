@@ -176,7 +176,6 @@ def test_trusted_hosts_are_parsed() -> None:
     assert settings.trusted_host_list == ["localhost", "testserver", "127.0.0.1"]
 
 
-
 def test_production_requires_historical_attestation_trust_bundle() -> None:
     with pytest.raises(PydanticValidationError, match="historical replay requires"):
         Settings(
@@ -195,7 +194,6 @@ def test_historical_attestation_public_keys_must_be_raw_ed25519_keys() -> None:
             + base64.b64encode(b"short").decode("ascii")
             + '"}'
         )
-
 
 
 def test_central_replay_settings_require_all_service_credentials() -> None:

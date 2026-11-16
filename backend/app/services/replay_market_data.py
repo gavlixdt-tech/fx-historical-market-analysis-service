@@ -86,9 +86,7 @@ async def run_market_data_replay(
         or data.price_basis.value != payload.price_basis
     ):
         raise ValidationError("Market-data response identity does not match the replay request.")
-    retrieved_at_attestation = (
-        data.retrieved_at.astimezone(UTC).isoformat().replace("+00:00", "Z")
-    )
+    retrieved_at_attestation = data.retrieved_at.astimezone(UTC).isoformat().replace("+00:00", "Z")
     attestation_status = verify_historical_dataset_attestation(
         settings=settings,
         attestation=data.provenance,
@@ -201,9 +199,7 @@ async def run_market_data_replay(
             random_seed=payload.random_seed,
         )
         settings_source = (
-            "request_fallback_settings_unavailable"
-            if settings.gfx_settings_enabled
-            else "request"
+            "request_fallback_settings_unavailable" if settings.gfx_settings_enabled else "request"
         )
 
     replay_request = HistoricalReplayRequest(
@@ -303,9 +299,7 @@ async def run_market_data_replay(
         "availability_provenance": "availability_assumed",
         "historical_attestation_status": attestation_status,
         "historical_attestation_key_id": (
-            data.provenance.get("key_id")
-            if isinstance(data.provenance, dict)
-            else None
+            data.provenance.get("key_id") if isinstance(data.provenance, dict) else None
         ),
         "availability_assumption": (
             "available_at is candle close time plus the configured delay; "
