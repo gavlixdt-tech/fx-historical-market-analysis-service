@@ -17,7 +17,7 @@ class HistoricalReplayMarketDataRequest(BaseModel):
 
     instrument: str = Field(min_length=3, max_length=20)
     timeframe: str
-    price_basis: Literal["bid", "ask", "midpoint"]
+    price_basis: Literal["bid", "ask", "midpoint", "vendor_defined"]
     provider_id: str = Field(min_length=1, max_length=100)
     source_dataset_id: str = Field(min_length=1, max_length=200)
     start: datetime
