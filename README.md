@@ -8,9 +8,11 @@ patterns, market regimes, temporal relationships, and other evidence-supported
 findings.
 
 > **Status:** Historical analysis, calendar seasonality, forecasting research, and historical replay
-> are implemented for research/simulation. Provider selection is explicit and
-> retrieved source-quality evidence is retained, but source entitlement and
-> historical availability are not independently verified. Durable research
+> are implemented for research/simulation. Provider selection is explicit and retrieved source-quality evidence is retained.
+> Service 1 historical dataset Ed25519 attestations are now verified against an
+> out-of-band public-key trust bundle when configured. This authenticates the
+> configured Service 1 signer, not the vendor's truth or a vendor signature;
+> original historical publication availability remains assumed. Durable research
 > artifacts and production workload identity are not integrated. See the
 > [current integration audit](docs/integration/service2-ecosystem-integration-audit.md)
 > and [acceptance report](docs/acceptance/service2-integration-acceptance-report.md).
@@ -48,6 +50,50 @@ For Railway deployments in the same private network, configure
 production validator permits plain HTTP only for an explicit-port
 `*.railway.internal` origin; public production upstream URLs must use HTTPS.
 Do not route private service credentials through browser configuration.
+
+### Historical dataset signature verification
+
+Service 2 now preserves and verifies the optional
+`provenance` envelope returned by Service 1's historical-candle endpoint.
+Verification uses the shared `indicator-candle-dataset/v1` contract and
+Ed25519 public keys provisioned out of band. It checks the exact candle
+projection, dataset SHA-256, source ID, provider/instrument/timeframe identity,
+price basis, retrieval vintage, source metadata, coverage and quality fields
+before a provider-sourced replay can use the dataset.
+
+A successful verification means **the configured Service 1 signing key
+attested to this exact normalized dataset**. It does not mean Twelve Data (or
+another upstream vendor) digitally signed the prices, prove that the vendor
+data is truthful, or establish the first time historical values were publicly
+available. Service 2 therefore continues to label historical availability as
+`availability_assumed`, derives it from candle close plus the explicit
+publication-lag setting, and marks the replay `forecast_eligible=false`.
+This is a source-integrity improvement, not a profitability or forecast-skill
+claim.
+
+Configure these variables in the Service 2 backend's Railway Variables:
+
+| Variable | Purpose / where to obtain it | Requirement |
+|---|---|---|
+| `UPSTREAM_HISTORICAL_ATTESTATION_PUBLIC_KEYS_JSON` | JSON map from Service 1 signing key ID to base64 raw 32-byte Ed25519 public key. Obtain the public key by running `python scripts/export_historical_attestation_public_key.py` in a trusted Service 1 administrative environment where `MARKET_DATA_CANDLE_ATTESTATION_PRIVATE_KEY_PEM_B64` is available. Verify the printed SHA-256 fingerprint out of band. | Required for production replay; public trust material |
+| `UPSTREAM_HISTORICAL_ATTESTATION_REQUIRED` | Set `true` in production. Missing attestations and unknown signing keys then fail closed. | Required true in production |
+
+Example JSON shape (replace both placeholders with the actual key ID and
+public key; this is not a usable credential):
+
+```json
+{"<service1-key-id>":"<base64-raw-ed25519-public-key>"}
+```
+
+Never copy Service 1's private signing key into Service 2, a browser variable,
+or a repository. Keep the trusted public key bundle and its fingerprint in
+deployment configuration and update it through a reviewed key-rotation
+procedure. The root `.env.example` contains placeholders only.
+
+In non-production, missing attestations may be reported as
+`service1_attestation_missing` when the requirement flag is false. A present
+but malformed, mismatched or incorrectly signed attestation is always rejected;
+it is never silently downgraded to unverified data.
 
 ### Historical session-context integration
 
