@@ -121,6 +121,37 @@ class Settings(BaseSettings):
         description="Reject historical replay unless the Service 1 dataset signature verifies",
     )
 
+    # ---- GFX Admin Console operational settings ----
+    gfx_settings_enabled: bool = Field(
+        default=False,
+        description="Apply versioned Admin Console replay parameters when enabled",
+    )
+    gfx_settings_required: bool = Field(
+        default=False,
+        description="Fail closed when central replay settings cannot be verified",
+    )
+    gfx_settings_service_url: str | None = Field(
+        default=None,
+        description="Fixed Admin Console backend origin; server-side only",
+    )
+    fx_security_service_url: str | None = Field(
+        default=None,
+        description="Fixed Service 64 backend origin for workload-token issuance",
+    )
+    gfx_settings_client_id: str | None = Field(
+        default=None,
+        min_length=16,
+        max_length=64,
+        description="Dedicated Service 2 Service 64 workload identity client ID",
+    )
+    gfx_settings_client_secret: str | None = Field(
+        default=None,
+        min_length=32,
+        max_length=256,
+        repr=False,
+        description="Dedicated Service 2 Service 64 workload secret",
+    )
+
     # ---- Upstream integration: fx-feature-engineering-service ----
     upstream_feature_engineering_base_url: str | None = Field(
         default=None,
@@ -243,6 +274,28 @@ class Settings(BaseSettings):
             raise ValueError("service_mode must be 'research-simulation' for this scaffold phase")
         return value
 
+    @field_validator("gfx_settings_service_url", "fx_security_service_url")
+    @classmethod
+    def _validate_settings_service_origins(cls, value: str | None) -> str | None:
+        if value is None or value == "":
+            return None
+        parsed = urlsplit(value.strip())
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc or not parsed.hostname:
+            raise ValueError("settings service URLs must be fixed http(s) origins")
+        if (
+            parsed.username
+            or parsed.password
+            or parsed.path not in {"", "/"}
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError("settings service URLs must not contain credentials, path, query or fragment")
+        try:
+            _ = parsed.port
+        except ValueError as exc:
+            raise ValueError("settings service URL contains an invalid port") from exc
+        return urlunsplit((parsed.scheme, parsed.netloc, "", "", ""))
+
     @field_validator("upstream_historical_attestation_public_keys_json")
     @classmethod
     def _validate_historical_attestation_public_keys(cls, value: str) -> str:
@@ -333,6 +386,35 @@ class Settings(BaseSettings):
             raise ValueError(
                 "ENABLE_LIVE_TRADING must be false - this service is research/simulation only"
             )
+        if self.gfx_settings_required and not self.gfx_settings_enabled:
+            raise ValueError("GFX_SETTINGS_REQUIRED=true requires GFX_SETTINGS_ENABLED=true")
+        if self.gfx_settings_enabled:
+            if not all((
+                self.gfx_settings_service_url,
+                self.fx_security_service_url,
+                self.gfx_settings_client_id,
+                self.gfx_settings_client_secret,
+            )):
+                raise ValueError(
+                    "central replay settings require GFX_SETTINGS_SERVICE_URL, "
+                    "FX_SECURITY_SERVICE_URL, GFX_SETTINGS_CLIENT_ID and GFX_SETTINGS_CLIENT_SECRET"
+                )
+            if self.is_production:
+                for name, raw_url in (
+                    ("GFX_SETTINGS_SERVICE_URL", self.gfx_settings_service_url),
+                    ("FX_SECURITY_SERVICE_URL", self.fx_security_service_url),
+                ):
+                    parsed = urlsplit(raw_url or "")
+                    private_railway_http = (
+                        parsed.scheme == "http"
+                        and parsed.hostname is not None
+                        and parsed.hostname.endswith(".railway.internal")
+                        and parsed.port is not None
+                    )
+                    if parsed.scheme != "https" and not private_railway_http:
+                        raise ValueError(
+                            f"{name} must use HTTPS or an explicit-port Railway private-network origin in production"
+                        )
         if (
             self.upstream_feature_engineering_auth_token
             and not self.upstream_feature_engineering_base_url
