@@ -166,3 +166,18 @@ def test_modified_price_basis_is_rejected() -> None:
             validation_summary=attestation["source_metadata"]["validation_summary"],
             limitations=attestation["source_metadata"]["limitations"],
         )
+
+
+
+def test_invalid_ed25519_signature_is_rejected() -> None:
+    settings, attestation, candles, retrieved_at = _fixture()
+    attestation["signature"] = "ed25519=" + base64.b64encode(b"x" * 64).decode("ascii")
+    with pytest.raises(UpstreamError, match="signature verification failed"):
+        _verify(settings, attestation, candles, retrieved_at)
+
+
+def test_unrecognized_attestation_field_is_rejected() -> None:
+    settings, attestation, candles, retrieved_at = _fixture()
+    attestation["unreviewed_claim"] = True
+    with pytest.raises(UpstreamError, match="identity or purpose is invalid"):
+        _verify(settings, attestation, candles, retrieved_at)
