@@ -102,6 +102,14 @@ class _FakeClient:
         return _Response(
             {
                 "active_version_id": "version-123",
+                "active_scope_versions": [
+                    {
+                        "scope": "instrument_timeframe",
+                        "scope_id": "EURUSD|1h",
+                        "version_id": "version-123",
+                        "content_sha256": "d" * 64,
+                    }
+                ],
                 "content_sha256": digest,
                 "settings": snapshot,
             },
@@ -125,6 +133,8 @@ def test_resolves_digest_verified_instrument_timeframe_settings(
     assert resolved is not None
     assert resolved.scope_id == "EURUSD|1h"
     assert resolved.active_version_id == "version-123"
+    assert resolved.active_scope_versions[0].scope == "instrument_timeframe"
+    assert resolved.active_scope_versions[0].scope_id == "EURUSD|1h"
     assert resolved.parameters.lookback == 20
     assert resolved.parameters.embargo_periods == 1
     assert fake.posts[0][0] == "https://security.example/api/v1/service-tokens/issue"
