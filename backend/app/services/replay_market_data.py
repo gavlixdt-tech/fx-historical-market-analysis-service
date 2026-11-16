@@ -238,7 +238,18 @@ async def run_market_data_replay(
             resolved_settings.content_sha256 if resolved_settings is not None else None
         ),
         "parameters": operational_parameters.model_dump(mode="json"),
+        "rejected_candidate_version_ids": (
+            resolved_settings.rejected_candidate_version_ids
+            if resolved_settings is not None
+            else []
+        ),
     }
+    if resolved_settings is not None and resolved_settings.rejected_candidate_version_ids:
+        result["warnings"].append(
+            "One or more pending Admin Console settings versions were rejected by Service 2 "
+            "validation and cannot be activated until corrected: "
+            + ", ".join(resolved_settings.rejected_candidate_version_ids)
+        )
     if settings_source == "request_fallback_settings_unavailable":
         result["warnings"].append(
             "Central Admin Console replay settings were unavailable; explicit request parameters were used."
