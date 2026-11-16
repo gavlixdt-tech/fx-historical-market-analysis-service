@@ -13,7 +13,9 @@ findings.
 > out-of-band public-key trust bundle when configured. This authenticates the
 > configured Service 1 signer, not the vendor's truth or a vendor signature;
 > original historical publication availability remains assumed. Durable research
-> artifacts and production workload identity are not integrated. See the
+> artifacts are not yet persisted. The Service 2-to-Service 64 workload identity
+> and Admin Console settings consumer client are implemented but require deployment
+> registration, secrets, and runtime acceptance. See the
 > [current integration audit](docs/integration/service2-ecosystem-integration-audit.md)
 > and [acceptance report](docs/acceptance/service2-integration-acceptance-report.md).
 > No live prediction, signal, trading, or production model serving is provided.
@@ -95,6 +97,94 @@ In non-production, missing attestations may be reported as
 but malformed, mismatched or incorrectly signed attestation is always rejected;
 it is never silently downgraded to unverified data.
 
+### Central Admin Console settings integration (Service 2 → Service 64 → Admin Console)
+
+Service 2 can now resolve the approved effective replay settings for each
+instrument/timeframe scope. It obtains a short-lived workload token from
+Service 64, calls the Admin Console's authenticated
+`GET /api/v1/settings/consumer/active` endpoint, verifies the returned
+canonical SHA-256 snapshot digest, validates all six replay controls, and
+records the active settings version, scope and digest in replay reproducibility
+metadata. The Admin Console resolves global, instrument, timeframe and
+instrument-timeframe layers using its existing versioned/approved settings
+control plane.
+
+**Fail-closed behavior:** when `GFX_SETTINGS_ENABLED=true`, the
+`GFX_SETTINGS_REQUIRED=true` flag is mandatory. Authentication failures,
+missing consumer registration, unavailable services, invalid settings,
+unsupported scopes, and digest mismatches block the replay. Service 2 never
+silently falls back to caller-supplied tuning parameters after central settings
+have been enabled. With the integration disabled, the existing request-level
+research controls remain available.
+
+**Settings available in the Admin Console** (bounded and cross-validated):
+
+| Setting key | Default | Allowed range / choices | Effect |
+|---|---:|---|---|
+| `historical_replay.lookback` | 20 | 2–200 bars | Feature lookback for replay origins |
+| `historical_replay.min_train_samples` | 30 | 10–1,000 observations | Minimum training sample count |
+| `historical_replay.validation_mode` | expanding | expanding / rolling | Chronological training-window policy |
+| `historical_replay.rolling_window` | 250 | 10–1,500 observations | Rolling window; must be at least min_train_samples |
+| `historical_replay.embargo_periods` | 1 | 0–500 bars | Additional temporal separation between train and test |
+| `historical_replay.random_seed` | 42 | 0–2,147,483,647 | Reproducibility for stochastic model families |
+
+These settings affect research replay only. They do not change the target,
+prediction horizon, source data, or model-family allowlist, and they do not
+authorize live signals or trading. Settings changes should be versioned,
+reviewed, approved and activated in the Admin Console; do not edit values
+directly in the Service 2 environment.
+
+#### One-time deployment setup
+
+1. **Create a dedicated Service 2 workload identity in Service 64.** Use a
+   Server Admin account to create a service identity with:
+   - Service number: `2`
+   - Name: `fx-historical-market-analysis-service`
+   - Scope: `gfx:settings:read` only
+   Save the returned `client_id` and `client_secret` immediately; the secret
+   is displayed once. Do not reuse a human JWT, API key, or another service's
+   credentials. The Service 64 API endpoint is
+   `POST /api/v1/service-identities`; it requires Server Admin authorization.
+
+2. **Register Service 2 as a consumer in the Admin Console.** In the Admin
+   Console's consumer management interface, register the exact Service 64
+   identity ID, service number `2`, and name
+   `fx-historical-market-analysis-service`. Subscribe it to
+   `instrument_timeframe` scope and mark it required/enabled. The Admin
+   Console verifies the identity against Service 64 before registration.
+   Do not create a second identity for the same service number.
+
+3. **Configure the Service 2 backend Railway Variables.** These are backend
+   variables only; never put them in Vercel `VITE_*` variables or browser
+   code.
+
+| Variable | Value / where to get it | Secret? |
+|---|---|---|
+| `GFX_SETTINGS_ENABLED` | `true` after steps 1–2 are complete | No |
+| `GFX_SETTINGS_REQUIRED` | `true`; required whenever the integration is enabled | No |
+| `GFX_SETTINGS_SERVICE_URL` | Admin Console backend origin. Prefer `http://<admin-console-railway-service>.railway.internal:<port>`; obtain the exact Railway private domain and listening port from that service's Railway Networking/Variables settings. Public fallback must be HTTPS. | No |
+| `FX_SECURITY_SERVICE_URL` | Service 64 backend origin, preferably its Railway private domain and explicit port; public fallback must be HTTPS. Obtain it from the Service 64 Railway service settings. | No |
+| `GFX_SETTINGS_CLIENT_ID` | Client ID returned by Service 64 when creating the Service 2 workload identity | Sensitive identifier |
+| `GFX_SETTINGS_CLIENT_SECRET` | One-time secret returned by Service 64; rotate through Service 64 if lost | **Yes** |
+
+4. Deploy Service 2 and verify that it can reach Service 64 and the Admin
+   Console over the configured private network. Then activate a settings
+   version in the Admin Console and run a provider-sourced historical replay.
+   Confirm the response's `reproducibility.operational_settings.source` is
+   `admin_console`, the expected scope/version/digest are present, and
+   changing a scoped value changes the replay's effective parameters.
+   A missing or invalid dependency must return a dependency error, not fall
+   back to request settings.
+
+**Current implementation boundary:** the client, workload-token exchange,
+scope resolution, digest validation, bounded parameter model, fail-closed
+configuration and unit tests are committed. The live identity creation,
+Admin Console consumer registration, Railway URL/secret provisioning and
+runtime test require access to the actual deployment and authorized admin
+credentials. This repository edit does not claim those external steps have
+already happened. Run the Service 2 unit suite and deployment acceptance
+workflow before treating the connection as accepted.
+
 ### Historical session-context integration
 
 For point-in-time historical session features, configure
@@ -127,9 +217,9 @@ features and returns a warning.
 - **Provider-sourced replay** — optional replay route reads complete historical
   candles from a configured real provider through Service 1, requires an explicit
   publication-lag assumption, and records the source/coverage/availability policy
-  in the replay fingerprint report. Provider identity is checked, but production
-  use is blocked pending approved Service 64 identity and the Service 1 auth
-  contract. It is not a continuous live feed.
+  in the replay fingerprint report. Provider identity is checked and the optional Service 1 dataset attestation
+  is verified; production use still requires configured Service 1 credentials,
+  the trusted attestation key, and deployment acceptance. It is not a continuous live feed.
 - **Provider selection** — historical retrieval requires an explicit configured
   provider with historical-candle capability; real providers are connection-tested.
   No default test provider or synthetic fallback is used.
