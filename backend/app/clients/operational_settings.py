@@ -219,10 +219,20 @@ def resolve_historical_replay_settings(
             details={"dependency": "fx-admin-console", "error_type": "settings_scope_invalid"},
         )
     scope_id = f"{canonical_instrument}|{normalized_timeframe}"
-    assert settings.gfx_settings_service_url is not None
-    assert settings.fx_security_service_url is not None
-    assert settings.gfx_settings_client_id is not None
-    assert settings.gfx_settings_client_secret is not None
+    if (
+        settings.gfx_settings_service_url is None
+        or settings.fx_security_service_url is None
+        or settings.gfx_settings_client_id is None
+        or settings.gfx_settings_client_secret is None
+    ):
+        raise UpstreamError(
+            "Central replay settings configuration is incomplete.",
+            details={"dependency": "fx-admin-console"},
+        )
+    admin_url = settings.gfx_settings_service_url
+    security_url = settings.fx_security_service_url
+    client_id = settings.gfx_settings_client_id
+    client_secret = settings.gfx_settings_client_secret
 
     try:
         with httpx.Client(
@@ -232,17 +242,17 @@ def resolve_historical_replay_settings(
         ) as client:
             token = _workload_token(
                 client,
-                settings.fx_security_service_url,
-                settings.gfx_settings_client_id,
-                settings.gfx_settings_client_secret,
+                security_url,
+                client_id,
+                client_secret,
             )
             _acknowledge_pending_settings(
                 client,
-                settings.gfx_settings_service_url,
+                admin_url,
                 token,
             )
             response = client.get(
-                f"{settings.gfx_settings_service_url}/api/v1/settings/consumer/active",
+                f"{admin_url}/api/v1/settings/consumer/active",
                 params={"scope": "instrument_timeframe", "scope_id": scope_id},
                 headers={"Authorization": f"Bearer {token}"},
             )
