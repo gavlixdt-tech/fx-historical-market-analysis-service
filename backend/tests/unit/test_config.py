@@ -9,8 +9,8 @@ from pydantic import ValidationError as PydanticValidationError
 
 from backend.app.core.config import Settings
 
-TRUSTED_HISTORICAL_KEY = base64.b64encode(b\"k\" * 32).decode(\"ascii\")
-TRUSTED_HISTORICAL_KEYS_JSON = '{\"service1-key\":\"' + TRUSTED_HISTORICAL_KEY + '\"}'
+TRUSTED_HISTORICAL_KEY = base64.b64encode(b"k" * 32).decode("ascii")
+TRUSTED_HISTORICAL_KEYS_JSON = '{"service1-key":"' + TRUSTED_HISTORICAL_KEY + '"}'
 
 
 def test_defaults_are_safe_for_development() -> None:
