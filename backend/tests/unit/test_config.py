@@ -236,6 +236,8 @@ def test_production_central_replay_settings_require_secure_origins() -> None:
 def test_production_central_replay_settings_allow_railway_private_origins() -> None:
     settings = Settings(
         environment="production",
+        require_auth=True,
+        api_key="x" * 32,
         gfx_settings_enabled=True,
         gfx_settings_service_url="http://fx-admin-console.railway.internal:8000",
         fx_security_service_url="http://fx-security-access-service.railway.internal:8000",
