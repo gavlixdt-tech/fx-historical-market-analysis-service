@@ -15,7 +15,7 @@ from backend.app.core.config import Settings
 from backend.app.core.errors import UpstreamError
 
 _SCOPE = "gfx:settings:read"
-_TOKEN_CACHE: dict[str, Any] = {"token": None, "client_id": None, "expires_at": 0.0}
+_TOKEN_CACHE: dict[str, Any] = {"token": None, "cache_key": None, "expires_at": 0.0}
 _TOKEN_LOCK = threading.Lock()
 
 _TIMEFRAME_SCOPE = {
@@ -79,11 +79,15 @@ def _workload_token(
     client_secret: str,
 ) -> str:
     now = time.monotonic()
+    cache_key = hashlib.sha256(
+        (security_url + "|" + client_id + "|" +
+         hashlib.sha256(client_secret.encode("utf-8")).hexdigest()).encode("utf-8")
+    ).hexdigest()
     with _TOKEN_LOCK:
         cached = _TOKEN_CACHE.get("token")
         if (
             cached
-            and _TOKEN_CACHE.get("client_id") == client_id
+            and hmac.compare_digest(str(_TOKEN_CACHE.get("cache_key", "")), cache_key)
             and now < float(_TOKEN_CACHE.get("expires_at", 0))
         ):
             return str(cached)
@@ -118,7 +122,7 @@ def _workload_token(
             )
         _TOKEN_CACHE.update({
             "token": token,
-            "client_id": client_id,
+            "cache_key": cache_key,
             "expires_at": time.monotonic() + max(1, expires - 30),
         })
         return token
@@ -170,22 +174,19 @@ def resolve_historical_replay_settings(
                 with _TOKEN_LOCK:
                     _TOKEN_CACHE.update({
                         "token": None,
-                        "client_id": None,
+                        "cache_key": None,
                         "expires_at": 0.0,
                     })
             response.raise_for_status()
             payload = response.json()
     except UpstreamError:
-        if settings.gfx_settings_required:
-            raise
-        return None
+        # Enabled central settings are authoritative; never silently bypass them.
+        raise
     except (httpx.HTTPError, ValueError) as exc:
-        if settings.gfx_settings_required:
-            raise UpstreamError(
-                "Required Admin Console replay settings are unavailable.",
-                details={"dependency": "fx-admin-console"},
-            ) from exc
-        return None
+        raise UpstreamError(
+            "Enabled Admin Console replay settings are unavailable.",
+            details={"dependency": "fx-admin-console"},
+        ) from exc
 
     if not isinstance(payload, dict) or not isinstance(payload.get("settings"), dict):
         raise UpstreamError(
