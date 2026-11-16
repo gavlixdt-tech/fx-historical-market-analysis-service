@@ -197,7 +197,12 @@ async def test_market_data_replay_derives_and_reports_availability_assumption(
     assert replay_request.observations[0].timestamp == START + timedelta(days=1)
     assert replay_request.observations[0].available_at == START + timedelta(days=1, seconds=60)
     assert replay_request.observations[0].source_record_id.startswith("market-data:")
-    assert result["provenance_status"] == "provider_asserted_unverified"
+    assert result["provenance_status"] == "service1_attestation_missing"
+    assert result["source_authenticity"] == "not_independently_attested"
+    assert result["source_content_integrity"] == "not_independently_verified"
+    assert result["vendor_signature_verified"] is False
+    assert result["forecast_eligible"] is False
+    assert result["trading_authorization"] is False
     assert result["status"] == "completed_with_warnings"
     assert (
         result["reproducibility"]["data_source"]["availability_provenance"]
@@ -247,6 +252,10 @@ async def test_market_data_replay_blocks_unapproved_production_workload_identity
         upstream_market_data_base_url="https://market-data.example",
         upstream_api_key="u" * 32,
         upstream_replay_availability_delay_seconds=60,
+        upstream_historical_attestation_public_keys_json='{"service1-key":"'
+        + "aw==" * 16
+        + '"}',
+        upstream_historical_attestation_required=True,
     )
     with pytest.raises(DependencyUnavailableError, match="fx-security-access-service"):
         await run_market_data_replay(
