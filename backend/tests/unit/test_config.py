@@ -200,7 +200,7 @@ def test_historical_attestation_public_keys_must_be_raw_ed25519_keys() -> None:
 
 def test_central_replay_settings_require_all_service_credentials() -> None:
     with pytest.raises(PydanticValidationError, match="central replay settings require"):
-        Settings(gfx_settings_enabled=True)
+        Settings(gfx_settings_enabled=True, gfx_settings_required=True)
 
 
 def test_central_replay_settings_accept_valid_origins_and_workload_identity() -> None:
