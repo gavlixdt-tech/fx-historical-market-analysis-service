@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import base64
+
 import pytest
 from pydantic import ValidationError as PydanticValidationError
 
 from backend.app.core.config import Settings
+
+TRUSTED_HISTORICAL_KEY = base64.b64encode(b\"k\" * 32).decode(\"ascii\")
+TRUSTED_HISTORICAL_KEYS_JSON = '{\"service1-key\":\"' + TRUSTED_HISTORICAL_KEY + '\"}'
 
 
 def test_defaults_are_safe_for_development() -> None:
@@ -81,6 +86,8 @@ def test_production_accepts_authenticated_railway_private_http_upstream() -> Non
         api_key="x" * 32,
         upstream_market_data_base_url=("http://fx-market-data-service.railway.internal:8000"),
         upstream_api_key="market-data-service-key",
+        upstream_historical_attestation_public_keys_json=TRUSTED_HISTORICAL_KEYS_JSON,
+        upstream_historical_attestation_required=True,
     )
 
     assert settings.upstream_configured is True
@@ -115,6 +122,8 @@ def test_production_accepts_authenticated_upstream_configuration() -> None:
         api_key="x" * 32,
         upstream_market_data_base_url="https://market-data.internal",
         upstream_api_key="market-data-service-key",
+        upstream_historical_attestation_public_keys_json=TRUSTED_HISTORICAL_KEYS_JSON,
+        upstream_historical_attestation_required=True,
     )
     assert settings.upstream_configured is True
 
@@ -165,3 +174,24 @@ def test_market_data_replay_publication_lag_is_bounded() -> None:
 def test_trusted_hosts_are_parsed() -> None:
     settings = Settings(trusted_hosts="localhost, testserver ,127.0.0.1")
     assert settings.trusted_host_list == ["localhost", "testserver", "127.0.0.1"]
+
+
+
+def test_production_requires_historical_attestation_trust_bundle() -> None:
+    with pytest.raises(PydanticValidationError, match="historical replay requires"):
+        Settings(
+            environment="production",
+            require_auth=True,
+            api_key="x" * 32,
+            upstream_market_data_base_url="https://market-data.internal",
+            upstream_api_key="market-data-service-key",
+        )
+
+
+def test_historical_attestation_public_keys_must_be_raw_ed25519_keys() -> None:
+    with pytest.raises(PydanticValidationError, match="exactly 32 bytes"):
+        Settings(
+            upstream_historical_attestation_public_keys_json='{"service1-key":"'
+            + base64.b64encode(b"short").decode("ascii")
+            + '"}'
+        )
