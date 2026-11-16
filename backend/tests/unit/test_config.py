@@ -246,3 +246,28 @@ def test_production_central_replay_settings_allow_railway_private_origins() -> N
         gfx_settings_client_secret="s" * 48,
     )
     assert settings.gfx_settings_enabled is True
+
+
+
+def test_blank_optional_central_settings_credentials_are_allowed_when_disabled() -> None:
+    settings = Settings(
+        gfx_settings_enabled=False,
+        gfx_settings_required=False,
+        gfx_settings_client_id="",
+        gfx_settings_client_secret="",
+    )
+    assert settings.gfx_settings_enabled is False
+    assert settings.gfx_settings_client_id == ""
+    assert settings.gfx_settings_client_secret == ""
+
+
+def test_short_central_settings_credentials_are_rejected_when_enabled() -> None:
+    with pytest.raises(PydanticValidationError, match="GFX_SETTINGS_CLIENT_ID must contain"):
+        Settings(
+            gfx_settings_enabled=True,
+            gfx_settings_required=True,
+            gfx_settings_service_url="https://admin.example",
+            fx_security_service_url="https://security.example",
+            gfx_settings_client_id="short",
+            gfx_settings_client_secret="s" * 48,
+        )
