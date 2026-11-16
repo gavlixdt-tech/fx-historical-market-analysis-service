@@ -11,7 +11,7 @@ local fixture is not evidence that a dependency is operational.
 
 | Dependency | Direction / ownership | Current implementation | Classification | Remaining blocker |
 |---|---|---|---|---|
-| Service 1 `fx-market-data-service` | Service 2 reads historical candles; Service 1 owns providers and source quality | Typed read-only client, explicit provider inventory/selection, capability and configuration checks, provider connection test, bounded retrieval, source-quality metadata checks | PARTIALLY_IMPLEMENTED | Production authentication and approved Service 64 identity are unverified; real provider entitlement and live history were not verified in this assessment; historical first-available time is absent |
+| Service 1 `fx-market-data-service` | Service 2 reads historical candles; Service 1 owns providers and source quality | Typed read-only client, explicit provider inventory/selection, capability and configuration checks, provider connection test, bounded retrieval, source-quality metadata checks, preservation and Ed25519 verification of the `indicator-candle-dataset/v1` historical attestation against an out-of-band key bundle | PARTIALLY_IMPLEMENTED | Service 1 signer authenticity is verifiable when the trust bundle is provisioned; vendor-signed truth and original historical first-available time remain unavailable; production identity, entitlement and runtime verification remain outstanding |
 | Service 60 `fx-data-storage-service` | Service 2 writes research manifests/results; Service 60 owns canonical storage | No Service 2 client or artifact write/read path | BLOCKED | Verified envelope cannot attest the required producer/source lineage; no approved artifact contract or workload grant |
 | Service 61 `fx-feature-engineering-service` | Service 2 may request shared feature definitions | Service 2 retains its own point-in-time feature builder; no Service 61 call | PARTIALLY_IMPLEMENTED | Shared feature names/formulas and point-in-time cutoff/fit lineage are not contract-compatible and approved |
 | Service 63 `fx-decision-orchestrator-service` | Service 63 calls Service 2 for historical research only | Matching versioned route names exist; request/response were cross-checked against the current Service 63 client models | IMPLEMENTED_NOT_VERIFIED | No authenticated Service 63 → Service 2 runtime test; production workload authorization is unavailable; historical results remain non-decision evidence |
@@ -35,6 +35,7 @@ local fixture is not evidence that a dependency is operational.
   slash-delimited identifiers and supported timeframes.
 - Retrieval has explicit timeouts, retries, a concurrency bound, response-size
   limits, origin-only URL validation, and redirects disabled.
+- Provider-sourced historical replay verifies the Service 1 Ed25519 dataset attestation against an out-of-band key ID/public-key bundle when configured. Production replay with Service 1 configured requires the trust bundle and fails closed when the attestation is missing, unknown or invalid. The signature authenticates the configured Service 1 signer and exact normalized dataset, not the upstream vendor's signature or truth.
 - Provider replay records `availability_provenance=availability_assumed`.
   The derived `available_at` is close time plus a configured lag; it is not
   provider-verified availability.
