@@ -275,3 +275,12 @@ async def test_market_data_replay_rejects_incomplete_provider_coverage() -> None
             upstream=_FakeMarketDataClient(data=_upstream_data(complete=False)),
             request_id="request-1",
         )
+
+
+
+def test_replay_request_accepts_provider_defined_price_basis() -> None:
+    body = _request().model_dump(mode="json")
+    body["price_basis"] = "vendor_defined"
+    request = HistoricalReplayMarketDataRequest.model_validate(body)
+    assert request.price_basis == "vendor_defined"
+    assert PriceBasis.VENDOR_DEFINED.value == "vendor_defined"
