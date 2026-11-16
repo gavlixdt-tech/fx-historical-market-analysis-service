@@ -19,6 +19,18 @@ from backend.app.core.config import Settings
 from backend.app.core.errors import UpstreamError
 
 
+def _sorted_nonempty_strings(
+    records: list[dict[str, Any]], field: str
+) -> list[str]:
+    """Return a deterministic set of non-empty string values from records."""
+    values: set[str] = set()
+    for record in records:
+        value = record.get(field)
+        if isinstance(value, str) and value:
+            values.add(value)
+    return sorted(values)
+
+
 def canonical_json(value: Any) -> bytes:
     """Serialize the signed projection with Service 1's canonical JSON rules."""
     return json.dumps(
@@ -130,11 +142,7 @@ def verify_historical_dataset_attestation(
             details={"dependency": "fx-market-data-service", "error_type": "attestation_metadata_mismatch"},
         )
 
-    volume_kinds = sorted({
-        raw.get("volume_kind")
-        for raw in candles
-        if isinstance(raw.get("volume_kind"), str) and raw.get("volume_kind")
-    })
+    volume_kinds = _sorted_nonempty_strings(candles, "volume_kind")
     has_volume = any(raw.get("volume") is not None for raw in candles)
     expected_volume_semantics = (
         "not_supplied"
@@ -150,16 +158,8 @@ def verify_historical_dataset_attestation(
             details={"dependency": "fx-market-data-service", "error_type": "attestation_volume_semantics_invalid"},
         )
 
-    expected_sources = sorted({
-        raw.get("source")
-        for raw in candles
-        if isinstance(raw.get("source"), str) and raw.get("source")
-    })
-    expected_volume_kinds = sorted({
-        raw.get("volume_kind")
-        for raw in candles
-        if isinstance(raw.get("volume_kind"), str) and raw.get("volume_kind")
-    })
+    expected_sources = _sorted_nonempty_strings(candles, "source")
+    expected_volume_kinds = _sorted_nonempty_strings(candles, "volume_kind")
     if (
         source_metadata.get("candle_sources") != expected_sources
         or source_metadata.get("volume_kinds") != expected_volume_kinds
