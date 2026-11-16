@@ -209,6 +209,14 @@ class UpstreamHistoricalCandleData(BaseModel):
     pagination: UpstreamPaginationMetadata
     retrieved_at: datetime
     limitations: list[str] = Field(default_factory=list)
+    provenance: dict[str, Any] | None = Field(
+        default=None,
+        description="Purpose-separated Service 1 Ed25519 attestation over the exact historical candle dataset and source-quality metadata",
+    )
+    canonical_record_reference: str | None = Field(
+        default=None,
+        description="Service 60 canonical envelope ID after durable storage acknowledgement",
+    )
 
     @field_validator(
         "requested_start", "requested_end", "effective_start", "effective_end", "retrieved_at"
