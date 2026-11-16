@@ -51,6 +51,7 @@ class PriceBasis(StrEnum):
     BID = "bid"
     ASK = "ask"
     MIDPOINT = "midpoint"
+    VENDOR_DEFINED = "vendor_defined"
     UNKNOWN = "unknown"
 
 
