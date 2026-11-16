@@ -51,6 +51,17 @@ class ReplayOperationalParameters(BaseModel):
         return self
 
 
+class ActiveSettingsLayer(BaseModel):
+    """Immutable provenance for one active inherited settings layer."""
+
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+
+    scope: Literal["global", "instrument", "timeframe", "instrument_timeframe"]
+    scope_id: str = Field(min_length=1, max_length=128)
+    version_id: str = Field(min_length=1, max_length=128)
+    content_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class ResolvedReplaySettings(BaseModel):
     """Verified parameters plus immutable settings provenance."""
 
@@ -60,6 +71,7 @@ class ResolvedReplaySettings(BaseModel):
     scope_id: str
     content_sha256: str
     active_version_id: str | None = None
+    active_scope_versions: list[ActiveSettingsLayer] = Field(default_factory=list)
     rejected_candidate_version_ids: list[str] = Field(default_factory=list)
 
 
@@ -370,10 +382,53 @@ def resolve_historical_replay_settings(
             details={"dependency": "fx-admin-console", "error_type": "settings_validation_failed"},
         ) from exc
     active_version_id = payload.get("active_version_id")
+    raw_active_layers = payload.get("active_scope_versions")
+    if not isinstance(raw_active_layers, list) or len(raw_active_layers) > 4:
+        raise UpstreamError(
+            "Admin Console active settings response is missing bounded layer provenance.",
+            details={"dependency": "fx-admin-console", "error_type": "settings_layer_provenance_invalid"},
+        )
+    try:
+        active_layers = [
+            ActiveSettingsLayer.model_validate(item) for item in raw_active_layers
+        ]
+    except ValueError as exc:
+        raise UpstreamError(
+            "Admin Console active settings layer provenance failed validation.",
+            details={"dependency": "fx-admin-console", "error_type": "settings_layer_provenance_invalid"},
+        ) from exc
+    expected_layer_ids = {
+        "global": "global",
+        "instrument": canonical_instrument,
+        "timeframe": normalized_timeframe,
+        "instrument_timeframe": scope_id,
+    }
+    layer_order = list(expected_layer_ids)
+    previous_layer_index = -1
+    for layer in active_layers:
+        current_layer_index = layer_order.index(layer.scope)
+        if (
+            layer.scope_id != expected_layer_ids[layer.scope]
+            or current_layer_index <= previous_layer_index
+        ):
+            raise UpstreamError(
+                "Admin Console active settings layers do not match the requested scope.",
+                details={"dependency": "fx-admin-console", "error_type": "settings_layer_scope_mismatch"},
+            )
+        previous_layer_index = current_layer_index
+    if active_version_id is not None and not any(
+        layer.scope == "instrument_timeframe" and layer.version_id == active_version_id
+        for layer in active_layers
+    ):
+        raise UpstreamError(
+            "Admin Console active settings version does not match its layer provenance.",
+            details={"dependency": "fx-admin-console", "error_type": "settings_layer_version_mismatch"},
+        )
     return ResolvedReplaySettings(
         parameters=parameters,
         scope_id=scope_id,
         content_sha256=digest,
         active_version_id=active_version_id if isinstance(active_version_id, str) else None,
+        active_scope_versions=active_layers,
         rejected_candidate_version_ids=rejected_candidate_version_ids,
     )
