@@ -231,3 +231,25 @@ def test_quarantine_is_durable_and_counted(tmp_path) -> None:
     inbox = LifecycleEvidenceInbox(str(tmp_path / "lifecycle-inbox.sqlite3"))
     inbox.persist_rejected("delivery-1", "bad-event", {"id": "bad-event"}, "signature_invalid")
     assert inbox.status()["quarantined_deliveries"] == 1
+
+
+def test_point_in_time_inbox_context_excludes_events_until_available_at(tmp_path) -> None:
+    private_key = Ed25519PrivateKey.generate()
+    envelope, trust, source_trust = signed_envelope(private_key)
+    verified = verify_lifecycle_event(
+        envelope, public_keys_json=trust, source_public_keys_json=source_trust
+    )
+    inbox = LifecycleEvidenceInbox(str(tmp_path / "lifecycle-inbox.sqlite3"))
+    inbox.persist_verified("gfx.liquidity.lifecycle.v1", envelope, verified)
+    now = datetime.now(UTC)
+    contexts = inbox.point_in_time_contexts(
+        instrument="EURUSD",
+        timeframe="1m",
+        source_dataset_id=verified["source_dataset_id"],
+        price_basis="MID",
+        cutoffs=[now - timedelta(minutes=1), now + timedelta(minutes=1)],
+    )
+    assert contexts[0] is None
+    assert contexts[1] is not None
+    assert contexts[1]["liquidity_sweep_bearish"] == 1.0
+    assert contexts[1]["liquidity_displacement_confirmed"] == 1.0
