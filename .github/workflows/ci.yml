@@ -71,16 +71,8 @@ jobs:
           path: backend-lint.log
           if-no-files-found: ignore
 
-      - name: Lint (ruff format diagnostic)
-        run: ruff format --diff app tests > backend-format.log 2>&1 || { cat backend-format.log; exit 1; }
-
-      - name: Upload backend format diagnostics
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: backend-format-diagnostics
-          path: backend-format.log
-          if-no-files-found: ignore
+      - name: Lint (ruff format --check)
+        run: ruff format --check app tests
 
       - name: Type check (mypy)
         run: mypy app
