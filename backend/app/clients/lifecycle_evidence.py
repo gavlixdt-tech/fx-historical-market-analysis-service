@@ -1570,8 +1570,10 @@ class LifecycleEvidenceConsumer:
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
-        self.inbox = LifecycleEvidenceInbox(
-            settings.lifecycle_event_inbox_db_path,
+        inbox_type = PostgresLifecycleEvidenceInbox if settings.database_url else LifecycleEvidenceInbox
+        inbox_location = settings.database_url or settings.lifecycle_event_inbox_db_path
+        self.inbox = inbox_type(
+            inbox_location,
             public_keys_json=settings.lifecycle_event_public_keys_json,
             source_public_keys_json=settings.upstream_historical_attestation_public_keys_json,
             clock_skew_seconds=settings.lifecycle_event_clock_skew_seconds,
