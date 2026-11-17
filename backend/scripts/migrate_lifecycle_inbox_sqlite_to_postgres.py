@@ -75,6 +75,7 @@ def migrate(sqlite_path: Path, dsn: str) -> dict[str, int | str]:
     inbox = PostgresLifecycleEvidenceInbox(dsn)
     del inbox  # constructor applies the versioned PostgreSQL schema under an advisory lock
     snapshot_path, fingerprint = snapshot_sqlite(sqlite_path)
+    source: sqlite3.Connection | None = None
     try:
         source = sqlite3.connect(snapshot_path)
         source.row_factory = sqlite3.Row
@@ -104,7 +105,6 @@ def migrate(sqlite_path: Path, dsn: str) -> dict[str, int | str]:
                 (fingerprint,),
             ).fetchone()
             if already:
-                source.close()
                 return {"status": "already_imported", "source_fingerprint": fingerprint}
 
             for row in inbox_rows:
@@ -237,9 +237,10 @@ def migrate(sqlite_path: Path, dsn: str) -> dict[str, int | str]:
                 imported["inbox"], imported["source_verifications"],
                 imported["conflicts"], imported["quarantine"],
             ))
-        source.close()
         return {"status": "imported", "source_fingerprint": fingerprint, **imported}
     finally:
+        if source is not None:
+            source.close()
         Path(snapshot_path).unlink(missing_ok=True)
 
 
