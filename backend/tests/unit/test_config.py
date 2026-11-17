@@ -289,6 +289,7 @@ def test_lifecycle_event_consumer_accepts_complete_private_service_configuration
         lifecycle_event_bus_url="https://event-bus.internal",
         lifecycle_event_bus_consumer_secret="c" * 32,
         lifecycle_event_public_keys_json=TRUSTED_HISTORICAL_KEYS_JSON,
+        upstream_historical_attestation_public_keys_json=TRUSTED_HISTORICAL_KEYS_JSON,
     )
     assert settings.lifecycle_event_bus_topic == "gfx.liquidity.lifecycle.v1"
     assert settings.lifecycle_event_consumer_group == "gfx-service2-lifecycle-evidence"
