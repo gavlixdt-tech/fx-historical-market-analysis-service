@@ -893,7 +893,14 @@ class LifecycleEvidenceInbox:
             rows = connection.execute(
                 """
                 SELECT event_id,topic,envelope_json,payload_sha256,key_id,available_at,received_at,
-                       instrument,timeframe,signature_verified,source_verified,lifecycle_id,
+                       instrument,timeframe,signature_verified,
+                       CASE WHEN source_verified=1 OR EXISTS (
+                           SELECT 1 FROM lifecycle_evidence_source_verifications v
+                           WHERE v.event_id=lifecycle_evidence_inbox.event_id
+                             AND v.payload_sha256=lifecycle_evidence_inbox.payload_sha256
+                             AND v.source_dataset_id=lifecycle_evidence_inbox.source_dataset_id
+                       ) THEN 1 ELSE 0 END AS source_verified,
+                       lifecycle_id,
                        transition_sequence,transition_sha256,source_dataset_id,
                        available_at_epoch_us,received_at_epoch_us
                 FROM lifecycle_evidence_inbox
@@ -1004,7 +1011,14 @@ class LifecycleEvidenceInbox:
             rows = connection.execute(
                 """
                 SELECT event_id,topic,envelope_json,payload_sha256,key_id,available_at,received_at,
-                       instrument,timeframe,signature_verified,source_verified,lifecycle_id,
+                       instrument,timeframe,signature_verified,
+                       CASE WHEN source_verified=1 OR EXISTS (
+                           SELECT 1 FROM lifecycle_evidence_source_verifications v
+                           WHERE v.event_id=lifecycle_evidence_inbox.event_id
+                             AND v.payload_sha256=lifecycle_evidence_inbox.payload_sha256
+                             AND v.source_dataset_id=lifecycle_evidence_inbox.source_dataset_id
+                       ) THEN 1 ELSE 0 END AS source_verified,
+                       lifecycle_id,
                        transition_sequence,transition_sha256,source_dataset_id,
                        available_at_epoch_us,received_at_epoch_us
                 FROM lifecycle_evidence_inbox
@@ -1110,7 +1124,14 @@ class LifecycleEvidenceInbox:
             rows = connection.execute(
                 """
                 SELECT event_id,topic,envelope_json,payload_sha256,key_id,available_at,received_at,
-                       instrument,timeframe,signature_verified,source_verified,lifecycle_id,
+                       instrument,timeframe,signature_verified,
+                       CASE WHEN source_verified=1 OR EXISTS (
+                           SELECT 1 FROM lifecycle_evidence_source_verifications v
+                           WHERE v.event_id=lifecycle_evidence_inbox.event_id
+                             AND v.payload_sha256=lifecycle_evidence_inbox.payload_sha256
+                             AND v.source_dataset_id=lifecycle_evidence_inbox.source_dataset_id
+                       ) THEN 1 ELSE 0 END AS source_verified,
+                       lifecycle_id,
                        transition_sequence,transition_sha256,source_dataset_id,
                        available_at_epoch_us,received_at_epoch_us
                 FROM lifecycle_evidence_inbox
@@ -1596,7 +1617,14 @@ class PostgresLifecycleEvidenceInbox:
             return connection.execute(
                 """
                 SELECT event_id,topic,envelope_json,payload_sha256,key_id,available_at,received_at,
-                       instrument,timeframe,signature_verified,source_verified,lifecycle_id,
+                       instrument,timeframe,signature_verified,
+                       CASE WHEN source_verified=TRUE OR EXISTS (
+                           SELECT 1 FROM lifecycle_evidence_source_verifications v
+                           WHERE v.event_id=lifecycle_evidence_inbox.event_id
+                             AND v.payload_sha256=lifecycle_evidence_inbox.payload_sha256
+                             AND v.source_dataset_id=lifecycle_evidence_inbox.source_dataset_id
+                       ) THEN TRUE ELSE FALSE END AS source_verified,
+                       lifecycle_id,
                        transition_sequence,transition_sha256,source_dataset_id,
                        available_at_epoch_us,received_at_epoch_us
                 FROM lifecycle_evidence_inbox i
@@ -1796,7 +1824,14 @@ class PostgresLifecycleEvidenceInbox:
             rows = connection.execute(
                 """
                 SELECT event_id,topic,envelope_json,payload_sha256,key_id,available_at,received_at,
-                       instrument,timeframe,signature_verified,source_verified,lifecycle_id,
+                       instrument,timeframe,signature_verified,
+                       CASE WHEN source_verified=TRUE OR EXISTS (
+                           SELECT 1 FROM lifecycle_evidence_source_verifications v
+                           WHERE v.event_id=lifecycle_evidence_inbox.event_id
+                             AND v.payload_sha256=lifecycle_evidence_inbox.payload_sha256
+                             AND v.source_dataset_id=lifecycle_evidence_inbox.source_dataset_id
+                       ) THEN TRUE ELSE FALSE END AS source_verified,
+                       lifecycle_id,
                        transition_sequence,transition_sha256,source_dataset_id,
                        available_at_epoch_us,received_at_epoch_us
                 FROM lifecycle_evidence_inbox
