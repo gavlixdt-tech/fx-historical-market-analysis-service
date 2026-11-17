@@ -861,15 +861,26 @@ class LifecycleEvidenceInbox:
             rejected_row = connection.execute(
                 "SELECT COUNT(*) AS n FROM lifecycle_evidence_quarantine"
             ).fetchone()
+            history_row = connection.execute(
+                "SELECT COUNT(DISTINCT lifecycle_id) AS lifecycles,"
+                "COALESCE(MAX(transition_sequence),0) AS max_sequence "
+                "FROM lifecycle_evidence_inbox WHERE source_verified=1"
+            ).fetchone()
             accepted = int(accepted_row["n"]) if accepted_row else 0
             source_verified = int(source_row["n"]) if source_row else 0
             conflicts = int(conflict_row["n"]) if conflict_row else 0
             rejected = int(rejected_row["n"]) if rejected_row else 0
+            lifecycle_count = int(history_row["lifecycles"]) if history_row else 0
+            max_sequence = int(history_row["max_sequence"]) if history_row else 0
         return {
             "signature_verified_events": int(accepted),
             "source_attested_events": int(source_verified),
             "conflicts": int(conflicts),
             "quarantined_deliveries": int(rejected),
+            "unique_lifecycle_aggregates": lifecycle_count,
+            "highest_transition_sequence": max_sequence,
+            "persisted_signatures_reverified_on_replay": True,
+            "replay_fails_closed_on_integrity_error": True,
         }
 
 
@@ -1042,6 +1053,9 @@ class LifecycleEvidenceConsumer:
             "inbox": inbox_status,
             "forecast_eligible": False,
             "source_attested_events_available": source_attested,
+            "transition_chain_verification": "independent_ed25519_and_rfc8785_sha256",
+            "replay_evidence_manifests": "per_prediction_origin",
+            "persisted_record_reverification": "enabled",
             "reason": (
                 "Source-attested events are available; feature eligibility is determined per replay origin using exact dataset, instrument, timeframe, price basis and producer/inbox availability. This is not a vendor-origin signature."
                 if source_attested
