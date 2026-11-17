@@ -755,8 +755,8 @@ class LifecycleEvidenceInbox:
                     event_id,topic,envelope_json,payload_sha256,key_id,available_at,
                     instrument,timeframe,signature_verified,source_verified,received_at,
                     available_at_epoch_us,received_at_epoch_us,lifecycle_id,
-                    transition_sequence,transition_sha256
-                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    transition_sequence,transition_sha256,source_dataset_id
+                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
                 (
                     verified["event_id"],
@@ -775,8 +775,20 @@ class LifecycleEvidenceInbox:
                     verified["lifecycle_id"],
                     verified["transition_sequence"],
                     verified["transition_sha256"],
+                    verified["source_dataset_id"],
                 ),
             )
+            if verified["source_verified"]:
+                connection.execute(
+                    "INSERT OR IGNORE INTO lifecycle_evidence_source_verifications("
+                    "event_id,source_dataset_id,payload_sha256,verified_at) VALUES(?,?,?,?)",
+                    (
+                        verified["event_id"],
+                        verified["source_dataset_id"],
+                        verified["payload_sha256"],
+                        now,
+                    ),
+                )
             return "STORED"
 
     def persist_rejected(
@@ -829,7 +841,7 @@ class LifecycleEvidenceInbox:
                       AND v.payload_sha256=lifecycle_evidence_inbox.payload_sha256
                       AND v.source_dataset_id=lifecycle_evidence_inbox.source_dataset_id
                 )) AND instrument=? AND timeframe=?
-                  AND json_extract(envelope_json, '$.data.provenance.source_dataset_id')=?
+                  AND source_dataset_id=?
                   AND available_at_epoch_us<=?
                   AND received_at_epoch_us<=?
                 """,
