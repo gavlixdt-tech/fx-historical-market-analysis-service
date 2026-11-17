@@ -572,3 +572,28 @@ Verify after deployment with authenticated
 signature-verified events, source-attested events, conflicts and quarantined
 deliveries. At this stage, `source_attested_events` must remain zero because
 the upstream source attestation hand-off has not yet been implemented.
+
+
+## Point-in-time lifecycle replay timestamp correctness
+
+Lifecycle evidence is eligible at a prediction origin only when both the
+producer-signed data.temporal.available_at instant and the durable Service 2
+inbox received_at instant are no later than that origin. Source candle time,
+event observation/confirmation time, producer availability, and consumer
+receipt are distinct clocks; an earlier candle/event timestamp never
+backdates downstream availability.
+
+The inbox replay selector compares UTC instants with SQLite julianday(),
+not lexical ISO-8601 TEXT ordering. This is required because producer timestamps
+may use the RFC3339 Z suffix while SQLite receipt timestamps use +00:00; these
+can represent the same instant but compare differently as strings. Event
+records are ordered by parsed effective availability max(producer available_at,
+inbox received_at). Replay cutoffs must be timezone-aware, are evaluated
+chronologically, and results are returned in the caller's original cutoff
+order. Equal-time events use event ID as a stable tie-breaker.
+
+Regression coverage includes exact-instant equality across Z and +00:00
+representations, out-of-order replay cutoffs, and rejection of naive
+timestamps. Run pytest backend/tests/test_lifecycle_evidence.py from the
+repository root. This source change is not a substitute for the separate live
+Service 9 → Service 62 → Service 2 deployment acceptance test.
