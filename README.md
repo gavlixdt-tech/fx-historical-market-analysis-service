@@ -523,3 +523,58 @@ attestation, or deployed cross-service replay have been completed. Follow the
 deployment steps above and keep the production feature flags disabled until
 the external identity, trust key, provider credentials and live acceptance
 checks are complete.
+
+
+## Service 9 → Service 62 → Service 2 lifecycle evidence consumer
+
+Service 2 now includes an optional authenticated Service 62 consumer with an
+independent Ed25519 signature verifier and durable SQLite inbox. It verifies
+the event type, schema version, Service 9 producer identity, key ID, RFC 8785
+canonical payload digest, Ed25519 signature, instrument identity, provenance
+shape and monotonic event timestamps. It persists accepted events before
+acknowledging the Event Bus delivery. Invalid signatures are durably
+quarantined and acknowledged so one poison event cannot block the partition.
+A repeated event with the same ID and digest is deduplicated; the same ID with
+a different digest is retained in a conflict ledger.
+
+**Important source-trust boundary:** the current Service 9 analysis API
+accepts caller-supplied candles. Its signature proves Service 9 emitted the
+classification, not that the original vendor prices are authentic. The
+current consumer therefore records events as signature-verified but
+source-unverified, reports zero source-attested events, and keeps them
+out of forecast features. Do not interpret a successful consume/ack as
+forecast eligibility. A later contract version must carry independently
+verifiable Service 1 dataset/candle attestation before any event can be
+promoted to source-attested feature input.
+
+### Railway configuration
+
+Configure these variables in Railway → GFX project →
+`fx-historical-market-analysis-service` → backend Variables. Attach a
+persistent Railway Volume mounted at `/data` before enabling the consumer.
+
+| Variable | Purpose | Where to obtain it | Secret? |
+|---|---|---|---|
+| `LIFECYCLE_EVENT_BUS_ENABLED` | Enables the background consumer; keep false until Service 62 topic/grants and the trust bundle are configured. | Release gate | No |
+| `LIFECYCLE_EVENT_BUS_URL` | Fixed Service 62 backend origin, preferably same-project Railway private DNS with explicit port. | Railway → GFX project → `fx-event-bus-service` → Networking | No |
+| `LIFECYCLE_EVENT_TOPIC` | Exact topic, default `gfx.liquidity.lifecycle.v1`. | Ratified GFX contract and Service 62 topic configuration | No |
+| `LIFECYCLE_EVENT_CONSUMER_GROUP` | Stable Service 2 consumer group; default `gfx-service2-lifecycle-evidence`. | Service deployment identity | No |
+| `LIFECYCLE_EVENT_BUS_CONSUMER_SECRET` | Dedicated Service 2 consumer HMAC secret; must match Service 62 `HMAC_CONSUMER_SECRETS_JSON`. Generate with `openssl rand -hex 32`. | Generate in a trusted terminal; configure only in Service 2 and Service 62 backend Variables | **Secret** |
+| `LIFECYCLE_EVENT_PUBLIC_KEYS_JSON` | JSON map of Service 9 signing key IDs to base64 raw Ed25519 public keys. | Obtain from the approved Service 9 signing-key registry; never copy a private key | Public trust material |
+| `LIFECYCLE_EVENT_INBOX_DB_PATH` | Persistent SQLite inbox path, recommended `/data/lifecycle-inbox.sqlite3`. | Railway Volume mounted at `/data` | No |
+| `LIFECYCLE_EVENT_POLL_INTERVAL_SECONDS` | Poll interval, 0.25–60 seconds; default 2. | Operator tuning | No |
+| `LIFECYCLE_EVENT_BATCH_SIZE` | Maximum consumed messages per poll, 1–100; default 25. | Operator tuning | No |
+| `LIFECYCLE_EVENT_CLOCK_SKEW_SECONDS` | Maximum future availability tolerance, 0–600 seconds; default 60. | Infrastructure clock policy | No |
+
+In Service 62 Railway Variables, configure
+`HMAC_CONSUME_GRANTS_JSON` with the Service 2 subject
+`fx-historical-market-analysis-service` allowed to consume only
+`gfx.liquidity.lifecycle.v1`, and configure the matching generated secret
+under `HMAC_CONSUMER_SECRETS_JSON`. Do not reuse the global HMAC key or the
+Service 9 producer key.
+
+Verify after deployment with authenticated
+`GET /api/v1/forecasting/lifecycle-evidence/status`. The response separates
+signature-verified events, source-attested events, conflicts and quarantined
+deliveries. At this stage, `source_attested_events` must remain zero because
+the upstream source attestation hand-off has not yet been implemented.
