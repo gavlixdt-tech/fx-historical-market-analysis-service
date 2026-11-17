@@ -9,9 +9,6 @@ import hmac
 import json
 import logging
 import sqlite3
-
-import psycopg
-from psycopg.rows import dict_row
 import time
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -19,9 +16,11 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+import psycopg
 import rfc8785
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+from psycopg.rows import dict_row
 
 from backend.app.core.config import Settings
 
@@ -501,7 +500,7 @@ class LifecycleEvidenceInbox:
         connection.execute("PRAGMA synchronous=FULL")
         return connection
 
-    def _verify_persisted_row(self, row: sqlite3.Row) -> dict[str, Any]:
+    def _verify_persisted_row(self, row: Any) -> dict[str, Any]:
         """Reverify signed bytes and indexed metadata on every replay read."""
         try:
             envelope = json.loads(row["envelope_json"])
@@ -1075,7 +1074,7 @@ class LifecycleEvidenceInbox:
 
 
 
-class PostgresLifecycleEvidenceInbox(LifecycleEvidenceInbox):
+class PostgresLifecycleEvidenceInbox:
     """PostgreSQL inbox with transactionally serialized lifecycle histories."""
 
     def __init__(
@@ -1096,8 +1095,41 @@ class PostgresLifecycleEvidenceInbox(LifecycleEvidenceInbox):
         self.expected_topic = expected_topic
         self._initialize()
 
-    def _connect(self) -> psycopg.Connection:
+    def _connect(self) -> psycopg.Connection[dict[str, Any]]:
         return psycopg.connect(self.dsn, row_factory=dict_row, connect_timeout=10)
+
+    def _verify_persisted_row(self, row: dict[str, Any]) -> dict[str, Any]:
+        """Reverify signed bytes and all indexed metadata before replay use."""
+        try:
+            envelope = json.loads(row["envelope_json"])
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise LifecycleEvidenceError("persisted_envelope_corrupt") from exc
+        verified = verify_lifecycle_event(
+            envelope,
+            public_keys_json=self.public_keys_json,
+            source_public_keys_json=self.source_public_keys_json,
+            clock_skew_seconds=self.clock_skew_seconds,
+        )
+        if (
+            verified["event_id"] != row["event_id"]
+            or verified["key_id"] != row["key_id"]
+            or verified["available_at"] != row["available_at"]
+            or (self.expected_topic is not None and row["topic"] != self.expected_topic)
+            or not hmac.compare_digest(verified["payload_sha256"], row["payload_sha256"])
+            or verified["instrument"] != row["instrument"]
+            or verified["timeframe"] != row["timeframe"]
+            or verified["lifecycle_id"] != row["lifecycle_id"]
+            or verified["transition_sequence"] != row["transition_sequence"]
+            or verified["transition_sha256"] != row["transition_sha256"]
+            or _epoch_microseconds(_parse_utc(row["available_at"], "stored_available_at"))
+            != int(row["available_at_epoch_us"])
+            or _epoch_microseconds(_parse_utc(row["received_at"], "stored_received_at"))
+            != int(row["received_at_epoch_us"])
+            or not bool(row["signature_verified"])
+            or not bool(verified["source_verified"])
+        ):
+            raise LifecycleEvidenceError("persisted_evidence_integrity_mismatch")
+        return envelope
 
     def _initialize(self) -> None:
         with self._connect() as connection:
