@@ -486,12 +486,12 @@ This reference follows the current runtime settings and repository environment t
 | `OTEL_ENABLED` | Enable OpenTelemetry trace export. | Optional |
 | `OTEL_ENDPOINT` | OTLP HTTP endpoint. | Conditional |
 | `METRICS_ENABLED` | Expose Prometheus metrics. | Optional |
-| `DATABASE_URL` | Reserved/unused by current implementation; no database is provisioned. | Do not configure as active persistence |
+| `DATABASE_URL` | PostgreSQL connection URL for the lifecycle evidence inbox. Required when the lifecycle consumer is enabled in production; credentials are secret-bearing. Obtain from Railway PostgreSQL Variables. | Conditional secret-bearing URL |
 
 
 ## GFX Service 9 lifecycle evidence integration — deployment gate
 
-**Status: PROPOSED CONTRACT / CONSUMER IMPLEMENTED BUT DISABLED.** The shared [Liquidity Lifecycle Evidence v1 contract](https://github.com/gavlixdt-tech/fx-api-contracts/tree/main/schemas/liquidity-lifecycle-evidence/v1) is a technical proposal only. It is not an approved Service 9→Service 2 contract, and this repository does not yet automatically ingest authenticated Service 9 lifecycle evidence. The existing caller-supplied event-study endpoint remains research-only and explicitly reports `provenance_status=caller_asserted_unverified` and `forecast_eligible=false`.
+**Status: PROPOSED CONTRACT / CONSUMER IMPLEMENTED BUT DISABLED.** The shared [Liquidity Lifecycle Evidence v1 contract](https://github.com/gavlixdt-tech/fx-api-contracts/tree/main/schemas/liquidity-lifecycle-evidence/v1) is a technical proposal only and is not yet an approved production Service 9→Service 2 contract. This repository contains the authenticated Service 62 consumer, independent signature/source-attestation verification, durable inbox, conflict/quarantine ledger and point-in-time replay integration. It remains disabled until external approval, trust configuration and deployment acceptance. The existing caller-supplied event-study endpoint remains research-only and explicitly reports `provenance_status=caller_asserted_unverified` and `forecast_eligible=false`.
 
 Do not add a Service 9 URL, shared API key, caller-provided producer identity, or manually supplied `available_at` to production and treat it as trusted evidence. Before activation, implementation must include Service 9 authenticated workload identity, independently verifiable event signatures, key rotation/revocation, source lineage, immutable first-availability timestamps, instrument/timeframe/price-basis compatibility, durable deduplication, bounded replay, and leakage tests. A valid JSON Schema or successful HTTP request is not provenance verification.
 
@@ -516,10 +516,7 @@ on commit `6c7678202b8ff5f2ddb8cf1adaa77dd8a641624c`:
 - Backend/frontend container build and backend smoke test: passed.
 - Dependency and secret audit: passed.
 
-This verifies the Service 2 code and its isolated tests. It does **not** mean
-that Service 64 identity registration, Admin Console consumer registration,
-Railway environment variables, live market-provider entitlement, vendor
-attestation, or deployed cross-service replay have been completed. Follow the
+This verifies the earlier Service 2 commit and its isolated tests only. The PostgreSQL inbox migration committed after that run has not been covered by that CI result; it requires fresh lint, type checks, unit tests and PostgreSQL integration tests. It does **not** mean that Service 64 identity registration, Admin Console consumer registration, Railway environment variables, live market-provider entitlement, vendor attestation, or deployed cross-service replay have been completed. Follow the
 deployment steps above and keep the production feature flags disabled until
 the external identity, trust key, provider credentials and live acceptance
 checks are complete.
@@ -527,8 +524,10 @@ checks are complete.
 
 ## Service 9 → Service 62 → Service 2 lifecycle evidence consumer
 
-Service 2 now includes an optional authenticated Service 62 consumer with an
-independent Ed25519 signature verifier and durable SQLite inbox. It verifies
+Service 2 includes an optional authenticated Service 62 consumer with an
+independent Ed25519 signature verifier and durable inbox. When `DATABASE_URL`
+is set, the consumer selects the PostgreSQL inbox; SQLite remains a local and
+backward-compatible fallback. It verifies
 the event type, schema version, Service 9 producer identity, key ID, RFC 8785
 canonical payload digest, Ed25519 signature, instrument identity, provenance
 shape and monotonic event timestamps. It persists accepted events before
@@ -542,8 +541,9 @@ a different digest is retained in a conflict ledger.
 ### Railway configuration
 
 Configure these variables in Railway → GFX project →
-`fx-historical-market-analysis-service` → backend Variables. Attach a
-persistent Railway Volume mounted at `/data` before enabling the consumer.
+`fx-historical-market-analysis-service` → backend Variables. In production,
+provision PostgreSQL and set `DATABASE_URL` before enabling the consumer.
+SQLite fallback is restricted to one active process and must use persistent storage.
 
 For `/api/v1/historical-replay/run-from-market-data`, the request's `source_dataset_id` must equal the `source_id` in the verified Service 1 dataset attestation. The replay path rejects a caller-supplied dataset identifier that does not match the signed attestation. Lifecycle features are selected only for that exact dataset, canonical instrument, mapped timeframe and price basis.
 
@@ -555,7 +555,8 @@ For `/api/v1/historical-replay/run-from-market-data`, the request's `source_data
 | `LIFECYCLE_EVENT_CONSUMER_GROUP` | Stable Service 2 consumer group; default `gfx-service2-lifecycle-evidence`. | Service deployment identity | No |
 | `LIFECYCLE_EVENT_BUS_CONSUMER_SECRET` | Dedicated Service 2 consumer HMAC secret; must match Service 62 `HMAC_CONSUMER_SECRETS_JSON`. Generate with `openssl rand -hex 32`. | Generate in a trusted terminal; configure only in Service 2 and Service 62 backend Variables | **Secret** |
 | `LIFECYCLE_EVENT_PUBLIC_KEYS_JSON` | JSON map of Service 9 signing key IDs to base64 raw Ed25519 public keys. | Obtain from the approved Service 9 signing-key registry; never copy a private key | Public trust material |\n| `UPSTREAM_HISTORICAL_ATTESTATION_PUBLIC_KEYS_JSON` | Service 1 historical dataset signer trust bundle. The consumer verifies the embedded Service 1 dataset attestation independently using this existing trust bundle. | Obtain from Service 1 approved key export and configure in the same backend Variables used by historical attestation verification | Public trust material |
-| `LIFECYCLE_EVENT_INBOX_DB_PATH` | Persistent SQLite inbox path, recommended `/data/lifecycle-inbox.sqlite3`. | Railway Volume mounted at `/data` | No |
+| `DATABASE_URL` | PostgreSQL connection URL for the multi-replica inbox, conflict ledger, quarantine and point-in-time evidence store. | Railway → PostgreSQL service → Variables; reference its private `DATABASE_URL` in Service 2 backend Variables | **Secret-bearing URL** |
+| `LIFECYCLE_EVENT_INBOX_DB_PATH` | SQLite compatibility inbox path; used only when `DATABASE_URL` is unset. | Local development or persistent volume for single-process compatibility mode | No |
 | `LIFECYCLE_EVENT_POLL_INTERVAL_SECONDS` | Poll interval, 0.25–60 seconds; default 2. | Operator tuning | No |
 | `LIFECYCLE_EVENT_BATCH_SIZE` | Maximum consumed messages per poll, 1–100; default 25. | Operator tuning | No |
 | `LIFECYCLE_EVENT_CLOCK_SKEW_SECONDS` | Maximum future availability tolerance, 0–600 seconds; default 60. | Infrastructure clock policy | No |
@@ -570,8 +571,7 @@ Service 9 producer key.
 Verify after deployment with authenticated
 `GET /api/v1/forecasting/lifecycle-evidence/status`. The response separates
 signature-verified events, source-attested events, conflicts and quarantined
-deliveries. At this stage, `source_attested_events` must remain zero because
-the upstream source attestation hand-off has not yet been implemented.
+deliveries. `source_attested_events` increases only for events whose Service 9 signature and embedded Service 1 dataset attestation both verify against the configured out-of-band trust bundles. A zero count is expected when the consumer is disabled or no fully attested event has been accepted; never bypass either verifier to increase it.
 
 
 ## Point-in-time lifecycle replay timestamp correctness
@@ -692,13 +692,14 @@ canonical `SWEEP_CONFIRMED` transition maps to aggregate state
 transition IDs and hashes stable as the lifecycle advances.
 
 
-### SQLite deployment boundary
+### PostgreSQL and replica boundary
 
-The durable outbox/inbox currently uses SQLite WAL on a persistent Railway
-volume. Deploy **one active replica per service against its own volume**; do
-not attach one SQLite database file to multiple service replicas or mount the
-same volume concurrently across hosts. WAL is not a distributed database or a
-multi-host consensus mechanism. This deployment boundary is intentional and
-must be respected until the persistence adapter is migrated to a shared
-PostgreSQL deployment with transactional locking and tested failover. Do not
-increase replica count as a scaling shortcut.
+When `DATABASE_URL` is configured, Service 2 uses PostgreSQL with transaction-
+scoped advisory locks per lifecycle aggregate, unique lifecycle-sequence
+constraints, append-only evidence/conflict/quarantine tables, and indexed
+integer UTC epoch-microsecond cutoffs. Concurrent consumers serialize history
+fork checks for the same lifecycle while independent lifecycle aggregates can
+be ingested concurrently. The SQLite fallback remains single-active-process
+only. The full pipeline is not yet horizontally scalable until Service 9 and
+Service 62 are both configured against their PostgreSQL adapters, historical
+SQLite data is migrated safely, and end-to-end acceptance/recovery tests pass.
