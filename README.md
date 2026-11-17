@@ -504,16 +504,17 @@ The optional consumer code and exact deployment variables are documented in the 
 
 ## Current implementation and verification snapshot
 
-The last fully passing Service 2 pipeline was GitHub Actions run
-[44024527475](https://github.com/gavlixdt-tech/fx-historical-market-analysis-service/actions/runs/44024527475)
-on commit `03ccd599986ef8989670880c2af17d80a1990a52`:
+The latest fully passing Service 2 pipeline is GitHub Actions run
+[44166238550](https://github.com/gavlixdt-tech/fx-historical-market-analysis-service/actions/runs/44166238550)
+on commit `636daafb9eeffabde7461c2840cabf94e9e078e7`:
 
 - Ruff lint and strict format check: passed.
 - Mypy: passed.
-- Backend tests, including PostgreSQL integration and SQLite cutover: **245 passed, 2 skipped**.
+- Backend tests, including PostgreSQL integration and SQLite cutover: **247 passed, 2 skipped, 1 warning**.
 - Frontend type check, unit tests and production build: passed.
 - Backend and frontend container builds: passed.
-- Dependency and secret audit: passed.
+- Production npm dependency audit: passed; full audit passed under the documented temporary development-only picomatch advisory exception.
+- Python dependency and secret audit: passed.
 - PostgreSQL restart durability check: passed.
 
 A later CI run found a new high-severity upstream advisory,
