@@ -86,9 +86,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
     finally:
         SERVICE_UP.set(0)
-        consumer = getattr(app.state, "lifecycle_evidence_consumer", None)
-        if consumer is not None:
-            await consumer.stop()
+        active_consumer = getattr(app.state, "lifecycle_evidence_consumer", None)
+        if active_consumer is not None:
+            await active_consumer.stop()
         await app.state.upstream_client.aclose()
         logger.info("application_shutting_down")
         logger.info("application_shutdown_complete")
