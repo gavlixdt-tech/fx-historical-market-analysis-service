@@ -866,8 +866,60 @@ class LifecycleEvidenceInbox:
                     (conflict_event_id, conflict_digest, conflict_json, now),
                 )
 
+    def _promote_source_verifications(self) -> int:
+        """Promote immutable inbox rows when a previously unknown source key is trusted."""
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT event_id,envelope_json,payload_sha256,source_dataset_id
+                FROM lifecycle_evidence_inbox
+                WHERE source_verified=0 AND NOT EXISTS (
+                    SELECT 1 FROM lifecycle_evidence_source_verifications v
+                    WHERE v.event_id=lifecycle_evidence_inbox.event_id
+                      AND v.payload_sha256=lifecycle_evidence_inbox.payload_sha256
+                      AND v.source_dataset_id=lifecycle_evidence_inbox.source_dataset_id
+                )
+                """
+            ).fetchall()
+        promoted = 0
+        for row in rows:
+            try:
+                envelope = json.loads(row["envelope_json"])
+                verified = verify_lifecycle_event(
+                    envelope,
+                    public_keys_json=self.public_keys_json,
+                    source_public_keys_json=self.source_public_keys_json,
+                    clock_skew_seconds=self.clock_skew_seconds,
+                )
+            except (json.JSONDecodeError, LifecycleEvidenceError):
+                continue
+            if (
+                not verified["source_verified"]
+                or not hmac.compare_digest(verified["payload_sha256"], row["payload_sha256"])
+                or verified["source_dataset_id"] != row["source_dataset_id"]
+            ):
+                continue
+            with self._connect() as connection:
+                inserted = connection.execute(
+                    """
+                    INSERT INTO lifecycle_evidence_source_verifications(
+                        event_id,source_dataset_id,payload_sha256,verified_at
+                    ) VALUES(?,?,?,?)
+                    ON CONFLICT(event_id) DO NOTHING
+                    """,
+                    (
+                        row["event_id"],
+                        row["source_dataset_id"],
+                        row["payload_sha256"],
+                        datetime.now(UTC).isoformat(),
+                    ),
+                )
+                promoted += max(0, inserted.rowcount)
+        return promoted
+
     def point_in_time_contexts(
         self,
+        self._promote_source_verifications()
         *,
         instrument: str,
         timeframe: str,
@@ -994,6 +1046,7 @@ class LifecycleEvidenceInbox:
 
     def point_in_time_evidence(
         self,
+        self._promote_source_verifications()
         *,
         instrument: str,
         timeframe: str,
@@ -1120,6 +1173,7 @@ class LifecycleEvidenceInbox:
         ]
 
     def lifecycle_history(self, lifecycle_id: str) -> dict[str, Any] | None:
+        self._promote_source_verifications()
         """Reconstruct the signed transition chain for one lifecycle aggregate."""
         if not lifecycle_id or len(lifecycle_id) > 200:
             raise ValueError("lifecycle_id must contain 1 to 200 characters")
@@ -1613,9 +1667,57 @@ class PostgresLifecycleEvidenceInbox:
                     connection, conflict_event_id, conflict_digest, conflict_json, received_at
                 )
 
+    def _promote_source_verifications(self) -> int:
+        """Promote immutable inbox rows when a previously unknown source key is trusted."""
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT event_id,envelope_json,payload_sha256,source_dataset_id
+                FROM lifecycle_evidence_inbox
+                WHERE source_verified=FALSE AND NOT EXISTS (
+                    SELECT 1 FROM lifecycle_evidence_source_verifications v
+                    WHERE v.event_id=lifecycle_evidence_inbox.event_id
+                      AND v.payload_sha256=lifecycle_evidence_inbox.payload_sha256
+                      AND v.source_dataset_id=lifecycle_evidence_inbox.source_dataset_id
+                )
+                """
+            ).fetchall()
+        promoted = 0
+        for row in rows:
+            try:
+                envelope = json.loads(row["envelope_json"])
+                verified = verify_lifecycle_event(
+                    envelope,
+                    public_keys_json=self.public_keys_json,
+                    source_public_keys_json=self.source_public_keys_json,
+                    clock_skew_seconds=self.clock_skew_seconds,
+                )
+            except (json.JSONDecodeError, LifecycleEvidenceError):
+                continue
+            if (
+                not verified["source_verified"]
+                or not hmac.compare_digest(verified["payload_sha256"], row["payload_sha256"])
+                or verified["source_dataset_id"] != row["source_dataset_id"]
+            ):
+                continue
+            with self._connect() as connection:
+                inserted = connection.execute(
+                    """
+                    INSERT INTO lifecycle_evidence_source_verifications(
+                        event_id,source_dataset_id,payload_sha256,verified_at
+                    ) VALUES (%s,%s,%s,clock_timestamp())
+                    ON CONFLICT(event_id) DO NOTHING
+                    RETURNING event_id
+                    """,
+                    (row["event_id"], row["source_dataset_id"], row["payload_sha256"]),
+                ).fetchone()
+                promoted += int(inserted is not None)
+        return promoted
+
     def _eligible_rows(
         self, instrument: str, timeframe: str, source_dataset_id: str, max_us: int
     ) -> list[dict[str, Any]]:
+        self._promote_source_verifications()
         with self._connect() as connection:
             return connection.execute(
                 """
@@ -1821,6 +1923,7 @@ class PostgresLifecycleEvidenceInbox:
         ]
 
     def lifecycle_history(self, lifecycle_id: str) -> dict[str, Any] | None:
+        self._promote_source_verifications()
         if not lifecycle_id or len(lifecycle_id) > 200:
             raise ValueError("lifecycle_id must contain 1 to 200 characters")
         with self._connect() as connection:
