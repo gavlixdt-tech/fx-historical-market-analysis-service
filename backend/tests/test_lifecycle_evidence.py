@@ -851,13 +851,21 @@ def test_sqlite_inbox_cutover_preserves_evidence_conflicts_and_quarantine(tmp_pa
         source_public_keys_json=source_trust_a,
     )
     assert source.persist_verified("gfx.liquidity.lifecycle.v1", envelope_a, verified_a) == "STORED"
-    assert source.persist_verified("gfx.liquidity.lifecycle.v1", envelope_b, verified_b) == "CONFLICT"
-    source.persist_rejected("migration-delivery-1", verified_b["event_id"], envelope_b, "invalid_for_replay")
+    assert (
+        source.persist_verified("gfx.liquidity.lifecycle.v1", envelope_b, verified_b) == "CONFLICT"
+    )
+    source.persist_rejected(
+        "migration-delivery-1", verified_b["event_id"], envelope_b, "invalid_for_replay"
+    )
     source.persist_rejected(
         "migration-delivery-1", verified_b["event_id"], envelope_a, "conflicting_quarantine_payload"
     )
 
-    script = Path(__file__).resolve().parents[1] / "scripts" / "migrate_lifecycle_inbox_sqlite_to_postgres.py"
+    script = (
+        Path(__file__).resolve().parents[1]
+        / "scripts"
+        / "migrate_lifecycle_inbox_sqlite_to_postgres.py"
+    )
     migration_module = runpy.run_path(str(script))
     migrate = migration_module["migrate"]
     first = migrate(sqlite_path, POSTGRES_DSN)
