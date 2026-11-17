@@ -870,12 +870,8 @@ def test_sqlite_inbox_cutover_preserves_evidence_conflicts_and_quarantine(tmp_pa
     )
     schema_name = f"migration_test_{uuid.uuid4().hex}"
     with psycopg.connect(POSTGRES_DSN) as connection:
-        connection.execute(
-            sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema_name))
-        )
-    isolated_dsn = make_conninfo(
-        POSTGRES_DSN, options=f"-csearch_path={schema_name}"
-    )
+        connection.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema_name)))
+    isolated_dsn = make_conninfo(POSTGRES_DSN, options=f"-csearch_path={schema_name}")
     try:
         migration_module = runpy.run_path(str(script))
         migrate = migration_module["migrate"]
