@@ -187,7 +187,7 @@ def test_rejects_payload_tampering_after_signature() -> None:
 
 def test_rejects_unknown_signing_key() -> None:
     private_key = Ed25519PrivateKey.generate()
-    envelope, trust = signed_envelope(private_key)
+    envelope, trust, source_trust = signed_envelope(private_key)
     envelope["data"]["integrity"]["key_id"] = "untrusted-key"
     with pytest.raises(LifecycleEvidenceError, match="signing_key_untrusted"):
         verify_lifecycle_event(envelope, public_keys_json=trust, source_public_keys_json=source_trust)
@@ -254,3 +254,28 @@ def test_point_in_time_inbox_context_excludes_events_until_available_at(tmp_path
     assert contexts[1] is not None
     assert contexts[1]["liquidity_sweep_bearish"] == 1.0
     assert contexts[1]["liquidity_displacement_confirmed"] == 1.0
+
+
+def test_rejects_invalid_service1_signature_even_when_service9_event_signature_is_valid() -> None:
+    private_key = Ed25519PrivateKey.generate()
+    envelope, trust, source_trust = signed_envelope(private_key)
+    signature = envelope["data"]["provenance"]["source_attestation"]["signature"]
+    envelope["data"]["provenance"]["source_attestation"]["signature"] = (
+        signature[:-2] + ("AA" if signature[-2:] != "AA" else "BB")
+    )
+    data = envelope["data"]
+    integrity = data.pop("integrity")
+    digest = hashlib.sha256(rfc8785.dumps(data)).hexdigest()
+    data["integrity"] = {
+        **integrity,
+        "payload_sha256": digest,
+        "signature": base64.b64encode(
+            private_key.sign(bytes.fromhex(digest))
+        ).decode("ascii"),
+    }
+    with pytest.raises(LifecycleEvidenceError, match="source_attestation_signature_invalid"):
+        verify_lifecycle_event(
+            envelope,
+            public_keys_json=trust,
+            source_public_keys_json=source_trust,
+        )
