@@ -2121,9 +2121,7 @@ class PostgresLifecycleEvidenceInbox:
                     ).fetchall()
                 }
                 counts = {
-                    table: (
-                        int(source.execute(query).fetchone()[0]) if table in tables else 0
-                    )
+                    table: (int(source.execute(query).fetchone()[0]) if table in tables else 0)
                     for table, query in count_queries.items()
                 }
         except sqlite3.Error as exc:
@@ -2150,11 +2148,15 @@ class PostgresLifecycleEvidenceInbox:
                 else None
             )
         expected = (
-            int(imported["inbox_count"]),
-            int(imported["verification_count"]),
-            int(imported["conflict_count"]),
-            int(imported["quarantine_count"]),
-        ) if imported is not None else None
+            (
+                int(imported["inbox_count"]),
+                int(imported["verification_count"]),
+                int(imported["conflict_count"]),
+                int(imported["quarantine_count"]),
+            )
+            if imported is not None
+            else None
+        )
         actual = (
             counts["lifecycle_evidence_inbox"],
             counts["lifecycle_evidence_source_verifications"],
