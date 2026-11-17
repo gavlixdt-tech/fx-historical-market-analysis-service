@@ -479,11 +479,13 @@ class LifecycleEvidenceInbox:
         public_keys_json: str = "{}",
         source_public_keys_json: str = "{}",
         clock_skew_seconds: int = 60,
+        expected_topic: str | None = None,
     ) -> None:
         self.path = path
         self.public_keys_json = public_keys_json
         self.source_public_keys_json = source_public_keys_json
         self.clock_skew_seconds = clock_skew_seconds
+        self.expected_topic = expected_topic
         if path != ":memory:":
             Path(path).parent.mkdir(parents=True, exist_ok=True)
         self._initialize()
@@ -510,6 +512,9 @@ class LifecycleEvidenceInbox:
         )
         if (
             verified["event_id"] != row["event_id"]
+            or verified["key_id"] != row["key_id"]
+            or verified["available_at"] != row["available_at"]
+            or (self.expected_topic is not None and row["topic"] != self.expected_topic)
             or not hmac.compare_digest(verified["payload_sha256"], row["payload_sha256"])
             or verified["instrument"] != row["instrument"]
             or verified["timeframe"] != row["timeframe"]
@@ -753,7 +758,7 @@ class LifecycleEvidenceInbox:
         with self._connect() as connection:
             rows = connection.execute(
                 """
-                SELECT event_id,envelope_json,payload_sha256,key_id,available_at,received_at,
+                SELECT event_id,topic,envelope_json,payload_sha256,key_id,available_at,received_at,
                        instrument,timeframe,signature_verified,source_verified,lifecycle_id,
                        transition_sequence,transition_sha256
                 FROM lifecycle_evidence_inbox
@@ -853,7 +858,7 @@ class LifecycleEvidenceInbox:
         with self._connect() as connection:
             rows = connection.execute(
                 """
-                SELECT event_id,envelope_json,payload_sha256,key_id,available_at,received_at,
+                SELECT event_id,topic,envelope_json,payload_sha256,key_id,available_at,received_at,
                        instrument,timeframe,signature_verified,source_verified,lifecycle_id,
                        transition_sequence,transition_sha256,available_at_epoch_us,received_at_epoch_us
                 FROM lifecycle_evidence_inbox
@@ -1036,6 +1041,7 @@ class LifecycleEvidenceConsumer:
             public_keys_json=settings.lifecycle_event_public_keys_json,
             source_public_keys_json=settings.upstream_historical_attestation_public_keys_json,
             clock_skew_seconds=settings.lifecycle_event_clock_skew_seconds,
+            expected_topic=settings.lifecycle_event_bus_topic,
         )
         self._client: httpx.AsyncClient | None = None
         self._task: asyncio.Task[None] | None = None
