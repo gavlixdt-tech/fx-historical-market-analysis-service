@@ -447,6 +447,9 @@ class Settings(BaseSettings):
             trusted_lifecycle_keys = json.loads(self.lifecycle_event_public_keys_json)
             if not trusted_lifecycle_keys:
                 raise ValueError("lifecycle event consumer requires a non-empty LIFECYCLE_EVENT_PUBLIC_KEYS_JSON trust bundle")
+            trusted_source_keys = json.loads(self.upstream_historical_attestation_public_keys_json)
+            if not trusted_source_keys:
+                raise ValueError("lifecycle event consumer requires the Service 1 UPSTREAM_HISTORICAL_ATTESTATION_PUBLIC_KEYS_JSON trust bundle")
             if self.is_production:
                 parsed = urlsplit(self.lifecycle_event_bus_url)
                 private_railway_http = (
