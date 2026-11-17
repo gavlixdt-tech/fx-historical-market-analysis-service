@@ -241,17 +241,33 @@ def migrate(sqlite_path: Path, dsn: str) -> dict[str, int | str]:
                     raise RuntimeError(
                         f"SQLite conflict digest mismatch for conflict {raw['conflict_id']}"
                     )
-                target.execute("""
-                    INSERT INTO lifecycle_evidence_conflicts(
-                        conflict_id,event_id,payload_sha256,envelope_json,received_at
-                    ) VALUES (%s,%s,%s,%s,%s) ON CONFLICT(conflict_id) DO NOTHING
-                """, (raw["conflict_id"], raw["event_id"], raw["payload_sha256"], raw["envelope_json"], raw["received_at"]))
                 stored = target.execute(
-                    "SELECT event_id,payload_sha256,envelope_json,received_at FROM lifecycle_evidence_conflicts WHERE conflict_id=%s",
-                    (raw["conflict_id"],),
+                    """
+                    SELECT conflict_id FROM lifecycle_evidence_conflicts
+                    WHERE event_id=%s AND payload_sha256=%s AND envelope_json=%s AND received_at=%s
+                    LIMIT 1
+                    """,
+                    (
+                        raw["event_id"],
+                        raw["payload_sha256"],
+                        raw["envelope_json"],
+                        raw["received_at"],
+                    ),
                 ).fetchone()
-                if stored is None or any(stored[key] != raw[key] for key in ("event_id", "payload_sha256", "envelope_json", "received_at")):
-                    raise RuntimeError(f"PostgreSQL conflict-ledger mismatch for conflict {raw['conflict_id']}")
+                if stored is None:
+                    target.execute(
+                        """
+                        INSERT INTO lifecycle_evidence_conflicts(
+                            event_id,payload_sha256,envelope_json,received_at
+                        ) VALUES (%s,%s,%s,%s)
+                        """,
+                        (
+                            raw["event_id"],
+                            raw["payload_sha256"],
+                            raw["envelope_json"],
+                            raw["received_at"],
+                        ),
+                    )
                 imported["conflicts"] += 1
 
             for row in quarantine_rows:
