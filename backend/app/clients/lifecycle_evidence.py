@@ -864,6 +864,50 @@ class LifecycleEvidenceInbox:
             "evidence_set_sha256": hashlib.sha256(rfc8785.dumps([])).hexdigest(),
         } for item, cutoff in zip(output, cutoffs)]
 
+    def lifecycle_history(self, lifecycle_id: str) -> dict[str, Any] | None:
+        """Reconstruct the signed transition chain for one lifecycle aggregate."""
+        if not lifecycle_id or len(lifecycle_id) > 200:
+            raise ValueError("lifecycle_id must contain 1 to 200 characters")
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT event_id,envelope_json,payload_sha256,key_id,available_at,received_at,
+                       instrument,timeframe,signature_verified,source_verified,lifecycle_id,
+                       transition_sequence,transition_sha256
+                FROM lifecycle_evidence_inbox
+                WHERE lifecycle_id=? AND source_verified=1
+                ORDER BY transition_sequence DESC
+                """,
+                (lifecycle_id,),
+            ).fetchall()
+        if not rows:
+            return None
+        latest_row = rows[0]
+        envelope = self._verify_persisted_row(latest_row)
+        data = envelope["data"]
+        history = data["lifecycle"]["transition_history"]
+        stored_events = []
+        for row in reversed(rows):
+            self._verify_persisted_row(row)
+            stored_events.append({
+                "event_id": row["event_id"],
+                "payload_sha256": row["payload_sha256"],
+                "transition_sequence": row["transition_sequence"],
+                "transition_sha256": row["transition_sha256"],
+                "producer_available_at": row["available_at"],
+                "consumer_received_at": row["received_at"],
+            })
+        return {
+            "lifecycle_id": lifecycle_id,
+            "head_event_id": latest_row["event_id"],
+            "head_sequence": latest_row["transition_sequence"],
+            "head_transition_sha256": latest_row["transition_sha256"],
+            "reconstructed_transition_history": history,
+            "individually_received_transition_events": stored_events,
+            "history_complete_in_signed_head": True,
+            "signature_reverified": True,
+        }
+
     def status(self) -> dict[str, int]:
         with self._connect() as connection:
             accepted_row = connection.execute(
@@ -1059,6 +1103,9 @@ class LifecycleEvidenceConsumer:
 
     def point_in_time_evidence(self, **kwargs: Any) -> list[dict[str, Any]]:
         return self.inbox.point_in_time_evidence(**kwargs)
+
+    def lifecycle_history(self, lifecycle_id: str) -> dict[str, Any] | None:
+        return self.inbox.lifecycle_history(lifecycle_id)
 
     def status(self) -> dict[str, Any]:
         inbox_status = self.inbox.status()
