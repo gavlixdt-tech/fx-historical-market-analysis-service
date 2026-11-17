@@ -124,6 +124,7 @@ def signed_envelope(
             "source_event_id": "sweep-1",
             "source_payload_sha256": "a" * 64,
             "source_dataset_id": source_dataset_id,
+            "source_dataset_instrument": "EURUSD",
             "source_dataset_sha256": source_dataset_sha256,
             "source_provider_id": "test-provider",
             "source_attestation": source_attestation,
