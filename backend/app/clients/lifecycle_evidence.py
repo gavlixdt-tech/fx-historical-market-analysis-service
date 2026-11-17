@@ -617,7 +617,7 @@ class LifecycleEvidenceInbox:
                 (instrument, timeframe, source_dataset_id, max_cutoff_us, max_cutoff_us),
             ).fetchall()
 
-        events: list[tuple[datetime, str, dict[str, Any]]] = []
+        events: list[tuple[datetime, str, str, int, datetime, dict[str, Any]]] = []
         for row in rows:
             envelope = json.loads(row["envelope_json"])
             data = envelope.get("data") if isinstance(envelope, dict) else None
@@ -625,33 +625,48 @@ class LifecycleEvidenceInbox:
                 continue
             market_basis = data.get("market_basis")
             temporal = data.get("temporal")
+            lifecycle = data.get("lifecycle")
             if (
                 not isinstance(market_basis, dict)
                 or market_basis.get("price_basis") != price_basis
                 or not isinstance(temporal, dict)
+                or not isinstance(lifecycle, dict)
             ):
                 continue
             producer_available_at = _parse_utc(temporal.get("available_at"), "available_at")
             inbox_received_at = _parse_utc(row["received_at"], "inbox_received_at")
+            observed_at = _parse_utc(temporal.get("observed_at"), "observed_at")
             effective_at = max(producer_available_at, inbox_received_at)
             if _epoch_microseconds(effective_at) <= max_cutoff_us:
-                events.append((effective_at, str(data.get("event_id", "")), data))
+                events.append((
+                    effective_at, str(data.get("event_id", "")),
+                    str(lifecycle.get("lifecycle_id", "")),
+                    int(lifecycle.get("transition_sequence", 0)), observed_at, data,
+                ))
 
+        # Delivery order is not lifecycle order. A late lower-sequence event
+        # must never roll a lifecycle snapshot backwards.
         events.sort(key=lambda item: (item[0], item[1]))
         ordered_cutoffs = sorted(indexed_cutoffs, key=lambda item: (item[1], item[0]))
         contexts: list[dict[str, float] | None] = [None] * len(cutoffs)
         event_index = 0
-        latest: dict[str, Any] | None = None
+        latest_by_lifecycle: dict[str, tuple[int, datetime, dict[str, Any]]] = {}
         for original_index, normalized_cutoff in ordered_cutoffs:
-            while (
-                event_index < len(events)
-                and events[event_index][0] <= normalized_cutoff
-            ):
-                latest = events[event_index][2]
+            while event_index < len(events) and events[event_index][0] <= normalized_cutoff:
+                _, _, lifecycle_id, sequence, observed_at, data = events[event_index]
+                current = latest_by_lifecycle.get(lifecycle_id)
+                if current is None or sequence > current[0]:
+                    latest_by_lifecycle[lifecycle_id] = (sequence, observed_at, data)
                 event_index += 1
-            if latest is None:
+            latest_entry = max(
+                latest_by_lifecycle.values(),
+                key=lambda item: (item[1], item[0], str(item[2].get("event_id", ""))),
+                default=None,
+            )
+            if latest_entry is None:
                 contexts[original_index] = None
                 continue
+            latest = latest_entry[2]
             lifecycle = latest.get("lifecycle", {})
             contexts[original_index] = {
                 "liquidity_sweep_bullish": float(lifecycle.get("direction") == "BULLISH"),
