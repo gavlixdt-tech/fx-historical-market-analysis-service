@@ -44,7 +44,7 @@ def _b64url_encode(value: bytes) -> str:
 def _service1_canonical_json(value: object) -> bytes:
     return json.dumps(
         value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False
-    ).encode("utf-8")
+    ).encode()
 
 
 def _verify_service1_source_attestation(data: dict[str, Any], source_public_keys_json: str) -> bool:
@@ -341,7 +341,7 @@ def verify_lifecycle_event(
         if previous_time is not None and occurred < previous_time:
             raise LifecycleEvidenceError("transition_history_time_regression")
         expected_id = hashlib.sha256(
-            f"{lifecycle['lifecycle_id']}|{expected_sequence}|{item['state']}|{item['occurred_at']}".encode("utf-8")
+            f"{lifecycle['lifecycle_id']}|{expected_sequence}|{item['state']}|{item['occurred_at']}".encode()
         ).hexdigest()
         if item.get("transition_id") != expected_id or expected_id in seen_transition_ids:
             raise LifecycleEvidenceError("transition_identity_invalid")
@@ -981,7 +981,7 @@ class LifecycleEvidenceInbox:
             "evidence_count": 0,
             "evidence": [],
             "evidence_set_sha256": hashlib.sha256(rfc8785.dumps([])).hexdigest(),
-        } for item, cutoff in zip(output, cutoffs)]
+        } for item, cutoff in zip(output, cutoffs, strict=True)]
 
     def lifecycle_history(self, lifecycle_id: str) -> dict[str, Any] | None:
         """Reconstruct the signed transition chain for one lifecycle aggregate."""
@@ -1518,7 +1518,7 @@ class PostgresLifecycleEvidenceInbox:
             "instrument": instrument, "timeframe": timeframe, "source_dataset_id": source_dataset_id,
             "price_basis": price_basis, "evidence_count": 0, "evidence": [],
             "evidence_set_sha256": hashlib.sha256(rfc8785.dumps([])).hexdigest(),
-        } for item, cutoff in zip(output, cutoffs)]
+        } for item, cutoff in zip(output, cutoffs, strict=True)]
 
     def lifecycle_history(self, lifecycle_id: str) -> dict[str, Any] | None:
         if not lifecycle_id or len(lifecycle_id) > 200:
@@ -1648,8 +1648,8 @@ class LifecycleEvidenceConsumer:
                 "jti": str(uuid.uuid4()),
             },
             separators=(",", ":"),
-        ).encode("utf-8")
-        secret = (self.settings.lifecycle_event_bus_consumer_secret or "").encode("utf-8")
+        ).encode()
+        secret = (self.settings.lifecycle_event_bus_consumer_secret or "").encode()
         signature = hmac.new(secret, body, hashlib.sha256).digest()
         return _b64url_encode(body) + "." + _b64url_encode(signature)
 
