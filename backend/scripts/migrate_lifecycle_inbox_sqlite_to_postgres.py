@@ -16,6 +16,7 @@ import sys
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
+
 import psycopg
 from psycopg.rows import dict_row
 
