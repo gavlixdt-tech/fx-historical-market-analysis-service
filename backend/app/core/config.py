@@ -121,6 +121,18 @@ class Settings(BaseSettings):
         description="Reject historical replay unless the Service 1 dataset signature verifies",
     )
 
+    # ---- Service 62 lifecycle evidence consumer ----
+    lifecycle_event_bus_enabled: bool = Field(default=False, description="Enable the Service 62 lifecycle evidence consumer")
+    lifecycle_event_bus_url: str | None = Field(default=None, description="Fixed Service 62 backend origin")
+    lifecycle_event_bus_topic: str = Field(default="gfx.liquidity.lifecycle.v1", min_length=1, max_length=200)
+    lifecycle_event_consumer_group: str = Field(default="gfx-service2-lifecycle-evidence", min_length=1, max_length=128)
+    lifecycle_event_bus_consumer_secret: str | None = Field(default=None, repr=False, description="Dedicated Service 62 consumer HMAC secret")
+    lifecycle_event_public_keys_json: str = Field(default="{}", repr=False, description="Out-of-band Service 9 Ed25519 public-key trust bundle")
+    lifecycle_event_inbox_db_path: str = Field(default="./data/lifecycle-inbox.sqlite3", description="Persistent Service 2 lifecycle evidence inbox path")
+    lifecycle_event_poll_interval_seconds: float = Field(default=2.0, ge=0.25, le=60.0)
+    lifecycle_event_batch_size: int = Field(default=25, ge=1, le=100)
+    lifecycle_event_clock_skew_seconds: int = Field(default=60, ge=0, le=600)
+
     # ---- GFX Admin Console operational settings ----
     gfx_settings_enabled: bool = Field(
         default=False,
@@ -270,6 +282,22 @@ class Settings(BaseSettings):
             raise ValueError("service_mode must be 'research-simulation' for this scaffold phase")
         return value
 
+    @field_validator("lifecycle_event_bus_url")
+    @classmethod
+    def _validate_lifecycle_event_bus_url(cls, value: str | None) -> str | None:
+        if value is None or value == "":
+            return None
+        parsed = urlsplit(value.strip())
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc or not parsed.hostname:
+            raise ValueError("LIFECYCLE_EVENT_BUS_URL must be a fixed HTTP(S) origin")
+        if parsed.username or parsed.password or parsed.path not in {"", "/"} or parsed.query or parsed.fragment:
+            raise ValueError("LIFECYCLE_EVENT_BUS_URL must not contain credentials, path, query or fragment")
+        try:
+            _ = parsed.port
+        except ValueError as exc:
+            raise ValueError("LIFECYCLE_EVENT_BUS_URL contains an invalid port") from exc
+        return urlunsplit((parsed.scheme, parsed.netloc, "", "", ""))
+
     @field_validator("gfx_settings_service_url", "fx_security_service_url")
     @classmethod
     def _validate_settings_service_origins(cls, value: str | None) -> str | None:
@@ -293,6 +321,30 @@ class Settings(BaseSettings):
         except ValueError as exc:
             raise ValueError("settings service URL contains an invalid port") from exc
         return urlunsplit((parsed.scheme, parsed.netloc, "", "", ""))
+
+    @field_validator("lifecycle_event_public_keys_json")
+    @classmethod
+    def _validate_lifecycle_event_public_keys(cls, value: str) -> str:
+        import base64
+        import binascii
+        import json
+
+        try:
+            keys = json.loads(value)
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise ValueError("lifecycle event public keys must be valid JSON") from exc
+        if not isinstance(keys, dict) or len(keys) > 32:
+            raise ValueError("lifecycle event public keys must be a JSON object with at most 32 entries")
+        for key_id, encoded in keys.items():
+            if not isinstance(key_id, str) or not key_id.strip() or len(key_id) > 128 or not isinstance(encoded, str):
+                raise ValueError("lifecycle event key bundle entries must map key IDs to base64 strings")
+            try:
+                raw = base64.b64decode(encoded, validate=True)
+            except (ValueError, binascii.Error) as exc:
+                raise ValueError("lifecycle event public keys must be valid base64") from exc
+            if len(raw) != 32:
+                raise ValueError("lifecycle event Ed25519 public keys must decode to 32 bytes")
+        return value
 
     @field_validator("upstream_historical_attestation_public_keys_json")
     @classmethod
@@ -386,6 +438,21 @@ class Settings(BaseSettings):
             raise ValueError(
                 "ENABLE_LIVE_TRADING must be false - this service is research/simulation only"
             )
+        if self.lifecycle_event_bus_enabled:
+            if not self.lifecycle_event_bus_url or not self.lifecycle_event_bus_consumer_secret:
+                raise ValueError("lifecycle event consumer requires LIFECYCLE_EVENT_BUS_URL and LIFECYCLE_EVENT_BUS_CONSUMER_SECRET")
+            if len(self.lifecycle_event_bus_consumer_secret.encode("utf-8")) < 32:
+                raise ValueError("LIFECYCLE_EVENT_BUS_CONSUMER_SECRET must contain at least 32 bytes")
+            trusted_lifecycle_keys = json.loads(self.lifecycle_event_public_keys_json)
+            if not trusted_lifecycle_keys:
+                raise ValueError("lifecycle event consumer requires a non-empty LIFECYCLE_EVENT_PUBLIC_KEYS_JSON trust bundle")
+            if self.is_production:
+                parsed = urlsplit(self.lifecycle_event_bus_url)
+                private_railway_http = parsed.scheme == "http" and parsed.hostname is not None and parsed.hostname.endswith(".railway.internal") and parsed.port is not None
+                if parsed.scheme != "https" and not private_railway_http:
+                    raise ValueError("production LIFECYCLE_EVENT_BUS_URL must use HTTPS or explicit-port Railway private DNS")
+                if self.lifecycle_event_inbox_db_path == ":memory:":
+                    raise ValueError("production lifecycle evidence inbox must use persistent storage")
         if self.gfx_settings_required and not self.gfx_settings_enabled:
             raise ValueError("GFX_SETTINGS_REQUIRED=true requires GFX_SETTINGS_ENABLED=true")
         if self.gfx_settings_enabled and not self.gfx_settings_required:
