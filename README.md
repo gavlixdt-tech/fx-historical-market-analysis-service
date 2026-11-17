@@ -557,7 +557,7 @@ persistent Railway Volume mounted at `/data` before enabling the consumer.
 |---|---|---|---|
 | `LIFECYCLE_EVENT_BUS_ENABLED` | Enables the background consumer; keep false until Service 62 topic/grants and the trust bundle are configured. | Release gate | No |
 | `LIFECYCLE_EVENT_BUS_URL` | Fixed Service 62 backend origin, preferably same-project Railway private DNS with explicit port. | Railway → GFX project → `fx-event-bus-service` → Networking | No |
-| `LIFECYCLE_EVENT_TOPIC` | Exact topic, default `gfx.liquidity.lifecycle.v1`. | Ratified GFX contract and Service 62 topic configuration | No |
+| `LIFECYCLE_EVENT_BUS_TOPIC` | Exact topic, default `gfx.liquidity.lifecycle.v1`. | Ratified GFX contract and Service 62 topic configuration | No |
 | `LIFECYCLE_EVENT_CONSUMER_GROUP` | Stable Service 2 consumer group; default `gfx-service2-lifecycle-evidence`. | Service deployment identity | No |
 | `LIFECYCLE_EVENT_BUS_CONSUMER_SECRET` | Dedicated Service 2 consumer HMAC secret; must match Service 62 `HMAC_CONSUMER_SECRETS_JSON`. Generate with `openssl rand -hex 32`. | Generate in a trusted terminal; configure only in Service 2 and Service 62 backend Variables | **Secret** |
 | `LIFECYCLE_EVENT_PUBLIC_KEYS_JSON` | JSON map of Service 9 signing key IDs to base64 raw Ed25519 public keys. | Obtain from the approved Service 9 signing-key registry; never copy a private key | Public trust material |
