@@ -26,11 +26,15 @@ sys.path.insert(0, str(BACKEND))
 from app.clients.lifecycle_evidence import PostgresLifecycleEvidenceInbox  # noqa: E402
 
 
-def epoch_us(value: str) -> int:
+def parse_timestamp(value: str) -> datetime:
     parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         raise ValueError("source inbox timestamps must be timezone-aware")
-    normalized = parsed.astimezone(UTC)
+    return parsed.astimezone(UTC)
+
+
+def epoch_us(value: str) -> int:
+    normalized = parse_timestamp(value)
     delta = normalized - datetime(1970, 1, 1, tzinfo=UTC)
     return delta.days * 86_400_000_000 + delta.seconds * 1_000_000 + delta.microseconds
 
@@ -173,12 +177,12 @@ def migrate(sqlite_path: Path, dsn: str) -> dict[str, int | str]:
                     "envelope_json": envelope_text,
                     "payload_sha256": raw["payload_sha256"],
                     "key_id": raw["key_id"],
-                    "available_at": raw["available_at"],
+                    "available_at": parse_timestamp(raw["available_at"]),
                     "instrument": raw["instrument"],
                     "timeframe": raw["timeframe"],
                     "signature_verified": bool(raw["signature_verified"]),
                     "source_verified": bool(raw["source_verified"]),
-                    "received_at": raw["received_at"],
+                    "received_at": parse_timestamp(raw["received_at"]),
                     "available_at_epoch_us": available,
                     "received_at_epoch_us": received,
                     "lifecycle_id": raw.get("lifecycle_id"),
@@ -209,10 +213,15 @@ def migrate(sqlite_path: Path, dsn: str) -> dict[str, int | str]:
                     ) VALUES (%s,%s,%s,%s) ON CONFLICT(event_id) DO NOTHING
                 """, (raw["event_id"], raw["source_dataset_id"], raw["payload_sha256"], raw["verified_at"]))
                 stored = target.execute(
-                    "SELECT source_dataset_id,payload_sha256 FROM lifecycle_evidence_source_verifications WHERE event_id=%s",
+                    "SELECT source_dataset_id,payload_sha256,verified_at FROM lifecycle_evidence_source_verifications WHERE event_id=%s",
                     (raw["event_id"],),
                 ).fetchone()
-                if stored is None or stored["source_dataset_id"] != raw["source_dataset_id"] or stored["payload_sha256"] != raw["payload_sha256"]:
+                if (
+                    stored is None
+                    or stored["source_dataset_id"] != raw["source_dataset_id"]
+                    or stored["payload_sha256"] != raw["payload_sha256"]
+                    or stored["verified_at"] != parse_timestamp(raw["verified_at"])
+                ):
                     raise RuntimeError(f"PostgreSQL source-verification conflict for {raw['event_id']}")
                 imported["source_verifications"] += 1
 
@@ -281,7 +290,13 @@ def migrate(sqlite_path: Path, dsn: str) -> dict[str, int | str]:
                     "SELECT event_id,envelope_json,rejection_reason,received_at FROM lifecycle_evidence_quarantine WHERE delivery_id=%s",
                     (raw["delivery_id"],),
                 ).fetchone()
-                if stored is None or any(stored[key] != raw[key] for key in ("event_id", "envelope_json", "rejection_reason", "received_at")):
+                if (
+                    stored is None
+                    or stored["event_id"] != raw["event_id"]
+                    or stored["envelope_json"] != raw["envelope_json"]
+                    or stored["rejection_reason"] != raw["rejection_reason"]
+                    or stored["received_at"] != parse_timestamp(raw["received_at"])
+                ):
                     raise RuntimeError(f"PostgreSQL quarantine mismatch for delivery {raw['delivery_id']}")
                 imported["quarantine"] += 1
 
