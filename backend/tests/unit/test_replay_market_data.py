@@ -442,6 +442,36 @@ async def test_market_data_replay_attaches_only_matching_source_attested_lifecyc
             captured["lifecycle_query"] = kwargs
             return [{"liquidity_sweep_bullish": 1.0}] + [None] * 51
 
+        def point_in_time_evidence(
+            self,
+            *,
+            instrument: str,
+            timeframe: str,
+            source_dataset_id: str,
+            price_basis: str,
+            cutoffs: list[datetime],
+        ) -> list[dict[str, Any]]:
+            captured["lifecycle_evidence_query"] = {
+                "instrument": instrument,
+                "timeframe": timeframe,
+                "source_dataset_id": source_dataset_id,
+                "price_basis": price_basis,
+                "cutoffs": cutoffs,
+            }
+            return [
+                {
+                    "prediction_origin": cutoff.astimezone(UTC).isoformat(),
+                    "evidence": (
+                        [{"event_id": "evt-source-attested", "payload_sha256": "a" * 64}]
+                        if index == 0
+                        else []
+                    ),
+                    "evidence_count": 1 if index == 0 else 0,
+                    "evidence_set_sha256": "b" * 64,
+                }
+                for index, cutoff in enumerate(cutoffs)
+            ]
+
     monkeypatch.setattr(
         "backend.app.services.replay_market_data.run_historical_replay",
         fake_run,
