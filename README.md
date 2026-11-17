@@ -561,6 +561,35 @@ For `/api/v1/historical-replay/run-from-market-data`, the request's `source_data
 | `LIFECYCLE_EVENT_BATCH_SIZE` | Maximum consumed messages per poll, 1–100; default 25. | Operator tuning | No |
 | `LIFECYCLE_EVENT_CLOCK_SKEW_SECONDS` | Maximum future availability tolerance, 0–600 seconds; default 60. | Infrastructure clock policy | No |
 
+### SQLite-to-PostgreSQL inbox cutover
+
+Before switching a deployed Service 2 instance from SQLite to PostgreSQL:
+
+1. Keep `DATABASE_URL` configured for the target PostgreSQL database, but stop
+   the Service 2 consumer so no new inbox writes occur during the cutover.
+2. Keep Service 62 running; unacknowledged deliveries remain recoverable there.
+3. Run the offline importer from the repository root:
+
+   ```bash
+   DATABASE_URL='postgresql://…' python backend/scripts/migrate_lifecycle_inbox_sqlite_to_postgres.py \
+     --sqlite-path /data/lifecycle-inbox.sqlite3
+   ```
+
+4. The importer uses SQLite's online backup API to capture a consistent WAL
+   snapshot, imports accepted events, source-verification records, conflict
+   history and quarantine records in one PostgreSQL transaction, preserves
+   event IDs and receipt times, checks for conflicting existing records, and
+   records the source snapshot fingerprint so an identical snapshot is not
+   imported twice.
+5. Restart Service 2 with `DATABASE_URL` set. Verify the inbox status, selected
+   lifecycle history and point-in-time evidence manifests before re-enabling
+   normal consumer traffic.
+
+Do not copy a live SQLite WAL database file with filesystem tools. Preserve
+the original SQLite volume as a rollback artifact until the PostgreSQL cutover
+and replay verification have been accepted. The importer does not deploy,
+delete or modify the source SQLite database.
+
 In Service 62 Railway Variables, configure
 `HMAC_CONSUME_GRANTS_JSON` with the Service 2 subject
 `fx-historical-market-analysis-service` allowed to consume only
@@ -586,8 +615,9 @@ backdates downstream availability.
 The inbox replay selector stores and compares exact UTC epoch-microsecond
 values for both producer availability and durable consumer receipt. It does
 not rely on lexical ISO-8601 TEXT ordering (Z versus +00:00) or SQLite
-julianday floating-point precision. Existing inbox rows are migrated and
-backfilled at startup. Event records are ordered by parsed effective
+julianday floating-point precision. The SQLite compatibility adapter
+backfills legacy rows at startup; PostgreSQL stores the epoch values as native
+BIGINT columns. Event records are ordered by parsed effective
 availability max(producer available_at, inbox received_at). Replay cutoffs
 must be timezone-aware, are evaluated chronologically, and results are
 returned in the caller's original cutoff order. Equal-time events use event ID
@@ -663,7 +693,7 @@ end-to-end acceptance run remain separate production gates.
 Replay reads now independently re-verify the stored Service 9 Ed25519
 signature, embedded Service 1 attestation, canonical payload digest, and
 indexed inbox metadata before a lifecycle record can become a feature or
-appear in an evidence manifest. A modified/corrupt SQLite record fails the
+appear in an evidence manifest. A modified/corrupt persisted record fails the
 replay closed; the system does not trust the inbox's mutable verification flag
 alone. The consumer loads the same configured public trust bundles at startup,
 so restart does not weaken replay verification.
