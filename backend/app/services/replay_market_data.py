@@ -291,13 +291,15 @@ async def run_market_data_replay(
         evidence_items = manifest.get("evidence", [])
         for item in evidence_items:
             evidence_registry.setdefault(item["event_id"], item)
-        origin_evidence_refs.append({
-            "observation_index": index,
-            "prediction_origin": manifest["prediction_origin"],
-            "event_ids": [item["event_id"] for item in evidence_items],
-            "evidence_count": manifest["evidence_count"],
-            "evidence_set_sha256": manifest["evidence_set_sha256"],
-        })
+        origin_evidence_refs.append(
+            {
+                "observation_index": index,
+                "prediction_origin": manifest["prediction_origin"],
+                "event_ids": [item["event_id"] for item in evidence_items],
+                "evidence_count": manifest["evidence_count"],
+                "evidence_set_sha256": manifest["evidence_set_sha256"],
+            }
+        )
     manifests_by_reference: dict[str, dict[str, Any]] = {}
     for index, manifest in enumerate(trusted_lifecycle_evidence_manifests or []):
         reference = observations[index].timestamp.astimezone(UTC).isoformat()
@@ -309,15 +311,19 @@ async def run_market_data_replay(
         manifest = manifests_by_reference.get(str(reference_value))
         if manifest is None and isinstance(reference_value, str):
             try:
-                normalized_reference = datetime.fromisoformat(
-                    reference_value.replace("Z", "+00:00")
-                ).astimezone(UTC).isoformat()
+                normalized_reference = (
+                    datetime.fromisoformat(reference_value.replace("Z", "+00:00"))
+                    .astimezone(UTC)
+                    .isoformat()
+                )
                 manifest = manifests_by_reference.get(normalized_reference)
             except ValueError:
                 manifest = None
         prediction["lifecycle_evidence"] = (
             {
-                "status": "verified_source_attested" if manifest["evidence_count"] else "no_verified_evidence",
+                "status": "verified_source_attested"
+                if manifest["evidence_count"]
+                else "no_verified_evidence",
                 "prediction_origin": manifest["prediction_origin"],
                 "event_ids": [item["event_id"] for item in manifest["evidence"]],
                 "evidence_count": manifest["evidence_count"],
