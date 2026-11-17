@@ -536,3 +536,27 @@ async def lifecycle_evidence_status(request: Request) -> ApiResponse[dict[str, A
     else:
         status = consumer.status()
     return ApiResponse(data=status, meta=build_meta(request.app.state.settings, rid))
+
+
+@router.get("/forecasting/lifecycle-evidence/{lifecycle_id}/history")
+async def lifecycle_evidence_history(
+    request: Request, lifecycle_id: str
+) -> ApiResponse[dict[str, Any]]:
+    """Return the independently reverified immutable transition history."""
+    rid = getattr(request.state, "request_id", "unknown")
+    consumer = getattr(request.app.state, "lifecycle_evidence_consumer", None)
+    if consumer is None:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=503, detail="lifecycle evidence consumer is disabled")
+    try:
+        history = await run_in_threadpool(consumer.lifecycle_history, lifecycle_id)
+    except ValueError as exc:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=409, detail="stored lifecycle evidence failed integrity verification") from exc
+    if history is None:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=404, detail="verified lifecycle history not found")
+    return ApiResponse(data=history, meta=build_meta(request.app.state.settings, rid))
