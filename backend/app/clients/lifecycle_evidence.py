@@ -2104,12 +2104,14 @@ class PostgresLifecycleEvidenceInbox:
         path = Path(sqlite_path).expanduser().resolve()
         if not path.is_file():
             return
-        table_names = (
-            "lifecycle_evidence_inbox",
-            "lifecycle_evidence_source_verifications",
-            "lifecycle_evidence_conflicts",
-            "lifecycle_evidence_quarantine",
-        )
+        count_queries = {
+            "lifecycle_evidence_inbox": "SELECT COUNT(*) FROM lifecycle_evidence_inbox",
+            "lifecycle_evidence_source_verifications": (
+                "SELECT COUNT(*) FROM lifecycle_evidence_source_verifications"
+            ),
+            "lifecycle_evidence_conflicts": "SELECT COUNT(*) FROM lifecycle_evidence_conflicts",
+            "lifecycle_evidence_quarantine": "SELECT COUNT(*) FROM lifecycle_evidence_quarantine",
+        }
         try:
             with sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True) as source:
                 tables = {
@@ -2120,11 +2122,9 @@ class PostgresLifecycleEvidenceInbox:
                 }
                 counts = {
                     table: (
-                        int(source.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
-                        if table in tables
-                        else 0
+                        int(source.execute(query).fetchone()[0]) if table in tables else 0
                     )
-                    for table in table_names
+                    for table, query in count_queries.items()
                 }
         except sqlite3.Error as exc:
             raise RuntimeError(
