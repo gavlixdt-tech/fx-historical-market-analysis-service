@@ -554,7 +554,9 @@ async def lifecycle_evidence_history(
     except ValueError as exc:
         from fastapi import HTTPException
 
-        raise HTTPException(status_code=409, detail="stored lifecycle evidence failed integrity verification") from exc
+        raise HTTPException(
+            status_code=409, detail="stored lifecycle evidence failed integrity verification"
+        ) from exc
     if history is None:
         from fastapi import HTTPException
 
