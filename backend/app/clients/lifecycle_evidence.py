@@ -439,7 +439,10 @@ class LifecycleEvidenceInbox:
                     source_verified INTEGER NOT NULL,
                     received_at TEXT NOT NULL,
                     available_at_epoch_us INTEGER,
-                    received_at_epoch_us INTEGER
+                    received_at_epoch_us INTEGER,
+                    lifecycle_id TEXT,
+                    transition_sequence INTEGER,
+                    transition_sha256 TEXT
                 )
             """)
             columns = {
@@ -455,6 +458,19 @@ class LifecycleEvidenceInbox:
                 connection.execute(
                     "ALTER TABLE lifecycle_evidence_inbox ADD COLUMN received_at_epoch_us INTEGER"
                 )
+            if "lifecycle_id" not in columns:
+                connection.execute(
+                    "ALTER TABLE lifecycle_evidence_inbox ADD COLUMN lifecycle_id TEXT"
+                )
+            if "transition_sequence" not in columns:
+                connection.execute(
+                    "ALTER TABLE lifecycle_evidence_inbox ADD COLUMN transition_sequence INTEGER"
+                )
+            if "transition_sha256" not in columns:
+                connection.execute(
+                    "ALTER TABLE lifecycle_evidence_inbox ADD COLUMN transition_sha256 TEXT"
+                )
+
             legacy_rows = connection.execute(
                 "SELECT rowid,available_at,received_at FROM lifecycle_evidence_inbox "
                 "WHERE available_at_epoch_us IS NULL OR received_at_epoch_us IS NULL"
@@ -471,6 +487,11 @@ class LifecycleEvidenceInbox:
                         legacy["rowid"],
                     ),
                 )
+            connection.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_lifecycle_lifecycle_sequence "
+                "ON lifecycle_evidence_inbox(lifecycle_id,transition_sequence) "
+                "WHERE lifecycle_id IS NOT NULL AND transition_sequence IS NOT NULL"
+            )
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS idx_lifecycle_evidence_point_in_time "
                 "ON lifecycle_evidence_inbox(instrument,timeframe,available_at_epoch_us,received_at_epoch_us)"
@@ -513,28 +534,34 @@ class LifecycleEvidenceInbox:
                     (verified["event_id"], verified["payload_sha256"], encoded, now),
                 )
                 return "CONFLICT"
+            sequence_existing = connection.execute(
+                "SELECT event_id,transition_sha256 FROM lifecycle_evidence_inbox "
+                "WHERE lifecycle_id=? AND transition_sequence=?",
+                (verified["lifecycle_id"], verified["transition_sequence"]),
+            ).fetchone()
+            if sequence_existing is not None:
+                connection.execute(
+                    "INSERT INTO lifecycle_evidence_conflicts(event_id,payload_sha256,envelope_json,received_at) VALUES(?,?,?,?)",
+                    (verified["event_id"], verified["payload_sha256"], encoded, now),
+                )
+                return "CONFLICT"
             connection.execute(
                 """
                 INSERT INTO lifecycle_evidence_inbox(
                     event_id,topic,envelope_json,payload_sha256,key_id,available_at,
                     instrument,timeframe,signature_verified,source_verified,received_at,
-                    available_at_epoch_us,received_at_epoch_us
-                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    available_at_epoch_us,received_at_epoch_us,lifecycle_id,
+                    transition_sequence,transition_sha256
+                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
                 (
-                    verified["event_id"],
-                    topic,
-                    encoded,
-                    verified["payload_sha256"],
-                    verified["key_id"],
-                    verified["available_at"],
-                    verified["instrument"],
-                    verified["timeframe"],
-                    1,
-                    int(verified["source_verified"]),
-                    now,
+                    verified["event_id"], topic, encoded, verified["payload_sha256"],
+                    verified["key_id"], verified["available_at"], verified["instrument"],
+                    verified["timeframe"], 1, int(verified["source_verified"]), now,
                     _epoch_microseconds(_parse_utc(verified["available_at"], "available_at")),
                     _epoch_microseconds(datetime.fromisoformat(now)),
+                    verified["lifecycle_id"], verified["transition_sequence"],
+                    verified["transition_sha256"],
                 ),
             )
             return "STORED"
