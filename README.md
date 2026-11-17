@@ -683,3 +683,10 @@ the latest signed head and every individually received transition event before
 returning the reconstructed chain, head digest and receipt/availability
 records. It returns 404 when no source-attested history is stored and fails
 closed when persisted evidence no longer verifies.
+
+
+Transition-history labels describe canonical milestones, while
+`lifecycle.state` describes the aggregate's current state. For example, the
+canonical `SWEEP_CONFIRMED` transition maps to aggregate state
+`SWEEP_CONFIRMED_AWAITING_DISPLACEMENT`. This separation keeps earlier
+transition IDs and hashes stable as the lifecycle advances.
