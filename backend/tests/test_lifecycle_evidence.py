@@ -5,10 +5,10 @@ import hashlib
 import json
 from datetime import UTC, datetime, timedelta
 
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 import pytest
 import rfc8785
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
 from backend.app.clients.lifecycle_evidence import (
     LifecycleEvidenceError,
@@ -195,7 +195,7 @@ def test_rejects_unknown_signing_key() -> None:
 
 def test_rejects_non_monotonic_event_timestamps_even_with_valid_signature() -> None:
     private_key = Ed25519PrivateKey.generate()
-    envelope, trust = signed_envelope(private_key, reverse_temporal_order=True)
+    envelope, trust, source_trust = signed_envelope(private_key, reverse_temporal_order=True)
     with pytest.raises(LifecycleEvidenceError, match="temporal_order_invalid"):
         verify_lifecycle_event(envelope, public_keys_json=trust, source_public_keys_json=source_trust)
 
