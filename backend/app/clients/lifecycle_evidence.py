@@ -420,13 +420,13 @@ class LifecycleEvidenceInbox:
         with self._connect() as connection:
             rows = connection.execute(
                 """
-                SELECT envelope_json FROM lifecycle_evidence_inbox
+                SELECT envelope_json,available_at,received_at FROM lifecycle_evidence_inbox
                 WHERE source_verified=1 AND instrument=? AND timeframe=?
                   AND json_extract(envelope_json, '$.data.provenance.source_dataset_id')=?
-                  AND available_at<=?
-                ORDER BY available_at ASC, received_at ASC
+                  AND available_at<=? AND received_at<=?
+                ORDER BY CASE WHEN received_at > available_at THEN received_at ELSE available_at END ASC
                 """,
-                (instrument, timeframe, source_dataset_id, max_cutoff),
+                (instrument, timeframe, source_dataset_id, max_cutoff, max_cutoff),
             ).fetchall()
         events: list[tuple[datetime, dict[str, Any]]] = []
         for row in rows:
@@ -442,8 +442,9 @@ class LifecycleEvidenceInbox:
                 or not isinstance(temporal, dict)
             ):
                 continue
-            available_at = _parse_utc(temporal.get("available_at"), "available_at")
-            events.append((available_at, data))
+            producer_available_at = _parse_utc(temporal.get("available_at"), "available_at")
+            inbox_received_at = _parse_utc(row["received_at"], "inbox_received_at")
+            events.append((max(producer_available_at, inbox_received_at), data))
 
         contexts: list[dict[str, float] | None] = []
         event_index = 0
