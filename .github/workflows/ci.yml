@@ -84,7 +84,37 @@ jobs:
         run: |
           container_id="$(docker ps --format '{{.ID}} {{.Image}}' | awk '$2 == "postgres:17" { print $1; exit }')"
           test -n "$container_id"
-          before="$(python -c 'import os, psycopg; db=psycopg.connect(os.environ["TEST_POSTGRES_URL"]); row=db.execute("SELECT (SELECT COUNT(*) FROM lifecycle_evidence_inbox), (SELECT COUNT(*) FROM lifecycle_evidence_source_verifications), (SELECT COUNT(*) FROM lifecycle_evidence_conflicts), (SELECT COUNT(*) FROM lifecycle_evidence_quarantine)").fetchone(); db.close(); print(row)')"
+          snapshot_database() {
+            python - <<'PY'
+          import hashlib
+          import os
+          import psycopg
+
+          with psycopg.connect(os.environ["TEST_POSTGRES_URL"]) as db:
+              snapshot = [
+                  db.execute(
+                      "SELECT event_id,topic,envelope_json,payload_sha256,key_id,available_at,instrument,"
+                      "timeframe,signature_verified,source_verified,received_at,available_at_epoch_us,"
+                      "received_at_epoch_us,lifecycle_id,transition_sequence,transition_sha256,source_dataset_id "
+                      "FROM lifecycle_evidence_inbox ORDER BY event_id"
+                  ).fetchall(),
+                  db.execute(
+                      "SELECT event_id,source_dataset_id,payload_sha256,verified_at "
+                      "FROM lifecycle_evidence_source_verifications ORDER BY event_id"
+                  ).fetchall(),
+                  db.execute(
+                      "SELECT conflict_id,event_id,payload_sha256,envelope_json,received_at "
+                      "FROM lifecycle_evidence_conflicts ORDER BY conflict_id"
+                  ).fetchall(),
+                  db.execute(
+                      "SELECT delivery_id,event_id,envelope_json,rejection_reason,received_at "
+                      "FROM lifecycle_evidence_quarantine ORDER BY delivery_id"
+                  ).fetchall(),
+              ]
+          print(hashlib.sha256(repr(snapshot).encode("utf-8")).hexdigest())
+          PY
+          }
+          before="$(snapshot_database)"
           docker restart "$container_id"
           for attempt in $(seq 1 30); do
             if python -c 'import os, psycopg; db=psycopg.connect(os.environ["TEST_POSTGRES_URL"], connect_timeout=2); db.close()' >/dev/null 2>&1; then
@@ -92,7 +122,7 @@ jobs:
             fi
             sleep 1
           done
-          after="$(python -c 'import os, psycopg; db=psycopg.connect(os.environ["TEST_POSTGRES_URL"]); row=db.execute("SELECT (SELECT COUNT(*) FROM lifecycle_evidence_inbox), (SELECT COUNT(*) FROM lifecycle_evidence_source_verifications), (SELECT COUNT(*) FROM lifecycle_evidence_conflicts), (SELECT COUNT(*) FROM lifecycle_evidence_quarantine)").fetchone(); db.close(); print(row)')"
+          after="$(snapshot_database)"
           test "$before" = "$after"
 
       - name: Verify the OpenAPI schema can be generated
