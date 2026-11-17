@@ -2133,14 +2133,22 @@ class PostgresLifecycleEvidenceInbox:
         if not any(counts.values()):
             return
         with self._connect() as connection:
-            imported = connection.execute(
-                """
-                SELECT inbox_count,verification_count,conflict_count,quarantine_count
-                FROM lifecycle_evidence_imports
-                WHERE source_path=%s ORDER BY imported_at DESC LIMIT 1
-                """,
-                (str(path),),
+            ledger = connection.execute(
+                "SELECT to_regclass(%s) AS table_name",
+                ("lifecycle_evidence_imports",),
             ).fetchone()
+            imported = (
+                connection.execute(
+                    """
+                    SELECT inbox_count,verification_count,conflict_count,quarantine_count
+                    FROM lifecycle_evidence_imports
+                    WHERE source_path=%s ORDER BY imported_at DESC LIMIT 1
+                    """,
+                    (str(path),),
+                ).fetchone()
+                if ledger is not None and ledger["table_name"] is not None
+                else None
+            )
         expected = (
             int(imported["inbox_count"]),
             int(imported["verification_count"]),
