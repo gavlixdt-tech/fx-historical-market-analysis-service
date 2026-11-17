@@ -218,6 +218,29 @@ def migrate(sqlite_path: Path, dsn: str) -> dict[str, int | str]:
 
             for row in conflict_rows:
                 raw = dict(row)
+                conflict_envelope = json.loads(raw["envelope_json"])
+                if not isinstance(conflict_envelope, dict):
+                    raise RuntimeError(
+                        f"SQLite conflict record {raw['conflict_id']} is not a JSON object"
+                    )
+                if conflict_envelope.get("kind") == "quarantine_delivery_id_reuse":
+                    conflict_digest = hashlib.sha256(
+                        raw["envelope_json"].encode("utf-8")
+                    ).hexdigest()
+                else:
+                    conflict_data = conflict_envelope.get("data")
+                    if not isinstance(conflict_data, dict):
+                        raise RuntimeError(
+                            f"SQLite lifecycle conflict {raw['conflict_id']} has no signed data object"
+                        )
+                    signed_projection = {
+                        key: value for key, value in conflict_data.items() if key != "integrity"
+                    }
+                    conflict_digest = hashlib.sha256(rfc8785.dumps(signed_projection)).hexdigest()
+                if conflict_digest != raw["payload_sha256"]:
+                    raise RuntimeError(
+                        f"SQLite conflict digest mismatch for conflict {raw['conflict_id']}"
+                    )
                 target.execute("""
                     INSERT INTO lifecycle_evidence_conflicts(
                         conflict_id,event_id,payload_sha256,envelope_json,received_at
