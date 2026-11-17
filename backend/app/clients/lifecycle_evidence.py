@@ -317,7 +317,7 @@ class LifecycleEvidenceConsumer:
         }, separators=(",", ":")).encode("utf-8")
         secret = (self.settings.lifecycle_event_bus_consumer_secret or "").encode("utf-8")
         signature = hmac.new(secret, body, hashlib.sha256).digest()
-            return _b64url_encode(body) + "." + _b64url_encode(signature)
+        return _b64url_encode(body) + "." + _b64url_encode(signature)
 
     async def start(self) -> None:
         if not self.settings.lifecycle_event_bus_enabled:
@@ -369,13 +369,17 @@ class LifecycleEvidenceConsumer:
         response.raise_for_status()
         body = response.json()
         messages = body.get("messages", []) if isinstance(body, dict) else []
+        if not isinstance(messages, list):
+            raise RuntimeError("Event Bus consume response messages must be a list")
         processed = 0
         for message in messages:
+            if not isinstance(message, dict):
+                continue
             delivery = message.get("delivery", {})
+            if not isinstance(delivery, dict):
+                continue
             delivery_id = delivery.get("delivery_id")
             envelope = message.get("envelope", {})
-            if not isinstance(message, dict) or not isinstance(delivery, dict):
-                continue
             if not isinstance(delivery_id, str) or not isinstance(envelope, dict):
                 continue
             event_id = envelope.get("id") if isinstance(envelope.get("id"), str) else None
