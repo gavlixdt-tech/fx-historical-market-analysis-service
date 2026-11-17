@@ -477,6 +477,29 @@ def test_point_in_time_contexts_reject_naive_cutoffs(tmp_path) -> None:
         )
 
 
+def _sync_cloud_event_metadata(envelope: dict) -> None:
+    data = envelope["data"]
+    lifecycle = data["lifecycle"]
+    temporal = data["temporal"]
+    instrument = data["instrument"]
+    envelope.update(
+        {
+            "id": data["event_id"],
+            "subject": f"{instrument['canonical_id']}/{data['timeframe']}",
+            "time": temporal["confirmed_at"],
+            "correlation_id": lifecycle["lifecycle_id"],
+            "causation_id": lifecycle["sweep_event_id"],
+            "partition_key": instrument["canonical_id"],
+            "idempotency_key": f"liquidity-lifecycle-transition:{data['event_id']}",
+            "source_timestamp": temporal["source_candle_at"],
+            "sequence_number": lifecycle["transition_sequence"],
+            "quality_status": data["quality"]["quality_status"],
+            "provenance": data["provenance"],
+            "event_time": temporal["confirmed_at"],
+        }
+    )
+
+
 def _resign_service9_event(envelope: dict, private_key: Ed25519PrivateKey) -> None:
     data = envelope["data"]
     integrity = data.pop("integrity")
@@ -522,6 +545,7 @@ def test_late_lower_sequence_transition_cannot_roll_back_replay_state(tmp_path) 
     data["temporal"]["observed_at"] = first["occurred_at"]
     data["temporal"]["confirmed_at"] = first["occurred_at"]
     earlier["id"] = first["transition_id"]
+    _sync_cloud_event_metadata(earlier)
     _resign_service9_event(earlier, private_key)
 
     verified_later = verify_lifecycle_event(
@@ -648,6 +672,7 @@ def test_inbox_rejects_divergent_history_prefix_even_when_each_event_is_signed(t
     earlier["data"]["temporal"]["observed_at"] = first["occurred_at"]
     earlier["data"]["temporal"]["confirmed_at"] = first["occurred_at"]
     earlier["id"] = first["transition_id"]
+    _sync_cloud_event_metadata(earlier)
     _resign_service9_event(earlier, private_key)
 
     divergent = copy.deepcopy(later)
