@@ -1040,7 +1040,7 @@ class LifecycleEvidenceInbox:
                 "SELECT COUNT(*) AS n FROM lifecycle_evidence_inbox"
             ).fetchone()
             source_row = connection.execute(
-                "SELECT COUNT(*) AS n FROM lifecycle_evidence_inbox WHERE source_verified=1"
+                "SELECT COUNT(*) AS n FROM lifecycle_evidence_inbox WHERE source_verified=1 OR EXISTS (SELECT 1 FROM lifecycle_evidence_source_verifications v WHERE v.event_id=lifecycle_evidence_inbox.event_id)"
             ).fetchone()
             conflict_row = connection.execute(
                 "SELECT COUNT(*) AS n FROM lifecycle_evidence_conflicts"
@@ -1051,7 +1051,7 @@ class LifecycleEvidenceInbox:
             history_row = connection.execute(
                 "SELECT COUNT(DISTINCT lifecycle_id) AS lifecycles,"
                 "COALESCE(MAX(transition_sequence),0) AS max_sequence "
-                "FROM lifecycle_evidence_inbox WHERE source_verified=1"
+                "FROM lifecycle_evidence_inbox WHERE source_verified=1 OR EXISTS (SELECT 1 FROM lifecycle_evidence_source_verifications v WHERE v.event_id=lifecycle_evidence_inbox.event_id)"
             ).fetchone()
             accepted = int(accepted_row["n"]) if accepted_row else 0
             source_verified = int(source_row["n"]) if source_row else 0
