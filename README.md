@@ -533,7 +533,7 @@ a claim that the development dependency has been fixed**. The new policy and
 script still require a successful CI run on the latest commit.
 
 This validates the earlier Service 2 pipeline, including its PostgreSQL
-migration importer; it does **not** mean that Service 64 identity registration,
+migration importer and fail-closed legacy SQLite cutover guard; it does **not** mean that Service 64 identity registration,
 Admin Console consumer registration, Railway production variables, live
 market-provider entitlement, vendor attestation, or deployed cross-service
 replay have been completed. Keep production feature flags disabled until
