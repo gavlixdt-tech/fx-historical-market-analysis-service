@@ -408,6 +408,23 @@ def verify_lifecycle_event(
             raise LifecycleEvidenceError("transition_time_does_not_match_lifecycle_snapshot")
     if _parse_utc(final_transition["occurred_at"], "transition_occurred_at") != observed_at:
         raise LifecycleEvidenceError("transition_head_time_mismatch")
+    required_transition_fields = {
+        "sweep_confirmation_time": {"SWEEP_CONFIRMED", "SWEEP_CONFIRMED_AWAITING_DISPLACEMENT"},
+        "displacement_confirmed_at": {"DISPLACEMENT_CONFIRMED"},
+        "midpoint_first_reached_at": {"MIDPOINT_REACHED"},
+        "consolidation_candidate_at": {"CONSOLIDATION_CANDIDATE", "MIDPOINT_CONSOLIDATION_CANDIDATE"},
+        "invalidated_at": {"INVALIDATED"},
+    }
+    for field_name, states in required_transition_fields.items():
+        value = lifecycle.get(field_name)
+        if value is not None and not any(
+            item["state"] in states
+            and _parse_utc(item["occurred_at"], "transition_occurred_at")
+            == _parse_utc(value, field_name)
+            for item in history
+        ):
+            raise LifecycleEvidenceError("lifecycle_milestone_missing_from_transition_history")
+
 
     if signed_at < produced_at or signed_at > available_at:
         raise LifecycleEvidenceError("signature_time_invalid")
