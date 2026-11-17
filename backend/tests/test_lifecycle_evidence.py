@@ -5,10 +5,11 @@ import hashlib
 import json
 from datetime import UTC, datetime, timedelta
 
-import rfc8785
-import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+import pytest
+import rfc8785
+
 from backend.app.clients.lifecycle_evidence import (
     LifecycleEvidenceError,
     LifecycleEvidenceInbox,
