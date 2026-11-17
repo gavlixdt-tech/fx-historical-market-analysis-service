@@ -504,23 +504,26 @@ The optional consumer code and exact deployment variables are documented in the 
 
 ## Current implementation and verification snapshot
 
-The Service 2 historical-attestation and Admin Console replay-settings code
-was verified by GitHub Actions run
-[43978565479](https://github.com/gavlixdt-tech/fx-historical-market-analysis-service/actions/runs/43978565479)
-on commit `6c7678202b8ff5f2ddb8cf1adaa77dd8a641624c`:
+The latest Service 2 PostgreSQL inbox migration, conflict/quarantine identity
+preservation, replay evidence checks and Admin Console replay-settings code
+were verified by GitHub Actions run
+[44023828129](https://github.com/gavlixdt-tech/fx-historical-market-analysis-service/actions/runs/44023828129)
+on commit `902df9af0e7b8e9d1652aa72ef325796554d88b4`:
 
 - Ruff lint and strict format check: passed.
 - Mypy: passed.
-- Backend tests: **212 passed, 2 skipped**.
-- OpenAPI generation: passed.
+- Backend tests, including PostgreSQL integration and SQLite cutover: **245 passed, 2 skipped**.
 - Frontend type check, unit tests and production build: passed.
-- Backend/frontend container build and backend smoke test: passed.
+- Backend and frontend container builds: passed.
 - Dependency and secret audit: passed.
+- PostgreSQL restart durability check: passed.
 
-This verifies the earlier Service 2 commit and its isolated tests only. The PostgreSQL inbox migration committed after that run has not been covered by that CI result; it requires fresh lint, type checks, unit tests and PostgreSQL integration tests. It does **not** mean that Service 64 identity registration, Admin Console consumer registration, Railway environment variables, live market-provider entitlement, vendor attestation, or deployed cross-service replay have been completed. Follow the
-deployment steps above and keep the production feature flags disabled until
-the external identity, trust key, provider credentials and live acceptance
-checks are complete.
+This validates Service 2 in CI, including its migration importer; it does **not**
+mean that Service 64 identity registration, Admin Console consumer registration,
+Railway production variables, live market-provider entitlement, vendor attestation,
+or deployed cross-service replay have been completed. Keep production feature
+flags disabled until external identity, trust-key, provider-credential and
+cross-service acceptance checks are complete.
 
 
 ## Service 9 → Service 62 → Service 2 lifecycle evidence consumer
