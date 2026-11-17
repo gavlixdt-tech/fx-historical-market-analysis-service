@@ -274,12 +274,13 @@ def test_durable_inbox_deduplicates_and_records_event_id_conflicts(tmp_path) -> 
         inbox.persist_verified("gfx.liquidity.lifecycle.v1", conflicting, conflicting_verified)
         == "CONFLICT"
     )
-    assert inbox.status() == {
-        "signature_verified_events": 1,
-        "source_attested_events": 1,
-        "conflicts": 1,
-        "quarantined_deliveries": 0,
-    }
+    status = inbox.status()
+    assert status["signature_verified_events"] == 1
+    assert status["source_attested_events"] == 1
+    assert status["conflicts"] == 1
+    assert status["quarantined_deliveries"] == 0
+    assert status["unique_lifecycle_aggregates"] == 1
+    assert status["highest_transition_sequence"] == 2
 
 
 def test_quarantine_is_durable_and_counted(tmp_path) -> None:
