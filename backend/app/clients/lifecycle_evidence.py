@@ -684,6 +684,111 @@ class LifecycleEvidenceInbox:
             }
         return contexts
 
+    def point_in_time_evidence(
+        self,
+        *,
+        instrument: str,
+        timeframe: str,
+        source_dataset_id: str,
+        price_basis: str,
+        cutoffs: list[datetime],
+    ) -> list[dict[str, Any]]:
+        """Return an auditable evidence manifest for each prediction origin."""
+        indexed: list[tuple[int, datetime]] = []
+        for index, cutoff in enumerate(cutoffs):
+            if cutoff.tzinfo is None or cutoff.utcoffset() is None:
+                raise ValueError("point-in-time replay cutoffs must be timezone-aware")
+            indexed.append((index, cutoff.astimezone(UTC)))
+        if not indexed:
+            return []
+        max_us = max(_epoch_microseconds(value) for _, value in indexed)
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT event_id,envelope_json,payload_sha256,available_at,received_at,
+                       available_at_epoch_us,received_at_epoch_us
+                FROM lifecycle_evidence_inbox
+                WHERE source_verified=1 AND instrument=? AND timeframe=?
+                  AND json_extract(envelope_json, '$.data.provenance.source_dataset_id')=?
+                  AND available_at_epoch_us<=? AND received_at_epoch_us<=?
+                """,
+                (instrument, timeframe, source_dataset_id, max_us, max_us),
+            ).fetchall()
+        events: list[dict[str, Any]] = []
+        for row in rows:
+            envelope = json.loads(row["envelope_json"])
+            data = envelope.get("data", {})
+            lifecycle = data.get("lifecycle", {})
+            temporal = data.get("temporal", {})
+            basis = data.get("market_basis", {})
+            if basis.get("price_basis") != price_basis:
+                continue
+            producer_at = _parse_utc(temporal.get("available_at"), "available_at")
+            received_at = _parse_utc(row["received_at"], "received_at")
+            events.append({
+                "event_id": row["event_id"],
+                "payload_sha256": row["payload_sha256"],
+                "lifecycle_id": lifecycle.get("lifecycle_id"),
+                "transition_sequence": int(lifecycle.get("transition_sequence", 0)),
+                "transition_sha256": lifecycle.get("transition_sha256"),
+                "observed_at": _parse_utc(temporal.get("observed_at"), "observed_at"),
+                "producer_available_at": producer_at,
+                "consumer_received_at": received_at,
+                "effective_available_at": max(producer_at, received_at),
+            })
+        events.sort(key=lambda item: (item["effective_available_at"], item["event_id"]))
+        ordered = sorted(indexed, key=lambda item: (item[1], item[0]))
+        output: list[dict[str, Any] | None] = [None] * len(cutoffs)
+        by_lifecycle: dict[str, dict[str, Any]] = {}
+        cursor = 0
+        for original_index, origin in ordered:
+            while cursor < len(events) and events[cursor]["effective_available_at"] <= origin:
+                item = events[cursor]
+                lifecycle_id = str(item["lifecycle_id"])
+                previous = by_lifecycle.get(lifecycle_id)
+                if previous is None or item["transition_sequence"] > previous["transition_sequence"]:
+                    by_lifecycle[lifecycle_id] = item
+                cursor += 1
+            manifest = sorted(
+                by_lifecycle.values(),
+                key=lambda item: (item["observed_at"], item["lifecycle_id"]),
+            )
+            canonical_manifest = [
+                {
+                    "event_id": item["event_id"],
+                    "payload_sha256": item["payload_sha256"],
+                    "lifecycle_id": item["lifecycle_id"],
+                    "transition_sequence": item["transition_sequence"],
+                    "transition_sha256": item["transition_sha256"],
+                    "producer_available_at": item["producer_available_at"].isoformat(),
+                    "consumer_received_at": item["consumer_received_at"].isoformat(),
+                }
+                for item in manifest
+            ]
+            manifest_digest = hashlib.sha256(
+                rfc8785.dumps(canonical_manifest)
+            ).hexdigest()
+            output[original_index] = {
+                "prediction_origin": origin.isoformat(),
+                "instrument": instrument,
+                "timeframe": timeframe,
+                "source_dataset_id": source_dataset_id,
+                "price_basis": price_basis,
+                "evidence_count": len(canonical_manifest),
+                "evidence": canonical_manifest,
+                "evidence_set_sha256": manifest_digest,
+            }
+        return [item if item is not None else {
+            "prediction_origin": cutoff.astimezone(UTC).isoformat(),
+            "instrument": instrument,
+            "timeframe": timeframe,
+            "source_dataset_id": source_dataset_id,
+            "price_basis": price_basis,
+            "evidence_count": 0,
+            "evidence": [],
+            "evidence_set_sha256": hashlib.sha256(rfc8785.dumps([])).hexdigest(),
+        } for item, cutoff in zip(output, cutoffs)]
+
     def status(self) -> dict[str, int]:
         with self._connect() as connection:
             accepted_row = connection.execute(
@@ -860,6 +965,9 @@ class LifecycleEvidenceConsumer:
             price_basis=price_basis,
             cutoffs=cutoffs,
         )
+
+    def point_in_time_evidence(self, **kwargs: Any) -> list[dict[str, Any]]:
+        return self.inbox.point_in_time_evidence(**kwargs)
 
     def status(self) -> dict[str, Any]:
         inbox_status = self.inbox.status()
