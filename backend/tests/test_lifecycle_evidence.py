@@ -345,20 +345,25 @@ def test_separately_verified_source_attestation_is_eligible_for_sqlite_replay(tm
     assert initially_unattested["source_verified"] is False
     assert later_attested["source_verified"] is True
 
+    inbox_path = str(tmp_path / "lifecycle-inbox.sqlite3")
+    initial_inbox = LifecycleEvidenceInbox(
+        inbox_path,
+        public_keys_json=trust,
+        source_public_keys_json="{}",
+    )
+    assert (
+        initial_inbox.persist_verified(
+            "gfx.liquidity.lifecycle.v1", envelope, initially_unattested
+        )
+        == "STORED"
+    )
+    # A process restart with an updated source trust bundle promotes the
+    # existing immutable event without requiring a broker redelivery.
     inbox = LifecycleEvidenceInbox(
-        str(tmp_path / "lifecycle-inbox.sqlite3"),
+        inbox_path,
         public_keys_json=trust,
         source_public_keys_json=source_trust,
     )
-    assert (
-        inbox.persist_verified("gfx.liquidity.lifecycle.v1", envelope, initially_unattested)
-        == "STORED"
-    )
-    assert (
-        inbox.persist_verified("gfx.liquidity.lifecycle.v1", envelope, later_attested)
-        == "DUPLICATE"
-    )
-
     manifest = inbox.point_in_time_evidence(
         instrument="EURUSD",
         timeframe="1m",
@@ -723,18 +728,19 @@ def test_postgres_inbox_restart_history_and_point_in_time_evidence() -> None:
         envelope, public_keys_json=trust, source_public_keys_json=source_trust
     )
     topic = "gfx.liquidity.lifecycle.v1"
-    inbox = PostgresLifecycleEvidenceInbox(
-        POSTGRES_DSN,
-        public_keys_json=trust,
-        source_public_keys_json=source_trust,
-        expected_topic=topic,
-    )
     initially_unattested = verify_lifecycle_event(
         envelope, public_keys_json=trust, source_public_keys_json="{}"
     )
     assert initially_unattested["source_verified"] is False
-    assert inbox.persist_verified(topic, envelope, initially_unattested) == "STORED"
-    assert inbox.persist_verified(topic, envelope, verified) == "DUPLICATE"
+    initial_inbox = PostgresLifecycleEvidenceInbox(
+        POSTGRES_DSN,
+        public_keys_json=trust,
+        source_public_keys_json="{}",
+        expected_topic=topic,
+    )
+    assert initial_inbox.persist_verified(topic, envelope, initially_unattested) == "STORED"
+    # The replay reader promotes the immutable event after the source key is
+    # added to the trusted bundle; no broker redelivery is required.
     restarted = PostgresLifecycleEvidenceInbox(
         POSTGRES_DSN,
         public_keys_json=trust,
