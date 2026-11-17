@@ -11,6 +11,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import psycopg
+from psycopg import sql
+from psycopg.conninfo import make_conninfo
 import pytest
 import rfc8785
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -866,31 +868,45 @@ def test_sqlite_inbox_cutover_preserves_evidence_conflicts_and_quarantine(tmp_pa
         / "scripts"
         / "migrate_lifecycle_inbox_sqlite_to_postgres.py"
     )
-    migration_module = runpy.run_path(str(script))
-    migrate = migration_module["migrate"]
-    first = migrate(sqlite_path, POSTGRES_DSN)
-    second = migrate(sqlite_path, POSTGRES_DSN)
-    assert first["status"] == "imported"
-    assert second["status"] == "already_imported"
+    schema_name = f"migration_test_{uuid.uuid4().hex}"
+    with psycopg.connect(POSTGRES_DSN) as connection:
+        connection.execute(
+            sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema_name))
+        )
+    isolated_dsn = make_conninfo(
+        POSTGRES_DSN, options=f"-csearch_path={schema_name}"
+    )
+    try:
+        migration_module = runpy.run_path(str(script))
+        migrate = migration_module["migrate"]
+        first = migrate(sqlite_path, isolated_dsn)
+        second = migrate(sqlite_path, isolated_dsn)
+        assert first["status"] == "imported"
+        assert second["status"] == "already_imported"
 
-    migrated = PostgresLifecycleEvidenceInbox(
-        POSTGRES_DSN,
-        public_keys_json=trust_a,
-        source_public_keys_json=source_trust_a,
-    )
-    status = migrated.status()
-    assert status["source_attested_events"] >= 1
-    assert status["conflicts"] >= 1
-    assert status["quarantined_deliveries"] >= 1
-    history = migrated.lifecycle_history(verified_a["lifecycle_id"])
-    assert history is not None
-    assert history["head_sequence"] == verified_a["transition_sequence"]
-    manifests = migrated.point_in_time_evidence(
-        instrument=verified_a["instrument"],
-        timeframe=verified_a["timeframe"],
-        source_dataset_id=verified_a["source_dataset_id"],
-        price_basis="MID",
-        cutoffs=[datetime.now(UTC) + timedelta(minutes=1)],
-    )
-    assert manifests[0]["evidence_count"] == 1
-    assert manifests[0]["evidence"][0]["event_id"] == verified_a["event_id"]
+        migrated = PostgresLifecycleEvidenceInbox(
+            isolated_dsn,
+            public_keys_json=trust_a,
+            source_public_keys_json=source_trust_a,
+        )
+        status = migrated.status()
+        assert status["source_attested_events"] >= 1
+        assert status["conflicts"] >= 2
+        assert status["quarantined_deliveries"] >= 1
+        history = migrated.lifecycle_history(verified_a["lifecycle_id"])
+        assert history is not None
+        assert history["head_sequence"] == verified_a["transition_sequence"]
+        manifests = migrated.point_in_time_evidence(
+            instrument=verified_a["instrument"],
+            timeframe=verified_a["timeframe"],
+            source_dataset_id=verified_a["source_dataset_id"],
+            price_basis="MID",
+            cutoffs=[datetime.now(UTC) + timedelta(minutes=1)],
+        )
+        assert manifests[0]["evidence_count"] == 1
+        assert manifests[0]["evidence"][0]["event_id"] == verified_a["event_id"]
+    finally:
+        with psycopg.connect(POSTGRES_DSN) as connection:
+            connection.execute(
+                sql.SQL("DROP SCHEMA {} CASCADE").format(sql.Identifier(schema_name))
+            )
