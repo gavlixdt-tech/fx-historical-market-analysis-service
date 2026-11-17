@@ -81,9 +81,23 @@ def signed_envelope(
             ).encode("utf-8")
         )
     ).decode("ascii")
+    occurred_at = observed_at.isoformat().replace("+00:00", "Z")
+    transition_id = hashlib.sha256(
+        f"{event_id}|1|{state}|{occurred_at}".encode("utf-8")
+    ).hexdigest()
+    transition_projection = {
+        "lifecycle_id": event_id,
+        "transition_id": transition_id,
+        "sequence": 1,
+        "state": state,
+        "occurred_at": occurred_at,
+        "previous_transition_sha256": "0" * 64,
+    }
+    transition_hash = hashlib.sha256(rfc8785.dumps(transition_projection)).hexdigest()
+    transition = {**transition_projection, "transition_sha256": transition_hash}
     data = {
         "contract_version": "liquidity-lifecycle-evidence/v1",
-        "event_id": event_id,
+        "event_id": transition_id,
         "event_type": "com.gavlix.market.liquidity.lifecycle.v1",
         "producer": {
             "service_id": "fx-liquidity-analysis-service",
@@ -98,6 +112,11 @@ def signed_envelope(
         "timeframe": "1m",
         "lifecycle": {
             "lifecycle_id": event_id,
+            "transition_id": transition_id,
+            "transition_sequence": 1,
+            "transition_sha256": transition_hash,
+            "previous_transition_sha256": "0" * 64,
+            "transition_history": [transition],
             "sweep_event_id": "sweep-1",
             "state": state,
             "direction": "BEARISH",
@@ -165,7 +184,7 @@ def signed_envelope(
         "signed_at": now.isoformat().replace("+00:00", "Z"),
     }
     envelope = {
-        "id": event_id,
+        "id": transition_id,
         "type": "com.gavlix.market.liquidity.lifecycle.v1",
         "producer_id": "fx-liquidity-analysis-service",
         "schema_version": "liquidity-lifecycle-evidence/v1",
