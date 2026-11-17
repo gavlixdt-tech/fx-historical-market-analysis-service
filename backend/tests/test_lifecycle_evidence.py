@@ -28,8 +28,11 @@ def signed_envelope(
     event_id: str = "lifecycle-1",
     state: str = "DISPLACEMENT_CONFIRMED",
     reverse_temporal_order: bool = False,
+    lifecycle_id: str | None = None,
+    now: datetime | None = None,
 ) -> tuple[dict, str, str]:
-    now = datetime.now(UTC).replace(microsecond=0)
+    aggregate_id = lifecycle_id or event_id
+    now = (now or datetime.now(UTC)).astimezone(UTC).replace(microsecond=0)
     source_at = now - timedelta(minutes=4)
     observed_at = now - timedelta(minutes=2)
     confirmed_at = now - timedelta(minutes=2)
@@ -95,10 +98,10 @@ def signed_envelope(
         (2, state, displacement_occurred_at),
     ):
         transition_id = hashlib.sha256(
-            f"{event_id}|{sequence}|{transition_state}|{occurred_at}".encode()
+            f"{aggregate_id}|{sequence}|{transition_state}|{occurred_at}".encode()
         ).hexdigest()
         transition_projection = {
-            "lifecycle_id": event_id,
+            "lifecycle_id": aggregate_id,
             "transition_id": transition_id,
             "sequence": sequence,
             "state": transition_state,
@@ -126,7 +129,7 @@ def signed_envelope(
         },
         "timeframe": "1m",
         "lifecycle": {
-            "lifecycle_id": event_id,
+            "lifecycle_id": aggregate_id,
             "transition_id": transition_id,
             "transition_sequence": 2,
             "transition_sha256": transition_hash,
@@ -186,7 +189,7 @@ def signed_envelope(
             ],
         },
         "correlation": {
-            "correlation_id": event_id,
+            "correlation_id": aggregate_id,
             "causation_id": "sweep-1",
             "traceparent": None,
         },
@@ -722,10 +725,21 @@ def test_postgres_inbox_restart_history_and_point_in_time_evidence() -> None:
 def test_postgres_inbox_serializes_concurrent_history_forks() -> None:
     lifecycle_id = f"postgres-fork-{uuid.uuid4()}"
     key_a, key_b = Ed25519PrivateKey.generate(), Ed25519PrivateKey.generate()
+    common_time = datetime.now(UTC).replace(microsecond=0)
     env_a, trust_a, source_a = signed_envelope(
-        key_a, event_id=lifecycle_id, state="DISPLACEMENT_CONFIRMED"
+        key_a,
+        event_id="postgres-fork-branch-a",
+        lifecycle_id=lifecycle_id,
+        state="DISPLACEMENT_CONFIRMED",
+        now=common_time,
     )
-    env_b, trust_b, source_b = signed_envelope(key_b, event_id=lifecycle_id, state="INVALIDATED")
+    env_b, trust_b, source_b = signed_envelope(
+        key_b,
+        event_id="postgres-fork-branch-b",
+        lifecycle_id=lifecycle_id,
+        state="INVALIDATED",
+        now=common_time,
+    )
     verified_a = verify_lifecycle_event(
         env_a, public_keys_json=trust_a, source_public_keys_json=source_a
     )
@@ -779,6 +793,13 @@ def test_postgres_inbox_evidence_and_quarantine_are_append_only() -> None:
         with psycopg.connect(POSTGRES_DSN) as db:
             db.execute(
                 "UPDATE lifecycle_evidence_inbox SET envelope_json='{}' WHERE event_id=%s",
+                (verified["event_id"],),
+            )
+    with pytest.raises(psycopg.Error, match="append-only"):
+        with psycopg.connect(POSTGRES_DSN) as db:
+            db.execute(
+                "UPDATE lifecycle_evidence_source_verifications "
+                "SET source_dataset_id='tampered' WHERE event_id=%s",
                 (verified["event_id"],),
             )
     delivery_id = f"rejected-{uuid.uuid4()}"
