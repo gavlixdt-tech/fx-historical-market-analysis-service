@@ -79,6 +79,21 @@ jobs:
 
       - name: Unit and integration tests
         run: pytest tests -q
+      - name: Restart PostgreSQL and verify evidence ledger durability
+        shell: bash
+        run: |
+          container_id="$(docker ps --format '{{.ID}} {{.Image}}' | awk '$2 == "postgres:17" { print $1; exit }')"
+          test -n "$container_id"
+          before="$(python -c 'import os, psycopg; db=psycopg.connect(os.environ["TEST_POSTGRES_URL"]); row=db.execute("SELECT (SELECT COUNT(*) FROM lifecycle_evidence_inbox), (SELECT COUNT(*) FROM lifecycle_evidence_source_verifications), (SELECT COUNT(*) FROM lifecycle_evidence_conflicts), (SELECT COUNT(*) FROM lifecycle_evidence_quarantine)").fetchone(); db.close(); print(row)')"
+          docker restart "$container_id"
+          for attempt in $(seq 1 30); do
+            if python -c 'import os, psycopg; db=psycopg.connect(os.environ["TEST_POSTGRES_URL"], connect_timeout=2); db.close()' >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+          after="$(python -c 'import os, psycopg; db=psycopg.connect(os.environ["TEST_POSTGRES_URL"]); row=db.execute("SELECT (SELECT COUNT(*) FROM lifecycle_evidence_inbox), (SELECT COUNT(*) FROM lifecycle_evidence_source_verifications), (SELECT COUNT(*) FROM lifecycle_evidence_conflicts), (SELECT COUNT(*) FROM lifecycle_evidence_quarantine)").fetchone(); db.close(); print(row)')"
+          test "$before" = "$after"
 
       - name: Verify the OpenAPI schema can be generated
         run: PYTHONPATH=.. python -c "from backend.app.main import app; app.openapi()"
