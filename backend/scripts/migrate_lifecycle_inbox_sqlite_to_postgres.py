@@ -323,7 +323,7 @@ def migrate(sqlite_path: Path, dsn: str) -> dict[str, int | str]:
                     verification_count,conflict_count,quarantine_count
                 ) VALUES (%s,%s,%s,%s,%s,%s,%s)
             """, (
-                fingerprint, str(sqlite_path), datetime.now(UTC),
+                fingerprint, str(sqlite_path.expanduser().resolve()), datetime.now(UTC),
                 imported["inbox"], imported["source_verifications"],
                 imported["conflicts"], imported["quarantine"],
             ))
