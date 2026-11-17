@@ -355,8 +355,9 @@ def _attach_market_context_features(
     features: list[dict[str, Any] | None],
     observations: list[ReplayObservationInput],
     available_at: list[datetime],
+    trusted_lifecycle_contexts: list[dict[str, float] | None] | None = None,
 ) -> tuple[list[str], bool]:
-    """Attach only point-in-time session context; unverified lifecycle claims are audit-only."""
+    """Attach point-in-time session data and only source-attested lifecycle features."""
     session_names = (
         "wellington",
         "sydney",
@@ -375,14 +376,29 @@ def _attach_market_context_features(
         "ict_london_close",
         "ict_new_york_pm",
     )
-    context_feature_names = [
+    session_feature_names = [
         *(f"session_{name}" for name in session_names),
         *(f"open_window_{name}" for name in open_window_names),
         *(f"kill_zone_{name}" for name in kill_zone_names),
         "session_overlap_count",
     ]
+    lifecycle_feature_names = [
+        "liquidity_sweep_bullish",
+        "liquidity_sweep_bearish",
+        "liquidity_displacement_confirmed",
+        "liquidity_midpoint_reached",
+        "liquidity_midpoint_consolidation",
+        "liquidity_invalidated",
+    ]
     has_session_context = any(item.session_context is not None for item in observations)
-    if not has_session_context:
+    has_trusted_lifecycle_context = bool(
+        trusted_lifecycle_contexts
+        and any(item is not None for item in trusted_lifecycle_contexts)
+    )
+    context_feature_names = list(session_feature_names)
+    if has_trusted_lifecycle_context:
+        context_feature_names.extend(lifecycle_feature_names)
+    if not has_session_context and not has_trusted_lifecycle_context:
         return context_feature_names, False
 
     for index, item in enumerate(observations):
@@ -402,16 +418,30 @@ def _attach_market_context_features(
                 row[f"kill_zone_{name}"] = float(name in active_kill_zones)
             row["session_overlap_count"] = float(session.session_overlap_count)
         else:
-            for name in context_feature_names:
+            for name in session_feature_names:
                 row[name] = None
 
-    # ReplayObservationInput.liquidity_lifecycle is caller-supplied and has no
-    # verifiable producer signature or independent market-source attestation.
-    # It is retained in the audit payload below, but must not become a model
-    # feature until the trusted Service 2 inbox supplies source-attested data.
+        if has_trusted_lifecycle_context:
+            lifecycle_context = (
+                trusted_lifecycle_contexts[index]
+                if trusted_lifecycle_contexts is not None and index < len(trusted_lifecycle_contexts)
+                else None
+            )
+            if lifecycle_context is None:
+                for name in lifecycle_feature_names:
+                    row[name] = None
+            else:
+                for name in lifecycle_feature_names:
+                    row[name] = lifecycle_context.get(name)
+
+    # ReplayObservationInput.liquidity_lifecycle is caller-supplied and remains
+    # audit-only. Only the server-side inbox query can supply trusted features.
     return context_feature_names, True
 
-def run_historical_replay(request: HistoricalReplayRequest) -> dict[str, Any]:
+def run_historical_replay(
+    request: HistoricalReplayRequest,
+    trusted_lifecycle_contexts: list[dict[str, float] | None] | None = None,
+) -> dict[str, Any]:
     started_at = datetime.now(UTC).isoformat()
     timestamps = [coerce_timestamp(item.timestamp) for item in request.observations]
     available_at = [coerce_timestamp(item.available_at) for item in request.observations]
@@ -454,7 +484,7 @@ def run_historical_replay(request: HistoricalReplayRequest) -> dict[str, Any]:
     labels = generate_labels(observations, spec)
 
     context_feature_names, has_context = _attach_market_context_features(
-        features, request.observations, available_at
+        features, request.observations, available_at, trusted_lifecycle_contexts
     )
     task_type = task_type_for_target(spec.target_type)
     allowed = {item["name"] for item in supported_model_families(task_type)}
