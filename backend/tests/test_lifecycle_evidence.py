@@ -895,7 +895,10 @@ def test_sqlite_inbox_cutover_preserves_evidence_conflicts_and_quarantine(tmp_pa
         migrate = migration_module["migrate"]
         with ThreadPoolExecutor(max_workers=2) as pool:
             results = list(
-                pool.map(lambda _: migrate(sqlite_path, isolated_dsn), range(2))
+                pool.map(
+                    lambda _: migrate(sqlite_path, isolated_dsn),
+                    range(2),
+                )
             )
         assert sorted(result["status"] for result in results) == [
             "already_imported",
