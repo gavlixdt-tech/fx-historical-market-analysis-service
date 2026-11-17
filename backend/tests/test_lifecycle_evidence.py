@@ -294,7 +294,11 @@ def test_point_in_time_inbox_context_excludes_events_until_available_at(tmp_path
     verified = verify_lifecycle_event(
         envelope, public_keys_json=trust, source_public_keys_json=source_trust
     )
-    inbox = LifecycleEvidenceInbox(str(tmp_path / "lifecycle-inbox.sqlite3"))
+    inbox = LifecycleEvidenceInbox(
+        str(tmp_path / "lifecycle-inbox.sqlite3"),
+        public_keys_json=trust,
+        source_public_keys_json=source_trust,
+    )
     inbox.persist_verified("gfx.liquidity.lifecycle.v1", envelope, verified)
     now = datetime.now(UTC)
     contexts = inbox.point_in_time_contexts(
@@ -339,7 +343,11 @@ def test_point_in_time_contexts_use_utc_instants_and_preserve_unsorted_cutoff_or
     verified = verify_lifecycle_event(
         envelope, public_keys_json=trust, source_public_keys_json=source_trust
     )
-    inbox = LifecycleEvidenceInbox(str(tmp_path / "lifecycle-inbox.sqlite3"))
+    inbox = LifecycleEvidenceInbox(
+        str(tmp_path / "lifecycle-inbox.sqlite3"),
+        public_keys_json=trust,
+        source_public_keys_json=source_trust,
+    )
     inbox.persist_verified("gfx.liquidity.lifecycle.v1", envelope, verified)
 
     # Simulate the exact instant represented by a producer's trailing-Z value
@@ -428,7 +436,11 @@ def test_late_lower_sequence_transition_cannot_roll_back_replay_state(tmp_path) 
     verified_earlier = verify_lifecycle_event(
         earlier, public_keys_json=trust, source_public_keys_json=source_trust
     )
-    inbox = LifecycleEvidenceInbox(str(tmp_path / "lifecycle-inbox.sqlite3"))
+    inbox = LifecycleEvidenceInbox(
+        str(tmp_path / "lifecycle-inbox.sqlite3"),
+        public_keys_json=trust,
+        source_public_keys_json=source_trust,
+    )
     assert inbox.persist_verified("gfx.liquidity.lifecycle.v1", later, verified_later) == "STORED"
     assert inbox.persist_verified("gfx.liquidity.lifecycle.v1", earlier, verified_earlier) == "STORED"
 
@@ -449,7 +461,11 @@ def test_prediction_origin_manifest_identifies_exact_evidence(tmp_path) -> None:
     verified = verify_lifecycle_event(
         envelope, public_keys_json=trust, source_public_keys_json=source_trust
     )
-    inbox = LifecycleEvidenceInbox(str(tmp_path / "lifecycle-inbox.sqlite3"))
+    inbox = LifecycleEvidenceInbox(
+        str(tmp_path / "lifecycle-inbox.sqlite3"),
+        public_keys_json=trust,
+        source_public_keys_json=source_trust,
+    )
     inbox.persist_verified("gfx.liquidity.lifecycle.v1", envelope, verified)
     origin = datetime.now(UTC) + timedelta(minutes=1)
     manifest = inbox.point_in_time_evidence(
