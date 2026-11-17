@@ -1230,6 +1230,10 @@ class PostgresLifecycleEvidenceInbox:
                     source_dataset_id TEXT
                 )
             """)
+            connection.execute(
+                "ALTER TABLE lifecycle_evidence_inbox "
+                "ADD COLUMN IF NOT EXISTS source_dataset_id TEXT"
+            )
             connection.execute("""
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_lifecycle_lifecycle_sequence
                 ON lifecycle_evidence_inbox(lifecycle_id,transition_sequence)
@@ -1296,6 +1300,10 @@ class PostgresLifecycleEvidenceInbox:
             connection.execute("""
                 INSERT INTO lifecycle_evidence_schema_migrations(version)
                 VALUES (1) ON CONFLICT(version) DO NOTHING
+            """)
+            connection.execute("""
+                INSERT INTO lifecycle_evidence_schema_migrations(version)
+                VALUES (2) ON CONFLICT(version) DO NOTHING
             """)
 
     def _record_conflict(
