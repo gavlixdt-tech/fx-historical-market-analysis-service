@@ -641,6 +641,10 @@ class LifecycleEvidenceInbox:
                 "ON lifecycle_evidence_inbox(instrument,timeframe,source_dataset_id,"
                 "available_at_epoch_us,received_at_epoch_us)"
             )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_lifecycle_evidence_pending_source "
+                "ON lifecycle_evidence_inbox(event_id) WHERE source_verified=0"
+            )
             connection.execute("""
                 CREATE TABLE IF NOT EXISTS lifecycle_evidence_source_verifications (
                     event_id TEXT PRIMARY KEY,
@@ -1246,7 +1250,26 @@ class LifecycleEvidenceInbox:
                 "SELECT COUNT(*) AS n FROM lifecycle_evidence_inbox"
             ).fetchone()
             source_row = connection.execute(
-                "SELECT COUNT(*) AS n FROM lifecycle_evidence_inbox WHERE source_verified=1 OR EXISTS (SELECT 1 FROM lifecycle_evidence_source_verifications v WHERE v.event_id=lifecycle_evidence_inbox.event_id)"
+                """
+                SELECT COUNT(*) AS n FROM lifecycle_evidence_inbox i
+                WHERE i.source_verified=1 OR EXISTS (
+                    SELECT 1 FROM lifecycle_evidence_source_verifications v
+                    WHERE v.event_id=i.event_id
+                      AND v.payload_sha256=i.payload_sha256
+                      AND v.source_dataset_id=i.source_dataset_id
+                )
+                """
+            ).fetchone()
+            pending_source_row = connection.execute(
+                """
+                SELECT COUNT(*) AS n FROM lifecycle_evidence_inbox i
+                WHERE i.source_verified=0 AND NOT EXISTS (
+                    SELECT 1 FROM lifecycle_evidence_source_verifications v
+                    WHERE v.event_id=i.event_id
+                      AND v.payload_sha256=i.payload_sha256
+                      AND v.source_dataset_id=i.source_dataset_id
+                )
+                """
             ).fetchone()
             conflict_row = connection.execute(
                 "SELECT COUNT(*) AS n FROM lifecycle_evidence_conflicts"
@@ -1261,6 +1284,7 @@ class LifecycleEvidenceInbox:
             ).fetchone()
             accepted = int(accepted_row["n"]) if accepted_row else 0
             source_verified = int(source_row["n"]) if source_row else 0
+            pending_source = int(pending_source_row["n"]) if pending_source_row else 0
             conflicts = int(conflict_row["n"]) if conflict_row else 0
             rejected = int(rejected_row["n"]) if rejected_row else 0
             lifecycle_count = int(history_row["lifecycles"]) if history_row else 0
@@ -1268,6 +1292,7 @@ class LifecycleEvidenceInbox:
         return {
             "signature_verified_events": int(accepted),
             "source_attested_events": int(source_verified),
+            "pending_source_attestation_events": int(pending_source),
             "conflicts": int(conflicts),
             "quarantined_deliveries": int(rejected),
             "unique_lifecycle_aggregates": lifecycle_count,
@@ -1385,6 +1410,10 @@ class PostgresLifecycleEvidenceInbox:
                     instrument,timeframe,source_dataset_id,
                     available_at_epoch_us,received_at_epoch_us
                 )
+            """)
+            connection.execute("""
+                CREATE INDEX IF NOT EXISTS idx_lifecycle_evidence_pending_source
+                ON lifecycle_evidence_inbox(event_id) WHERE source_verified=FALSE
             """)
             connection.execute("""
                 CREATE TABLE IF NOT EXISTS lifecycle_evidence_source_verifications (
@@ -2004,6 +2033,17 @@ class PostgresLifecycleEvidenceInbox:
                 )
                 """
             ).fetchone() or {"n": 0}
+            pending_source = connection.execute(
+                """
+                SELECT COUNT(*) AS n FROM lifecycle_evidence_inbox i
+                WHERE i.source_verified=FALSE AND NOT EXISTS (
+                    SELECT 1 FROM lifecycle_evidence_source_verifications v
+                    WHERE v.event_id=i.event_id
+                      AND v.payload_sha256=i.payload_sha256
+                      AND v.source_dataset_id=i.source_dataset_id
+                )
+                """
+            ).fetchone() or {"n": 0}
             conflicts = connection.execute(
                 "SELECT COUNT(*) AS n FROM lifecycle_evidence_conflicts"
             ).fetchone() or {"n": 0}
@@ -2026,6 +2066,7 @@ class PostgresLifecycleEvidenceInbox:
         return {
             "signature_verified_events": int(accepted["n"]),
             "source_attested_events": int(source["n"]),
+            "pending_source_attestation_events": int(pending_source["n"]),
             "conflicts": int(conflicts["n"]),
             "quarantined_deliveries": int(rejected["n"]),
             "unique_lifecycle_aggregates": int(history["lifecycles"]),
