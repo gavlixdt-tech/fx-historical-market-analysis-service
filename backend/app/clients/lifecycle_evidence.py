@@ -1192,6 +1192,7 @@ class PostgresLifecycleEvidenceInbox:
             or verified["lifecycle_id"] != row["lifecycle_id"]
             or verified["transition_sequence"] != row["transition_sequence"]
             or verified["transition_sha256"] != row["transition_sha256"]
+            or verified["source_dataset_id"] != row["source_dataset_id"]
             or _epoch_microseconds(_parse_utc(row["available_at"], "stored_available_at"))
             != int(row["available_at_epoch_us"])
             or _epoch_microseconds(_parse_utc(row["received_at"], "stored_received_at"))
