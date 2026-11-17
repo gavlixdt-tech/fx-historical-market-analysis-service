@@ -1249,10 +1249,12 @@ class PostgresLifecycleEvidenceInbox:
             connection.execute(
                 "SELECT pg_advisory_xact_lock(hashtext(%s))", (lifecycle_id,)
             )
-            database_now = connection.execute(
+            database_clock = connection.execute(
                 "SELECT clock_timestamp() AS now"
-            ).fetchone()["now"].astimezone(UTC)
-            now_dt = database_now
+            ).fetchone()
+            if database_clock is None:
+                raise RuntimeError("PostgreSQL clock query returned no row")
+            now_dt = database_clock["now"].astimezone(UTC)
             now = now_dt.isoformat()
             existing = connection.execute(
                 """
@@ -1355,9 +1357,12 @@ class PostgresLifecycleEvidenceInbox:
     ) -> None:
         encoded = json.dumps(envelope, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
         with self._connect() as connection:
-            received_at = connection.execute(
+            database_clock = connection.execute(
                 "SELECT clock_timestamp() AS now"
-            ).fetchone()["now"].astimezone(UTC).isoformat()
+            ).fetchone()
+            if database_clock is None:
+                raise RuntimeError("PostgreSQL clock query returned no row")
+            received_at = database_clock["now"].astimezone(UTC).isoformat()
             connection.execute(
                 """
                 INSERT INTO lifecycle_evidence_quarantine(
@@ -1568,7 +1573,7 @@ class PostgresLifecycleEvidenceInbox:
 
     def status(self) -> dict[str, Any]:
         with self._connect() as connection:
-            accepted = connection.execute("SELECT COUNT(*) AS n FROM lifecycle_evidence_inbox").fetchone()
+            accepted = connection.execute("SELECT COUNT(*) AS n FROM lifecycle_evidence_inbox").fetchone() or {"n": 0}
             source = connection.execute(
                 """
                 SELECT COUNT(*) AS n FROM lifecycle_evidence_inbox i
@@ -1576,9 +1581,9 @@ class PostgresLifecycleEvidenceInbox:
                     SELECT 1 FROM lifecycle_evidence_source_verifications v WHERE v.event_id=i.event_id
                 )
                 """
-            ).fetchone()
-            conflicts = connection.execute("SELECT COUNT(*) AS n FROM lifecycle_evidence_conflicts").fetchone()
-            rejected = connection.execute("SELECT COUNT(*) AS n FROM lifecycle_evidence_quarantine").fetchone()
+            ).fetchone() or {"n": 0}
+            conflicts = connection.execute("SELECT COUNT(*) AS n FROM lifecycle_evidence_conflicts").fetchone() or {"n": 0}
+            rejected = connection.execute("SELECT COUNT(*) AS n FROM lifecycle_evidence_quarantine").fetchone() or {"n": 0}
             history = connection.execute(
                 """
                 SELECT COUNT(DISTINCT lifecycle_id) AS lifecycles,
@@ -1588,7 +1593,7 @@ class PostgresLifecycleEvidenceInbox:
                     SELECT 1 FROM lifecycle_evidence_source_verifications v WHERE v.event_id=i.event_id
                 )
                 """
-            ).fetchone()
+            ).fetchone() or {"lifecycles": 0, "max_sequence": 0}
         return {
             "signature_verified_events": int(accepted["n"]),
             "source_attested_events": int(source["n"]),
