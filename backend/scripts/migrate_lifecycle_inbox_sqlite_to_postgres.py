@@ -256,25 +256,31 @@ def migrate(sqlite_path: Path, dsn: str) -> dict[str, int | str]:
                     )
                 stored = target.execute(
                     """
-                    SELECT conflict_id FROM lifecycle_evidence_conflicts
-                    WHERE event_id=%s AND payload_sha256=%s AND envelope_json=%s AND received_at=%s
-                    LIMIT 1
+                    SELECT event_id,payload_sha256,envelope_json,received_at
+                    FROM lifecycle_evidence_conflicts WHERE conflict_id=%s
                     """,
-                    (
-                        raw["event_id"],
-                        raw["payload_sha256"],
-                        raw["envelope_json"],
-                        raw["received_at"],
-                    ),
+                    (raw["conflict_id"],),
                 ).fetchone()
-                if stored is None:
+                expected_conflict = {
+                    "event_id": raw["event_id"],
+                    "payload_sha256": raw["payload_sha256"],
+                    "envelope_json": raw["envelope_json"],
+                    "received_at": raw["received_at"],
+                }
+                if stored is not None:
+                    if any(stored[key] != value for key, value in expected_conflict.items()):
+                        raise RuntimeError(
+                            f"PostgreSQL conflict identity mismatch for conflict {raw['conflict_id']}"
+                        )
+                else:
                     target.execute(
                         """
                         INSERT INTO lifecycle_evidence_conflicts(
-                            event_id,payload_sha256,envelope_json,received_at
-                        ) VALUES (%s,%s,%s,%s)
+                            conflict_id,event_id,payload_sha256,envelope_json,received_at
+                        ) VALUES (%s,%s,%s,%s,%s)
                         """,
                         (
+                            raw["conflict_id"],
                             raw["event_id"],
                             raw["payload_sha256"],
                             raw["envelope_json"],
