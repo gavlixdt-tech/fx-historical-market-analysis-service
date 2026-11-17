@@ -56,7 +56,7 @@ def signed_envelope(
         },
         "volume_semantics": "not_supplied",
         "source_metadata": {
-            "provider_id": "test-provider", "service1_timeframe": "1m",
+            "provider_id": "test-provider", "service1_timeframe": "M1",
             "indicator_timeframe": "1M", "price_basis": "midpoint",
             "retrieved_at": now.isoformat().replace("+00:00", "Z"),
             "coverage": {}, "validation_summary": {}, "candle_sources": [],
