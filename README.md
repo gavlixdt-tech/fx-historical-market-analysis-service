@@ -534,7 +534,9 @@ shape and monotonic event timestamps. It persists accepted events before
 acknowledging the Event Bus delivery. Invalid signatures are durably
 quarantined and acknowledged so one poison event cannot block the partition.
 A repeated event with the same ID and digest is deduplicated; the same ID with
-a different digest is retained in a conflict ledger.
+a different digest is retained in a conflict ledger. Reuse of a quarantined
+delivery ID with different content or rejection metadata is also recorded as
+an immutable conflict instead of being silently discarded.
 
 **Important source-trust boundary:** Service 9 requires and verifies a Service 1 Ed25519 signature over the exact complete candle dataset, then signs its derived lifecycle event. Service 2 independently verifies both signatures. This is a Service 1 dataset attestation, not a vendor-origin digital signature. Only events with both signatures verified are stored as source-attested; replay additionally requires exact source dataset, instrument, timeframe and price-basis matches, plus both producer availability and Service 2 inbox receipt no later than each prediction origin.
 
