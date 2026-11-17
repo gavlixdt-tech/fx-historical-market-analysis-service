@@ -493,8 +493,7 @@ def verify_lifecycle_event(
         "sensitivity": "internal",
     }
     if any(
-        envelope.get(field) != expected
-        for field, expected in expected_cloud_event_metadata.items()
+        envelope.get(field) != expected for field, expected in expected_cloud_event_metadata.items()
     ):
         raise LifecycleEvidenceError("cloudevent_metadata_mismatch")
     return {
