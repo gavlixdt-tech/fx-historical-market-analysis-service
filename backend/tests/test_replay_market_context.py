@@ -277,3 +277,30 @@ def test_lifecycle_transition_timestamps_require_prerequisites() -> None:
                 }
             )
         )
+
+
+def test_server_verified_lifecycle_context_can_become_a_point_in_time_feature() -> None:
+    from backend.app.analysis.replay import _attach_market_context_features
+
+    now = datetime.now(UTC)
+    timestamp = now - timedelta(hours=2)
+    candle_available_at = timestamp + timedelta(minutes=1)
+    observation = ReplayObservationInput.model_validate(
+        _base_observation(available_at=candle_available_at)
+    )
+    features = [{"reference_index": 0}]
+    trusted_context = {
+        "liquidity_sweep_bullish": 1.0,
+        "liquidity_sweep_bearish": 0.0,
+        "liquidity_displacement_confirmed": 1.0,
+        "liquidity_midpoint_reached": 0.0,
+        "liquidity_midpoint_consolidation": 0.0,
+        "liquidity_invalidated": 0.0,
+    }
+    names, has_context = _attach_market_context_features(
+        features, [observation], [candle_available_at], [trusted_context]
+    )
+    assert has_context is True
+    assert "liquidity_sweep_bullish" in names
+    assert features[0]["liquidity_sweep_bullish"] == 1.0
+    assert features[0]["liquidity_displacement_confirmed"] == 1.0
