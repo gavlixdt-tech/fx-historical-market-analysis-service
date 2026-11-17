@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 EXPECTED_PRODUCER = "fx-liquidity-analysis-service"
 EXPECTED_EVENT_TYPE = "com.gavlix.market.liquidity.lifecycle.v1"
 EXPECTED_SCHEMA = "liquidity-lifecycle-evidence/v1"
+EXPECTED_SCHEMA_ID = "https://contracts.gavlix.com/schemas/liquidity-lifecycle-evidence/v1/event.schema.json"
 
 
 class LifecycleEvidenceError(ValueError):
@@ -34,6 +35,102 @@ class LifecycleEvidenceError(ValueError):
 
 def _b64url_encode(value: bytes) -> str:
     return base64.urlsafe_b64encode(value).rstrip(b"=").decode("ascii")
+
+
+def _service1_canonical_json(value: object) -> bytes:
+    return json.dumps(
+        value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False
+    ).encode("utf-8")
+
+
+def _verify_service1_source_attestation(
+    data: dict[str, Any], source_public_keys_json: str
+) -> bool:
+    provenance = data.get("provenance")
+    instrument = data.get("instrument")
+    market_basis = data.get("market_basis")
+    quality = data.get("quality")
+    if not all(isinstance(item, dict) for item in (provenance, instrument, market_basis, quality)):
+        raise LifecycleEvidenceError("source_attestation_context_invalid")
+    attestation = provenance.get("source_attestation")
+    expected_fields = {
+        "version", "purpose", "algorithm", "provider_id", "source_id", "key_id",
+        "issued_at", "observed_at", "instrument", "timeframe", "dataset_sha256",
+        "quality", "volume_semantics", "source_metadata", "signature",
+    }
+    if not isinstance(attestation, dict) or set(attestation) != expected_fields:
+        raise LifecycleEvidenceError("source_attestation_missing_or_invalid")
+    metadata = attestation.get("source_metadata")
+    attestation_quality = attestation.get("quality")
+    expected_metadata_fields = {
+        "provider_id", "service1_timeframe", "indicator_timeframe", "price_basis",
+        "retrieved_at", "coverage", "validation_summary", "candle_sources",
+        "volume_kinds", "limitations",
+    }
+    expected_quality_fields = {
+        "is_final", "valid", "coverage_complete", "rejected_count",
+        "duplicate_count", "candle_count",
+    }
+    timeframe_map = {
+        "1m": "1M", "5m": "5M", "15m": "15M", "30m": "30M",
+        "1h": "1H", "4h": "4H", "1d": "1D",
+    }
+    if (
+        attestation.get("version") != "1"
+        or attestation.get("purpose") != "indicator-candle-dataset"
+        or attestation.get("algorithm") != "Ed25519"
+        or attestation.get("instrument") != instrument.get("canonical_id")
+        or attestation.get("timeframe") != timeframe_map.get(data.get("timeframe"))
+        or attestation.get("source_id") != provenance.get("source_dataset_id")
+        or attestation.get("dataset_sha256") != provenance.get("source_dataset_sha256")
+        or attestation.get("provider_id") != provenance.get("source_provider_id")
+        or attestation.get("source_id") != market_basis.get("source_id")
+        or not isinstance(metadata, dict)
+        or set(metadata) != expected_metadata_fields
+        or not isinstance(attestation_quality, dict)
+        or set(attestation_quality) != expected_quality_fields
+        or metadata.get("provider_id") != attestation.get("provider_id")
+        or metadata.get("service1_timeframe") != data.get("timeframe")
+        or metadata.get("indicator_timeframe") != attestation.get("timeframe")
+        or metadata.get("retrieved_at") != attestation.get("observed_at")
+        or attestation_quality.get("is_final") is not True
+        or attestation_quality.get("valid") is not True
+        or attestation_quality.get("coverage_complete") is not True
+        or type(attestation_quality.get("rejected_count")) is not int
+        or attestation_quality.get("rejected_count") != 0
+        or type(attestation_quality.get("duplicate_count")) is not int
+        or attestation_quality.get("duplicate_count") != 0
+        or quality.get("quality_status") != "PASS"
+        or quality.get("source_attestation_status") != "SERVICE1_DATASET_SIGNATURE_VERIFIED"
+    ):
+        raise LifecycleEvidenceError("source_attestation_metadata_mismatch")
+    basis = str(metadata.get("price_basis", "vendor_defined")).lower()
+    basis_map = {
+        "bid": "BID", "ask": "ASK", "mid": "MID", "midpoint": "MID",
+        "last": "LAST", "close": "LAST",
+    }
+    if market_basis.get("price_basis") != basis_map.get(basis, "VENDOR_DEFINED"):
+        raise LifecycleEvidenceError("source_attestation_price_basis_mismatch")
+    try:
+        keys = json.loads(source_public_keys_json)
+    except json.JSONDecodeError as exc:
+        raise LifecycleEvidenceError("source_attestation_trust_bundle_invalid") from exc
+    key_id = attestation.get("key_id")
+    encoded_key = keys.get(key_id) if isinstance(keys, dict) and isinstance(key_id, str) else None
+    if not isinstance(encoded_key, str):
+        raise LifecycleEvidenceError("source_attestation_key_untrusted")
+    signature_value = attestation.get("signature")
+    if not isinstance(signature_value, str) or not signature_value.startswith("ed25519="):
+        raise LifecycleEvidenceError("source_attestation_signature_malformed")
+    try:
+        public_key_bytes = base64.b64decode(encoded_key, validate=True)
+        signature = base64.b64decode(signature_value[len("ed25519="):], validate=True)
+        public_key = Ed25519PublicKey.from_public_bytes(public_key_bytes)
+        signed_projection = {key: value for key, value in attestation.items() if key != "signature"}
+        public_key.verify(signature, _service1_canonical_json(signed_projection))
+    except (ValueError, TypeError, InvalidSignature) as exc:
+        raise LifecycleEvidenceError("source_attestation_signature_invalid") from exc
+    return True
 
 
 def _parse_utc(value: object, field: str) -> datetime:
@@ -53,12 +150,15 @@ def verify_lifecycle_event(
     *,
     public_keys_json: str,
     clock_skew_seconds: int = 60,
+    source_public_keys_json: str = "{}",
 ) -> dict[str, Any]:
     """Verify the producer signature, identity, contract and monotonic timestamps."""
     if envelope.get("type") != EXPECTED_EVENT_TYPE:
         raise LifecycleEvidenceError("event_type_mismatch")
     if envelope.get("schema_version") != EXPECTED_SCHEMA:
         raise LifecycleEvidenceError("schema_version_mismatch")
+    if envelope.get("schema_id") != EXPECTED_SCHEMA_ID or envelope.get("dataschema") != EXPECTED_SCHEMA_ID:
+        raise LifecycleEvidenceError("schema_id_mismatch")
     data = envelope.get("data")
     if not isinstance(data, dict):
         raise LifecycleEvidenceError("event_data_invalid")
@@ -172,8 +272,7 @@ def verify_lifecycle_event(
         raise LifecycleEvidenceError("quality_metadata_invalid")
     # The current Service 9 input API accepts caller-supplied candles. Its
     # signature is producer-authentic, not a vendor/source attestation.
-    # A producer-signed assertion is not an independent upstream source attestation.
-    source_verified = False
+    source_verified = _verify_service1_source_attestation(data, source_public_keys_json)
     return {
         "event_id": data["event_id"],
         "payload_sha256": digest,
@@ -393,6 +492,7 @@ class LifecycleEvidenceConsumer:
                     envelope,
                     public_keys_json=self.settings.lifecycle_event_public_keys_json,
                     clock_skew_seconds=self.settings.lifecycle_event_clock_skew_seconds,
+                    source_public_keys_json=self.settings.upstream_historical_attestation_public_keys_json,
                 )
                 self.inbox.persist_verified(
                     self.settings.lifecycle_event_bus_topic, envelope, verified
