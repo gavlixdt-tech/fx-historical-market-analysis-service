@@ -52,7 +52,13 @@ def _verify_service1_source_attestation(data: dict[str, Any], source_public_keys
     instrument = data.get("instrument")
     market_basis = data.get("market_basis")
     quality = data.get("quality")
-    if not all(isinstance(item, dict) for item in (provenance, instrument, market_basis, quality)):
+    if not all(
+        isinstance(item, dict) for item in (provenance, instrument, market_basis, quality)
+    ):
+        raise LifecycleEvidenceError("source_attestation_context_invalid")
+    if not isinstance(provenance, dict) or not isinstance(instrument, dict):
+        raise LifecycleEvidenceError("source_attestation_context_invalid")
+    if not isinstance(market_basis, dict) or not isinstance(quality, dict):
         raise LifecycleEvidenceError("source_attestation_context_invalid")
     attestation = provenance.get("source_attestation")
     expected_fields = {
@@ -76,6 +82,12 @@ def _verify_service1_source_attestation(data: dict[str, Any], source_public_keys
         raise LifecycleEvidenceError("source_attestation_missing_or_invalid")
     metadata = attestation.get("source_metadata")
     attestation_quality = attestation.get("quality")
+    if not isinstance(metadata, dict) or not isinstance(attestation_quality, dict):
+        raise LifecycleEvidenceError("source_attestation_metadata_invalid")
+    source_dataset_instrument = provenance.get("source_dataset_instrument")
+    timeframe = data.get("timeframe")
+    if not isinstance(source_dataset_instrument, str) or not isinstance(timeframe, str):
+        raise LifecycleEvidenceError("source_attestation_context_invalid")
     expected_metadata_fields = {
         "provider_id",
         "service1_timeframe",
@@ -109,25 +121,18 @@ def _verify_service1_source_attestation(data: dict[str, Any], source_public_keys
         attestation.get("version") != "1"
         or attestation.get("purpose") != "indicator-candle-dataset"
         or attestation.get("algorithm") != "Ed25519"
-        or attestation.get("instrument") != provenance.get("source_dataset_instrument")
-        or not isinstance(provenance.get("source_dataset_instrument"), str)
-        or "".join(
-            char for char in provenance["source_dataset_instrument"] if char.isalpha()
-        ).upper()
+        or attestation.get("instrument") != source_dataset_instrument
+        or "".join(char for char in source_dataset_instrument if char.isalpha()).upper()
         != instrument.get("canonical_id")
-        or attestation.get("timeframe")
-        != (timeframe_map.get(data.get("timeframe")) or (None, None))[1]
+        or attestation.get("timeframe") != (timeframe_map.get(timeframe) or (None, None))[1]
         or attestation.get("source_id") != provenance.get("source_dataset_id")
         or attestation.get("dataset_sha256") != provenance.get("source_dataset_sha256")
         or attestation.get("provider_id") != provenance.get("source_provider_id")
         or attestation.get("source_id") != market_basis.get("source_id")
-        or not isinstance(metadata, dict)
         or set(metadata) != expected_metadata_fields
-        or not isinstance(attestation_quality, dict)
         or set(attestation_quality) != expected_quality_fields
         or metadata.get("provider_id") != attestation.get("provider_id")
-        or metadata.get("service1_timeframe")
-        != (timeframe_map.get(data.get("timeframe")) or (None, None))[0]
+        or metadata.get("service1_timeframe") != (timeframe_map.get(timeframe) or (None, None))[0]
         or metadata.get("indicator_timeframe") != attestation.get("timeframe")
         or metadata.get("retrieved_at") != attestation.get("observed_at")
         or attestation_quality.get("is_final") is not True
@@ -325,8 +330,11 @@ def verify_lifecycle_event(
             "transition_sha256",
         }:
             raise LifecycleEvidenceError("transition_history_entry_invalid")
+        transition_state = item.get("state")
         current_state_rank = (
-            transition_state_ranks.get(item.get("state"), -1) if isinstance(item, dict) else -1
+            transition_state_ranks.get(transition_state, -1)
+            if isinstance(transition_state, str)
+            else -1
         )
         progression_skips_required_state = (
             previous_state_rank >= 0
@@ -516,6 +524,8 @@ class LifecycleEvidenceInbox:
             envelope = json.loads(row["envelope_json"])
         except (TypeError, json.JSONDecodeError) as exc:
             raise LifecycleEvidenceError("persisted_envelope_corrupt") from exc
+        if not isinstance(envelope, dict):
+            raise LifecycleEvidenceError("persisted_envelope_corrupt")
         verified = verify_lifecycle_event(
             envelope,
             public_keys_json=self.public_keys_json,
@@ -1138,6 +1148,8 @@ class PostgresLifecycleEvidenceInbox:
             envelope = json.loads(row["envelope_json"])
         except (TypeError, json.JSONDecodeError) as exc:
             raise LifecycleEvidenceError("persisted_envelope_corrupt") from exc
+        if not isinstance(envelope, dict):
+            raise LifecycleEvidenceError("persisted_envelope_corrupt")
         verified = verify_lifecycle_event(
             envelope,
             public_keys_json=self.public_keys_json,
