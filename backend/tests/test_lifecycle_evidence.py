@@ -427,7 +427,7 @@ def test_late_lower_sequence_transition_cannot_roll_back_replay_state(tmp_path) 
     lifecycle["transition_sha256"] = first["transition_sha256"]
     lifecycle["previous_transition_sha256"] = first["previous_transition_sha256"]
     lifecycle["transition_history"] = [first]
-    lifecycle["state"] = "SWEEP_CONFIRMED"
+    lifecycle["state"] = "SWEEP_CONFIRMED_AWAITING_DISPLACEMENT"
     lifecycle["displacement_confirmed_at"] = None
     data["temporal"]["observed_at"] = first["occurred_at"]
     data["temporal"]["confirmed_at"] = first["occurred_at"]
@@ -549,7 +549,7 @@ def test_inbox_rejects_divergent_history_prefix_even_when_each_event_is_signed(t
     earlier_lifecycle["transition_sha256"] = first["transition_sha256"]
     earlier_lifecycle["previous_transition_sha256"] = first["previous_transition_sha256"]
     earlier_lifecycle["transition_history"] = [first]
-    earlier_lifecycle["state"] = "SWEEP_CONFIRMED"
+    earlier_lifecycle["state"] = "SWEEP_CONFIRMED_AWAITING_DISPLACEMENT"
     earlier_lifecycle["displacement_confirmed_at"] = None
     earlier["data"]["temporal"]["observed_at"] = first["occurred_at"]
     earlier["data"]["temporal"]["confirmed_at"] = first["occurred_at"]
