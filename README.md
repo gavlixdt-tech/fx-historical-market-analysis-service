@@ -674,3 +674,12 @@ Each generated historical replay prediction row also carries its own
 count and evidence-set digest. The run-level registry deduplicates the signed
 event metadata while preserving a per-prediction pointer, so the evidence can
 be reconstructed without repeating full envelopes in every row.
+
+
+The authenticated endpoint
+`GET /api/v1/forecasting/lifecycle-evidence/{lifecycle_id}/history`
+reconstructs the full signed transition chain for an aggregate. It re-verifies
+the latest signed head and every individually received transition event before
+returning the reconstructed chain, head digest and receipt/availability
+records. It returns 404 when no source-attested history is stored and fails
+closed when persisted evidence no longer verifies.
