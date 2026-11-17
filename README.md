@@ -667,3 +667,10 @@ appear in an evidence manifest. A modified/corrupt SQLite record fails the
 replay closed; the system does not trust the inbox's mutable verification flag
 alone. The consumer loads the same configured public trust bundles at startup,
 so restart does not weaken replay verification.
+
+
+Each generated historical replay prediction row also carries its own
+`lifecycle_evidence` reference: prediction origin, exact event IDs, evidence
+count and evidence-set digest. The run-level registry deduplicates the signed
+event metadata while preserving a per-prediction pointer, so the evidence can
+be reconstructed without repeating full envelopes in every row.
