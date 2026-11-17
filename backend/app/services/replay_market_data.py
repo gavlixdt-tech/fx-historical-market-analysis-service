@@ -242,16 +242,20 @@ async def run_market_data_replay(
         lifecycle_timeframe = lifecycle_timeframe_map.get(payload.timeframe)
         if lifecycle_timeframe is None:
             raise ValidationError("No Service 9 lifecycle evidence timeframe mapping exists for this replay timeframe.")
+        lifecycle_instrument = data.canonical_instrument.replace("/", "").replace("-", "").upper()
         trusted_lifecycle_contexts = lifecycle_consumer.point_in_time_contexts(
-            instrument=data.canonical_instrument,
+            instrument=lifecycle_instrument,
             timeframe=lifecycle_timeframe,
             source_dataset_id=attested_source_id,
             price_basis=lifecycle_price_basis,
             cutoffs=[item.available_at for item in observations],
         )
-    result = await run_in_threadpool(
-        run_historical_replay, replay_request, trusted_lifecycle_contexts
-    )
+    if trusted_lifecycle_contexts is None:
+        result = await run_in_threadpool(run_historical_replay, replay_request)
+    else:
+        result = await run_in_threadpool(
+            run_historical_replay, replay_request, trusted_lifecycle_contexts
+        )
     result["reproducibility"]["lifecycle_evidence"] = {
         "consumer_enabled": lifecycle_consumer is not None,
         "source_dataset_id": attested_source_id,
