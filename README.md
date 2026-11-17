@@ -487,7 +487,7 @@ This reference follows the current runtime settings and repository environment t
 | `OTEL_ENDPOINT` | OTLP HTTP endpoint. | Conditional |
 | `METRICS_ENABLED` | Expose Prometheus metrics. | Optional |
 | `DATABASE_URL` | PostgreSQL connection URL for the lifecycle evidence inbox. Required when the lifecycle consumer is enabled in production; credentials are secret-bearing. Obtain from Railway PostgreSQL Variables; see https://docs.railway.com/guides/postgresql. | Conditional secret-bearing URL |
-Use a dedicated PostgreSQL database and least-privilege login for Service 2. A shared managed PostgreSQL cluster is acceptable, but do not give the service a cluster-owner or superuser credential and do not reuse another service's database role. Keep Service 2 `DATABASE_URL` scoped to its own database.
+Use a dedicated PostgreSQL database and a role that owns only that database (or has equivalent DDL/DML rights within its isolated schema). The current inbox adapter bootstraps its own tables, indexes and immutability triggers at startup, so a pure DML-only runtime role will fail initialization. A shared managed PostgreSQL cluster is acceptable, but do not grant cluster-wide ownership/superuser rights or access to another service's database. Keep Service 2 `DATABASE_URL` scoped to its own database.
 
 
 ## GFX Service 9 lifecycle evidence integration — deployment gate
