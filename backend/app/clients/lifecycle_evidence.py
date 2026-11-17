@@ -1227,7 +1227,7 @@ class PostgresLifecycleEvidenceInbox:
             """)
 
     def _record_conflict(
-        self, connection: psycopg.Connection, event_id: str,
+        self, connection: psycopg.Connection[dict[str, Any]], event_id: str,
         payload_sha256: str, encoded: str, now: str,
     ) -> None:
         connection.execute(
@@ -1242,14 +1242,17 @@ class PostgresLifecycleEvidenceInbox:
         self, topic: str, envelope: dict[str, Any], verified: dict[str, Any]
     ) -> str:
         encoded = json.dumps(envelope, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-        now_dt = datetime.now(UTC)
-        now = now_dt.isoformat()
         lifecycle_id = verified["lifecycle_id"]
         with self._connect() as connection:
             # Serialize all history/fork/sequence decisions for this aggregate.
             connection.execute(
                 "SELECT pg_advisory_xact_lock(hashtext(%s))", (lifecycle_id,)
             )
+            database_now = connection.execute(
+                "SELECT clock_timestamp() AS now"
+            ).fetchone()["now"].astimezone(UTC)
+            now_dt = database_now
+            now = now_dt.isoformat()
             existing = connection.execute(
                 """
                 SELECT topic,payload_sha256 FROM lifecycle_evidence_inbox
@@ -1351,6 +1354,9 @@ class PostgresLifecycleEvidenceInbox:
     ) -> None:
         encoded = json.dumps(envelope, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
         with self._connect() as connection:
+            received_at = connection.execute(
+                "SELECT clock_timestamp() AS now"
+            ).fetchone()["now"].astimezone(UTC).isoformat()
             connection.execute(
                 """
                 INSERT INTO lifecycle_evidence_quarantine(
@@ -1358,7 +1364,7 @@ class PostgresLifecycleEvidenceInbox:
                 ) VALUES (%s,%s,%s,%s,%s)
                 ON CONFLICT(delivery_id) DO NOTHING
                 """,
-                (delivery_id, event_id, encoded, reason[:500], datetime.now(UTC).isoformat()),
+                (delivery_id, event_id, encoded, reason[:500], received_at),
             )
 
     def _eligible_rows(
