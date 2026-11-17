@@ -184,6 +184,13 @@ def _parse_utc(value: object, field: str) -> datetime:
     return parsed.astimezone(UTC)
 
 
+def _epoch_microseconds(value: datetime) -> int:
+    """Convert an aware datetime to an exact integer UTC epoch-microsecond value."""
+    normalized = value.astimezone(UTC)
+    delta = normalized - datetime(1970, 1, 1, tzinfo=UTC)
+    return delta.days * 86_400_000_000 + delta.seconds * 1_000_000 + delta.microseconds
+
+
 def verify_lifecycle_event(
     envelope: dict[str, Any],
     *,
@@ -366,9 +373,44 @@ class LifecycleEvidenceInbox:
                     timeframe TEXT NOT NULL,
                     signature_verified INTEGER NOT NULL,
                     source_verified INTEGER NOT NULL,
-                    received_at TEXT NOT NULL
+                    received_at TEXT NOT NULL,
+                    available_at_epoch_us INTEGER,
+                    received_at_epoch_us INTEGER
                 )
             """)
+            columns = {
+                row["name"] for row in connection.execute(
+                    "PRAGMA table_info(lifecycle_evidence_inbox)"
+                )
+            }
+            if "available_at_epoch_us" not in columns:
+                connection.execute(
+                    "ALTER TABLE lifecycle_evidence_inbox ADD COLUMN available_at_epoch_us INTEGER"
+                )
+            if "received_at_epoch_us" not in columns:
+                connection.execute(
+                    "ALTER TABLE lifecycle_evidence_inbox ADD COLUMN received_at_epoch_us INTEGER"
+                )
+            legacy_rows = connection.execute(
+                "SELECT rowid,available_at,received_at FROM lifecycle_evidence_inbox "
+                "WHERE available_at_epoch_us IS NULL OR received_at_epoch_us IS NULL"
+            ).fetchall()
+            for legacy in legacy_rows:
+                available = _parse_utc(legacy["available_at"], "available_at")
+                received = _parse_utc(legacy["received_at"], "received_at")
+                connection.execute(
+                    "UPDATE lifecycle_evidence_inbox SET available_at_epoch_us=?,"
+                    "received_at_epoch_us=? WHERE rowid=?",
+                    (
+                        _epoch_microseconds(available),
+                        _epoch_microseconds(received),
+                        legacy["rowid"],
+                    ),
+                )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_lifecycle_evidence_point_in_time "
+                "ON lifecycle_evidence_inbox(instrument,timeframe,available_at_epoch_us,received_at_epoch_us)"
+            )
             connection.execute("""
                 CREATE TABLE IF NOT EXISTS lifecycle_evidence_conflicts (
                     conflict_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -411,8 +453,9 @@ class LifecycleEvidenceInbox:
                 """
                 INSERT INTO lifecycle_evidence_inbox(
                     event_id,topic,envelope_json,payload_sha256,key_id,available_at,
-                    instrument,timeframe,signature_verified,source_verified,received_at
-                ) VALUES(?,?,?,?,?,?,?,?,?,?,?)
+                    instrument,timeframe,signature_verified,source_verified,received_at,
+                    available_at_epoch_us,received_at_epoch_us
+                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
                 (
                     verified["event_id"],
@@ -426,6 +469,8 @@ class LifecycleEvidenceInbox:
                     1,
                     int(verified["source_verified"]),
                     now,
+                    _epoch_microseconds(_parse_utc(verified["available_at"], "available_at")),
+                    _epoch_microseconds(datetime.fromisoformat(now)),
                 ),
             )
             return "STORED"
@@ -449,12 +494,12 @@ class LifecycleEvidenceInbox:
         price_basis: str,
         cutoffs: list[datetime],
     ) -> list[dict[str, float] | None]:
-        """Build causal features at each origin using actual UTC instants.
+        """Build causal features at each origin using exact UTC instants.
 
-        SQLite TEXT ordering is not a safe comparison for timestamps with
-        different ISO-8601 UTC suffixes (for example Z and +00:00).
-        Compare parsed instants with SQLite julianday(), then sort and apply
-        cutoffs in Python. Results retain the caller's original cutoff order.
+        Epoch microseconds avoid both lexical ISO-8601 ordering errors (Z
+        versus +00:00) and the millisecond precision limit of SQLite julianday.
+        Producer availability and durable inbox receipt are independently
+        checked. Results preserve the caller's original cutoff order.
         """
         if not cutoffs:
             return []
@@ -465,7 +510,9 @@ class LifecycleEvidenceInbox:
                 raise ValueError("point-in-time replay cutoffs must be timezone-aware")
             indexed_cutoffs.append((index, cutoff.astimezone(UTC)))
 
-        max_cutoff = max(value for _, value in indexed_cutoffs).isoformat()
+        max_cutoff_us = max(
+            _epoch_microseconds(value) for _, value in indexed_cutoffs
+        )
         with self._connect() as connection:
             rows = connection.execute(
                 """
@@ -473,10 +520,10 @@ class LifecycleEvidenceInbox:
                 FROM lifecycle_evidence_inbox
                 WHERE source_verified=1 AND instrument=? AND timeframe=?
                   AND json_extract(envelope_json, '$.data.provenance.source_dataset_id')=?
-                  AND julianday(available_at)<=julianday(?)
-                  AND julianday(received_at)<=julianday(?)
+                  AND available_at_epoch_us<=?
+                  AND received_at_epoch_us<=?
                 """,
-                (instrument, timeframe, source_dataset_id, max_cutoff, max_cutoff),
+                (instrument, timeframe, source_dataset_id, max_cutoff_us, max_cutoff_us),
             ).fetchall()
 
         events: list[tuple[datetime, str, dict[str, Any]]] = []
@@ -496,18 +543,19 @@ class LifecycleEvidenceInbox:
             producer_available_at = _parse_utc(temporal.get("available_at"), "available_at")
             inbox_received_at = _parse_utc(row["received_at"], "inbox_received_at")
             effective_at = max(producer_available_at, inbox_received_at)
-            if effective_at <= max(value for _, value in indexed_cutoffs):
+            if _epoch_microseconds(effective_at) <= max_cutoff_us:
                 events.append((effective_at, str(data.get("event_id", "")), data))
 
-        # Never depend on SQLite's textual timestamp ordering. The event ID is
-        # a deterministic tie-breaker for events first available at one instant.
         events.sort(key=lambda item: (item[0], item[1]))
         ordered_cutoffs = sorted(indexed_cutoffs, key=lambda item: (item[1], item[0]))
         contexts: list[dict[str, float] | None] = [None] * len(cutoffs)
         event_index = 0
         latest: dict[str, Any] | None = None
         for original_index, normalized_cutoff in ordered_cutoffs:
-            while event_index < len(events) and events[event_index][0] <= normalized_cutoff:
+            while (
+                event_index < len(events)
+                and events[event_index][0] <= normalized_cutoff
+            ):
                 latest = events[event_index][2]
                 event_index += 1
             if latest is None:
