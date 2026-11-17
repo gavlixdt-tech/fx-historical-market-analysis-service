@@ -919,7 +919,6 @@ class LifecycleEvidenceInbox:
 
     def point_in_time_contexts(
         self,
-        self._promote_source_verifications()
         *,
         instrument: str,
         timeframe: str,
@@ -934,6 +933,7 @@ class LifecycleEvidenceInbox:
         Producer availability and durable inbox receipt are independently
         checked. Results preserve the caller's original cutoff order.
         """
+        self._promote_source_verifications()
         if not cutoffs:
             return []
 
@@ -1046,7 +1046,6 @@ class LifecycleEvidenceInbox:
 
     def point_in_time_evidence(
         self,
-        self._promote_source_verifications()
         *,
         instrument: str,
         timeframe: str,
@@ -1055,6 +1054,7 @@ class LifecycleEvidenceInbox:
         cutoffs: list[datetime],
     ) -> list[dict[str, Any]]:
         """Return an auditable evidence manifest for each prediction origin."""
+        self._promote_source_verifications()
         indexed: list[tuple[int, datetime]] = []
         for index, cutoff in enumerate(cutoffs):
             if cutoff.tzinfo is None or cutoff.utcoffset() is None:
@@ -1173,8 +1173,8 @@ class LifecycleEvidenceInbox:
         ]
 
     def lifecycle_history(self, lifecycle_id: str) -> dict[str, Any] | None:
-        self._promote_source_verifications()
         """Reconstruct the signed transition chain for one lifecycle aggregate."""
+        self._promote_source_verifications()
         if not lifecycle_id or len(lifecycle_id) > 200:
             raise ValueError("lifecycle_id must contain 1 to 200 characters")
         with self._connect() as connection:
