@@ -81,20 +81,32 @@ def signed_envelope(
             ).encode("utf-8")
         )
     ).decode("ascii")
-    occurred_at = observed_at.isoformat().replace("+00:00", "Z")
-    transition_id = hashlib.sha256(
-        f"{event_id}|1|{state}|{occurred_at}".encode("utf-8")
-    ).hexdigest()
-    transition_projection = {
-        "lifecycle_id": event_id,
-        "transition_id": transition_id,
-        "sequence": 1,
-        "state": state,
-        "occurred_at": occurred_at,
-        "previous_transition_sha256": "0" * 64,
-    }
-    transition_hash = hashlib.sha256(rfc8785.dumps(transition_projection)).hexdigest()
-    transition = {**transition_projection, "transition_sha256": transition_hash}
+    sweep_occurred_at = source_at.isoformat().replace("+00:00", "Z")
+    displacement_occurred_at = observed_at.isoformat().replace("+00:00", "Z")
+    transition_history = []
+    previous_transition_hash = "0" * 64
+    for sequence, transition_state, occurred_at in (
+        (1, "SWEEP_CONFIRMED", sweep_occurred_at),
+        (2, state, displacement_occurred_at),
+    ):
+        transition_id = hashlib.sha256(
+            f"{event_id}|{sequence}|{transition_state}|{occurred_at}".encode("utf-8")
+        ).hexdigest()
+        transition_projection = {
+            "lifecycle_id": event_id,
+            "transition_id": transition_id,
+            "sequence": sequence,
+            "state": transition_state,
+            "occurred_at": occurred_at,
+            "previous_transition_sha256": previous_transition_hash,
+        }
+        transition_hash = hashlib.sha256(rfc8785.dumps(transition_projection)).hexdigest()
+        transition_history.append({
+            **transition_projection, "transition_sha256": transition_hash
+        })
+        previous_transition_hash = transition_hash
+    transition_id = transition_history[-1]["transition_id"]
+    transition_hash = transition_history[-1]["transition_sha256"]
     data = {
         "contract_version": "liquidity-lifecycle-evidence/v1",
         "event_id": transition_id,
@@ -113,10 +125,10 @@ def signed_envelope(
         "lifecycle": {
             "lifecycle_id": event_id,
             "transition_id": transition_id,
-            "transition_sequence": 1,
+            "transition_sequence": 2,
             "transition_sha256": transition_hash,
-            "previous_transition_sha256": "0" * 64,
-            "transition_history": [transition],
+            "previous_transition_sha256": transition_history[-1]["previous_transition_sha256"],
+            "transition_history": transition_history,
             "sweep_event_id": "sweep-1",
             "state": state,
             "direction": "BEARISH",
@@ -124,7 +136,7 @@ def signed_envelope(
             "algorithm": "causal-post-sweep-lifecycle",
             "algorithm_version": "1.0.0",
             "classification_reasons": ["observed close confirmed displacement"],
-            "sweep_confirmation_time": observed_at.isoformat().replace("+00:00", "Z"),
+            "sweep_confirmation_time": sweep_occurred_at,
             "displacement_confirmed_at": observed_at.isoformat().replace("+00:00", "Z"),
             "midpoint_first_reached_at": None,
             "consolidation_candidate_at": None,
