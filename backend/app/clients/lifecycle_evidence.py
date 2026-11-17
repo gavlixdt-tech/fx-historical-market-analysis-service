@@ -1120,15 +1120,16 @@ class PostgresLifecycleEvidenceInbox(LifecycleEvidenceInbox):
                     received_at TEXT NOT NULL,
                     available_at_epoch_us BIGINT NOT NULL,
                     received_at_epoch_us BIGINT NOT NULL,
-                    lifecycle_id TEXT NOT NULL,
-                    transition_sequence INTEGER NOT NULL,
-                    transition_sha256 TEXT NOT NULL,
-                    source_dataset_id TEXT NOT NULL
+                    lifecycle_id TEXT,
+                    transition_sequence INTEGER,
+                    transition_sha256 TEXT,
+                    source_dataset_id TEXT
                 )
             """)
             connection.execute("""
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_lifecycle_lifecycle_sequence
                 ON lifecycle_evidence_inbox(lifecycle_id,transition_sequence)
+                WHERE lifecycle_id IS NOT NULL AND transition_sequence IS NOT NULL
             """)
             connection.execute("""
                 CREATE INDEX IF NOT EXISTS idx_lifecycle_evidence_point_in_time
