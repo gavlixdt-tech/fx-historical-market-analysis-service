@@ -356,7 +356,7 @@ def _attach_market_context_features(
     observations: list[ReplayObservationInput],
     available_at: list[datetime],
 ) -> tuple[list[str], bool]:
-    """Attach context features only when each snapshot was available at that candle's cutoff."""
+    """Attach only point-in-time session context; unverified lifecycle claims are audit-only."""
     session_names = (
         "wellington",
         "sydney",
@@ -380,25 +380,15 @@ def _attach_market_context_features(
         *(f"open_window_{name}" for name in open_window_names),
         *(f"kill_zone_{name}" for name in kill_zone_names),
         "session_overlap_count",
-        "liquidity_sweep_bullish",
-        "liquidity_sweep_bearish",
-        "liquidity_displacement_confirmed",
-        "liquidity_midpoint_reached",
-        "liquidity_midpoint_consolidation",
-        "liquidity_invalidated",
     ]
-    has_context = any(
-        item.session_context is not None or item.liquidity_lifecycle is not None
-        for item in observations
-    )
-    if not has_context:
+    has_session_context = any(item.session_context is not None for item in observations)
+    if not has_session_context:
         return context_feature_names, False
 
     for index, item in enumerate(observations):
         row = features[index]
         if row is None:
             continue
-
         session = item.session_context
         if session is not None and coerce_timestamp(session.available_at) <= available_at[index]:
             active_sessions = set(session.active_sessions)
@@ -412,75 +402,14 @@ def _attach_market_context_features(
                 row[f"kill_zone_{name}"] = float(name in active_kill_zones)
             row["session_overlap_count"] = float(session.session_overlap_count)
         else:
-            for name in context_feature_names[:18]:
+            for name in context_feature_names:
                 row[name] = None
 
-        lifecycle = item.liquidity_lifecycle
-        if (
-            lifecycle is not None
-            and coerce_timestamp(lifecycle.available_at) <= available_at[index]
-        ):
-            state = lifecycle.state
-            sweep_observed = state in {
-                "SWEEP_CONFIRMED_AWAITING_DISPLACEMENT",
-                "DISPLACEMENT_CONFIRMED",
-                "MIDPOINT_REACHED",
-                "MIDPOINT_CONSOLIDATION_CANDIDATE",
-                "INVALIDATED",
-            }
-            row["liquidity_sweep_bullish"] = float(
-                sweep_observed and lifecycle.expected_direction == "bullish"
-            )
-            row["liquidity_sweep_bearish"] = float(
-                sweep_observed and lifecycle.expected_direction == "bearish"
-            )
-            progression_states = {
-                "DISPLACEMENT_CONFIRMED",
-                "MIDPOINT_REACHED",
-                "MIDPOINT_CONSOLIDATION_CANDIDATE",
-            }
-            if lifecycle.displacement_confirmed_at is not None:
-                row["liquidity_displacement_confirmed"] = float(
-                    coerce_timestamp(lifecycle.displacement_confirmed_at) <= available_at[index]
-                )
-            elif state == "INVALIDATED":
-                row["liquidity_displacement_confirmed"] = None
-            else:
-                row["liquidity_displacement_confirmed"] = float(state in progression_states)
-
-            midpoint_states = {"MIDPOINT_REACHED", "MIDPOINT_CONSOLIDATION_CANDIDATE"}
-            if lifecycle.midpoint_first_reached_at is not None:
-                row["liquidity_midpoint_reached"] = float(
-                    coerce_timestamp(lifecycle.midpoint_first_reached_at) <= available_at[index]
-                )
-            elif state == "INVALIDATED":
-                row["liquidity_midpoint_reached"] = None
-            else:
-                row["liquidity_midpoint_reached"] = float(state in midpoint_states)
-
-            if lifecycle.consolidation_candidate_at is not None:
-                row["liquidity_midpoint_consolidation"] = float(
-                    coerce_timestamp(lifecycle.consolidation_candidate_at) <= available_at[index]
-                )
-            elif state == "INVALIDATED":
-                row["liquidity_midpoint_consolidation"] = None
-            else:
-                row["liquidity_midpoint_consolidation"] = float(
-                    state == "MIDPOINT_CONSOLIDATION_CANDIDATE"
-                )
-
-            if lifecycle.invalidated_at is not None:
-                row["liquidity_invalidated"] = float(
-                    coerce_timestamp(lifecycle.invalidated_at) <= available_at[index]
-                )
-            else:
-                row["liquidity_invalidated"] = float(state == "INVALIDATED")
-        else:
-            for name in context_feature_names[18:]:
-                row[name] = None
-
+    # ReplayObservationInput.liquidity_lifecycle is caller-supplied and has no
+    # verifiable producer signature or independent market-source attestation.
+    # It is retained in the audit payload below, but must not become a model
+    # feature until the trusted Service 2 inbox supplies source-attested data.
     return context_feature_names, True
-
 
 def run_historical_replay(request: HistoricalReplayRequest) -> dict[str, Any]:
     started_at = datetime.now(UTC).isoformat()
@@ -566,6 +495,10 @@ def run_historical_replay(request: HistoricalReplayRequest) -> dict[str, Any]:
         for family in model_families
     }
     warnings: list[str] = []
+    if any(item.liquidity_lifecycle is not None for item in request.observations):
+        warnings.append(
+            "Caller-supplied liquidity lifecycle context is retained for audit only and excluded from model features until producer signatures and independent market-source attestation are verified."
+        )
     start_index = max(request.lookback - 1, spec.prediction_horizon + request.min_train_samples)
     holdout_cutoff = (
         coerce_timestamp(request.final_holdout_start)
