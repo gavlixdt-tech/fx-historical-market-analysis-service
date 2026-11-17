@@ -637,11 +637,6 @@ class LifecycleEvidenceInbox:
                 "ON lifecycle_evidence_inbox(instrument,timeframe,source_dataset_id,"
                 "available_at_epoch_us,received_at_epoch_us)"
             )
-            connection.execute(
-                "CREATE INDEX IF NOT EXISTS idx_lifecycle_evidence_replay_v2 "
-                "ON lifecycle_evidence_inbox(instrument,timeframe,source_dataset_id,"
-                "available_at_epoch_us,received_at_epoch_us)"
-            )
             connection.execute("""
                 CREATE TABLE IF NOT EXISTS lifecycle_evidence_source_verifications (
                     event_id TEXT PRIMARY KEY,
