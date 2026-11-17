@@ -351,16 +351,17 @@ def test_point_in_time_contexts_use_utc_instants_and_preserve_unsorted_cutoff_or
     )
     inbox.persist_verified("gfx.liquidity.lifecycle.v1", envelope, verified)
 
-    # Simulate the exact instant represented by a producer's trailing-Z value
-    # and a consumer receipt serialized with the equivalent +00:00 suffix.
-    available_at = datetime.fromisoformat(
-        envelope["data"]["temporal"]["available_at"].replace("Z", "+00:00")
-    )
+    # Producer availability uses a trailing Z; consumer receipt is persisted
+    # as +00:00. Cutoff equality is tested without mutating immutable inbox data.
     with inbox._connect() as connection:
-        connection.execute(
-            "UPDATE lifecycle_evidence_inbox SET received_at=?,received_at_epoch_us=available_at_epoch_us WHERE event_id=?",
-            (available_at.isoformat(), verified["event_id"]),
-        )
+        received_value = connection.execute(
+            "SELECT received_at FROM lifecycle_evidence_inbox WHERE event_id=?",
+            (verified["event_id"],),
+        ).fetchone()["received_at"]
+    receipt_at = datetime.fromisoformat(received_value)
+    equivalent_z_instant = datetime.fromisoformat(
+        receipt_at.isoformat().replace("+00:00", "Z").replace("Z", "+00:00")
+    )
 
     contexts = inbox.point_in_time_contexts(
         instrument="EURUSD",
@@ -368,7 +369,7 @@ def test_point_in_time_contexts_use_utc_instants_and_preserve_unsorted_cutoff_or
         source_dataset_id=verified["source_dataset_id"],
         price_basis="MID",
         # Deliberately reverse chronological order; output must match this order.
-        cutoffs=[available_at, available_at - timedelta(microseconds=1)],
+        cutoffs=[equivalent_z_instant, equivalent_z_instant - timedelta(microseconds=1)],
     )
     assert contexts[0] is not None
     assert contexts[0]["liquidity_sweep_bearish"] == 1.0
