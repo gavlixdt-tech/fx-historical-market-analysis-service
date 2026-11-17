@@ -163,7 +163,10 @@ def _verify_service1_source_attestation(data: dict[str, Any], source_public_keys
     key_id = attestation.get("key_id")
     encoded_key = keys.get(key_id) if isinstance(keys, dict) and isinstance(key_id, str) else None
     if not isinstance(encoded_key, str):
-        raise LifecycleEvidenceError("source_attestation_key_untrusted")
+        # The Service 9 event is still authenticated, but its upstream dataset
+        # attestation cannot yet be trusted. Persist it as non-replayable evidence
+        # so a later trust-bundle update can promote it without rewriting history.
+        return False
     signature_value = attestation.get("signature")
     if not isinstance(signature_value, str) or not signature_value.startswith("ed25519="):
         raise LifecycleEvidenceError("source_attestation_signature_malformed")
@@ -1618,11 +1621,11 @@ class PostgresLifecycleEvidenceInbox:
                 """
                 SELECT event_id,topic,envelope_json,payload_sha256,key_id,available_at,received_at,
                        instrument,timeframe,signature_verified,
-                       CASE WHEN source_verified=TRUE OR EXISTS (
+                       CASE WHEN i.source_verified=TRUE OR EXISTS (
                            SELECT 1 FROM lifecycle_evidence_source_verifications v
-                           WHERE v.event_id=lifecycle_evidence_inbox.event_id
-                             AND v.payload_sha256=lifecycle_evidence_inbox.payload_sha256
-                             AND v.source_dataset_id=lifecycle_evidence_inbox.source_dataset_id
+                           WHERE v.event_id=i.event_id
+                             AND v.payload_sha256=i.payload_sha256
+                             AND v.source_dataset_id=i.source_dataset_id
                        ) THEN TRUE ELSE FALSE END AS source_verified,
                        lifecycle_id,
                        transition_sequence,transition_sha256,source_dataset_id,
