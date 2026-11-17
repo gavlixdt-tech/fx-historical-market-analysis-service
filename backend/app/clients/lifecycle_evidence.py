@@ -1,0 +1,414 @@
+"""Service 62 lifecycle evidence consumer, verifier and durable Service 2 inbox."""
+
+from __future__ import annotations
+
+import asyncio
+import base64
+import hashlib
+import hmac
+import json
+import logging
+import sqlite3
+import time
+import uuid
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+from urllib.parse import urlsplit
+
+import httpx
+import rfc8785
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+
+from backend.app.core.config import Settings
+
+logger = logging.getLogger(__name__)
+EXPECTED_PRODUCER = "fx-liquidity-analysis-service"
+EXPECTED_EVENT_TYPE = "com.gavlix.market.liquidity.lifecycle.v1"
+EXPECTED_SCHEMA = "liquidity-lifecycle-evidence/v1"
+
+
+class LifecycleEvidenceError(ValueError):
+    """Raised when a lifecycle event fails the signed evidence contract."""
+
+
+def _parse_utc(value: object, field: str) -> datetime:
+    if not isinstance(value, str):
+        raise LifecycleEvidenceError(f"{field}_missing")
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise LifecycleEvidenceError(f"{field}_invalid") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise LifecycleEvidenceError(f"{field}_timezone_missing")
+    return parsed.astimezone(UTC)
+
+
+def verify_lifecycle_event(
+    envelope: dict[str, Any],
+    *,
+    public_keys_json: str,
+    clock_skew_seconds: int = 60,
+) -> dict[str, Any]:
+    """Verify the producer signature, identity, contract and monotonic timestamps."""
+    if envelope.get("type") != EXPECTED_EVENT_TYPE:
+        raise LifecycleEvidenceError("event_type_mismatch")
+    if envelope.get("schema_version") != EXPECTED_SCHEMA:
+        raise LifecycleEvidenceError("schema_version_mismatch")
+    data = envelope.get("data")
+    if not isinstance(data, dict):
+        raise LifecycleEvidenceError("event_data_invalid")
+    if data.get("contract_version") != EXPECTED_SCHEMA:
+        raise LifecycleEvidenceError("contract_version_mismatch")
+    producer = data.get("producer")
+    if (
+        not isinstance(producer, dict)
+        or producer.get("service_id") != EXPECTED_PRODUCER
+        or producer.get("service_number") != 9
+        or not isinstance(producer.get("instance_id"), str)
+        or not producer["instance_id"]
+    ):
+        raise LifecycleEvidenceError("producer_identity_mismatch")
+    if envelope.get("producer_id") != EXPECTED_PRODUCER:
+        raise LifecycleEvidenceError("envelope_producer_mismatch")
+    if envelope.get("id") != data.get("event_id"):
+        raise LifecycleEvidenceError("event_id_mismatch")
+
+    integrity = data.get("integrity")
+    if not isinstance(integrity, dict):
+        raise LifecycleEvidenceError("integrity_missing")
+    expected_fields = {
+        "canonicalization", "payload_sha256", "signature_algorithm",
+        "key_id", "signature", "signed_at",
+    }
+    if set(integrity) != expected_fields:
+        raise LifecycleEvidenceError("integrity_fields_invalid")
+    if integrity.get("canonicalization") != "RFC8785":
+        raise LifecycleEvidenceError("canonicalization_unsupported")
+    if integrity.get("signature_algorithm") != "Ed25519":
+        raise LifecycleEvidenceError("signature_algorithm_unsupported")
+    key_id = integrity.get("key_id")
+    if not isinstance(key_id, str) or not key_id:
+        raise LifecycleEvidenceError("key_id_missing")
+    try:
+        key_bundle = json.loads(public_keys_json)
+    except json.JSONDecodeError as exc:
+        raise LifecycleEvidenceError("trust_bundle_invalid") from exc
+    if not isinstance(key_bundle, dict) or key_id not in key_bundle:
+        raise LifecycleEvidenceError("signing_key_untrusted")
+    try:
+        public_raw = base64.b64decode(key_bundle[key_id], validate=True)
+        signature = base64.b64decode(integrity["signature"], validate=True)
+    except (ValueError, TypeError) as exc:
+        raise LifecycleEvidenceError("signature_encoding_invalid") from exc
+    if len(public_raw) != 32 or len(signature) != 64:
+        raise LifecycleEvidenceError("signature_length_invalid")
+    signed_projection = {key: value for key, value in data.items() if key != "integrity"}
+    try:
+        canonical = rfc8785.dumps(signed_projection)
+    except (TypeError, ValueError) as exc:
+        raise LifecycleEvidenceError("canonical_payload_invalid") from exc
+    digest = hashlib.sha256(canonical).hexdigest()
+    if not isinstance(integrity.get("payload_sha256"), str) or not hmac.compare_digest(
+        integrity["payload_sha256"], digest
+    ):
+        raise LifecycleEvidenceError("payload_digest_mismatch")
+    try:
+        Ed25519PublicKey.from_public_bytes(public_raw).verify(
+            signature, bytes.fromhex(digest)
+        )
+    except (InvalidSignature, ValueError) as exc:
+        raise LifecycleEvidenceError("signature_verification_failed") from exc
+
+    instrument = data.get("instrument")
+    if (
+        not isinstance(instrument, dict)
+        or not isinstance(instrument.get("canonical_id"), str)
+        or len(instrument["canonical_id"]) != 6
+        or not instrument["canonical_id"].isalpha()
+        or instrument["canonical_id"] != instrument.get("base_currency", "") + instrument.get("quote_currency", "")
+    ):
+        raise LifecycleEvidenceError("instrument_identity_invalid")
+    if not isinstance(data.get("timeframe"), str) or not data["timeframe"]:
+        raise LifecycleEvidenceError("timeframe_missing")
+    lifecycle = data.get("lifecycle")
+    if not isinstance(lifecycle, dict) or lifecycle.get("lifecycle_id") != data.get("event_id"):
+        raise LifecycleEvidenceError("lifecycle_identity_invalid")
+    provenance = data.get("provenance")
+    if (
+        not isinstance(provenance, dict)
+        or not isinstance(provenance.get("source_payload_sha256"), str)
+        or len(provenance["source_payload_sha256"]) != 64
+        or not isinstance(provenance.get("lineage"), list)
+        or not provenance["lineage"]
+    ):
+        raise LifecycleEvidenceError("provenance_invalid")
+    temporal = data.get("temporal")
+    if not isinstance(temporal, dict):
+        raise LifecycleEvidenceError("temporal_missing")
+    source_at = _parse_utc(temporal.get("source_candle_at"), "source_candle_at")
+    observed_at = _parse_utc(temporal.get("observed_at"), "observed_at")
+    confirmed_at = _parse_utc(temporal.get("confirmed_at"), "confirmed_at")
+    produced_at = _parse_utc(temporal.get("produced_at"), "produced_at")
+    available_at = _parse_utc(temporal.get("available_at"), "available_at")
+    signed_at = _parse_utc(integrity.get("signed_at"), "signed_at")
+    if not source_at <= observed_at <= confirmed_at <= produced_at <= available_at:
+        raise LifecycleEvidenceError("temporal_order_invalid")
+    if signed_at < produced_at or signed_at > available_at:
+        raise LifecycleEvidenceError("signature_time_invalid")
+    now = datetime.now(UTC)
+    if available_at > now.replace(microsecond=0) + __import__("datetime").timedelta(seconds=clock_skew_seconds):
+        raise LifecycleEvidenceError("availability_time_in_future")
+    quality = data.get("quality")
+    if not isinstance(quality, dict) or quality.get("quality_status") not in {
+        "PASS", "DEGRADED", "FAIL", "UNKNOWN"
+    }:
+        raise LifecycleEvidenceError("quality_metadata_invalid")
+    # The current Service 9 input API accepts caller-supplied candles. Its
+    # signature is producer-authentic, not a vendor/source attestation.
+    source_verified = quality.get("quality_status") == "PASS" and quality.get(
+        "source_attestation_status"
+    ) == "VERIFIED"
+    return {
+        "event_id": data["event_id"],
+        "payload_sha256": digest,
+        "key_id": key_id,
+        "available_at": available_at.isoformat(),
+        "instrument": instrument["canonical_id"],
+        "timeframe": data["timeframe"],
+        "source_verified": source_verified,
+        "signature_verified": True,
+    }
+
+
+class LifecycleEvidenceInbox:
+    """Durable inbox with immutable event records and explicit quarantine."""
+
+    def __init__(self, path: str) -> None:
+        self.path = path
+        if path != ":memory:":
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+        self._initialize()
+
+    def _connect(self) -> sqlite3.Connection:
+        connection = sqlite3.connect(self.path, timeout=30)
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA busy_timeout=30000")
+        connection.execute("PRAGMA journal_mode=WAL")
+        connection.execute("PRAGMA synchronous=FULL")
+        return connection
+
+    def _initialize(self) -> None:
+        with self._connect() as connection:
+            connection.execute("""
+                CREATE TABLE IF NOT EXISTS lifecycle_evidence_inbox (
+                    event_id TEXT PRIMARY KEY,
+                    topic TEXT NOT NULL,
+                    envelope_json TEXT NOT NULL,
+                    payload_sha256 TEXT NOT NULL,
+                    key_id TEXT NOT NULL,
+                    available_at TEXT NOT NULL,
+                    instrument TEXT NOT NULL,
+                    timeframe TEXT NOT NULL,
+                    signature_verified INTEGER NOT NULL,
+                    source_verified INTEGER NOT NULL,
+                    received_at TEXT NOT NULL
+                )
+            """)
+            connection.execute("""
+                CREATE TABLE IF NOT EXISTS lifecycle_evidence_conflicts (
+                    conflict_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    event_id TEXT NOT NULL,
+                    payload_sha256 TEXT NOT NULL,
+                    envelope_json TEXT NOT NULL,
+                    received_at TEXT NOT NULL
+                )
+            """)
+            connection.execute("""
+                CREATE TABLE IF NOT EXISTS lifecycle_evidence_quarantine (
+                    delivery_id TEXT PRIMARY KEY,
+                    event_id TEXT,
+                    envelope_json TEXT NOT NULL,
+                    rejection_reason TEXT NOT NULL,
+                    received_at TEXT NOT NULL
+                )
+            """)
+
+    def persist_verified(self, topic: str, envelope: dict[str, Any], verified: dict[str, Any]) -> str:
+        encoded = json.dumps(envelope, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        now = datetime.now(UTC).isoformat()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            existing = connection.execute(
+                "SELECT payload_sha256 FROM lifecycle_evidence_inbox WHERE event_id=?",
+                (verified["event_id"],),
+            ).fetchone()
+            if existing is not None:
+                if hmac.compare_digest(existing["payload_sha256"], verified["payload_sha256"]):
+                    return "DUPLICATE"
+                connection.execute(
+                    "INSERT INTO lifecycle_evidence_conflicts(event_id,payload_sha256,envelope_json,received_at) VALUES(?,?,?,?)",
+                    (verified["event_id"], verified["payload_sha256"], encoded, now),
+                )
+                return "CONFLICT"
+            connection.execute("""
+                INSERT INTO lifecycle_evidence_inbox(
+                    event_id,topic,envelope_json,payload_sha256,key_id,available_at,
+                    instrument,timeframe,signature_verified,source_verified,received_at
+                ) VALUES(?,?,?,?,?,?,?,?,?,?,?)
+            """, (
+                verified["event_id"], topic, encoded, verified["payload_sha256"],
+                verified["key_id"], verified["available_at"], verified["instrument"],
+                verified["timeframe"], 1, int(verified["source_verified"]), now,
+            ))
+            return "STORED"
+
+    def persist_rejected(
+        self, delivery_id: str, event_id: str | None, envelope: dict[str, Any], reason: str
+    ) -> None:
+        encoded = json.dumps(envelope, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT OR IGNORE INTO lifecycle_evidence_quarantine(delivery_id,event_id,envelope_json,rejection_reason,received_at) VALUES(?,?,?,?,?)",
+                (delivery_id, event_id, encoded, reason[:500], datetime.now(UTC).isoformat()),
+            )
+
+    def status(self) -> dict[str, int]:
+        with self._connect() as connection:
+            accepted = connection.execute("SELECT COUNT(*) AS n FROM lifecycle_evidence_inbox").fetchone()["n"]
+            source_verified = connection.execute(
+                "SELECT COUNT(*) AS n FROM lifecycle_evidence_inbox WHERE source_verified=1"
+            ).fetchone()["n"]
+            conflicts = connection.execute("SELECT COUNT(*) AS n FROM lifecycle_evidence_conflicts").fetchone()["n"]
+            rejected = connection.execute("SELECT COUNT(*) AS n FROM lifecycle_evidence_quarantine").fetchone()["n"]
+        return {
+            "signature_verified_events": int(accepted),
+            "source_attested_events": int(source_verified),
+            "conflicts": int(conflicts),
+            "quarantined_deliveries": int(rejected),
+        }
+
+
+class LifecycleEvidenceConsumer:
+    """Poll Service 62 and acknowledge only after durable inbox persistence."""
+
+    def __init__(self, settings: Settings) -> None:
+        self.settings = settings
+        self.inbox = LifecycleEvidenceInbox(settings.lifecycle_event_inbox_db_path)
+        self._client: httpx.AsyncClient | None = None
+        self._task: asyncio.Task | None = None
+        self._stop = asyncio.Event()
+
+    def _token(self) -> str:
+        now = int(time.time())
+        subject = "fx-historical-market-analysis-service"
+        body = json.dumps({
+            "sub": subject, "role": "consumer", "iat": now,
+            "exp": now + 300, "jti": str(uuid.uuid4()),
+        }, separators=(",", ":")).encode("utf-8")
+        secret = (self.settings.lifecycle_event_bus_consumer_secret or "").encode("utf-8")
+        signature = hmac.new(secret, body, hashlib.sha256).digest()
+        encode = lambda value: base64.urlsafe_b64encode(value).rstrip(b"=").decode("ascii")
+        return encode(body) + "." + encode(signature)
+
+    async def start(self) -> None:
+        if not self.settings.lifecycle_event_bus_enabled:
+            return
+        base_url = self.settings.lifecycle_event_bus_url or ""
+        self._client = httpx.AsyncClient(
+            base_url=base_url,
+            timeout=httpx.Timeout(8.0, connect=3.0),
+            limits=httpx.Limits(max_connections=4, max_keepalive_connections=2),
+        )
+        self._stop.clear()
+        self._task = asyncio.create_task(self._run(), name="service2-lifecycle-evidence-consumer")
+
+    async def stop(self) -> None:
+        self._stop.set()
+        if self._task is not None:
+            await self._task
+            self._task = None
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
+
+    async def _run(self) -> None:
+        while not self._stop.is_set():
+            try:
+                await self.consume_once()
+            except (httpx.HTTPError, ValueError, RuntimeError) as exc:
+                logger.warning("lifecycle_evidence_poll_failed", extra={"error": str(exc)[:300]})
+            try:
+                await asyncio.wait_for(
+                    self._stop.wait(),
+                    timeout=self.settings.lifecycle_event_poll_interval_seconds,
+                )
+            except TimeoutError:
+                pass
+
+    async def consume_once(self) -> int:
+        if self._client is None:
+            return 0
+        response = await self._client.post(
+            "/api/v1/consume",
+            headers={"X-Auth-Token": self._token()},
+            json={
+                "topic": self.settings.lifecycle_event_bus_topic,
+                "consumer_group": self.settings.lifecycle_event_consumer_group,
+                "max_messages": self.settings.lifecycle_event_batch_size,
+            },
+        )
+        response.raise_for_status()
+        body = response.json()
+        messages = body.get("messages", []) if isinstance(body, dict) else []
+        processed = 0
+        for message in messages:
+            delivery = message.get("delivery", {})
+            delivery_id = delivery.get("delivery_id")
+            envelope = message.get("envelope", {})
+            if not isinstance(delivery_id, str) or not isinstance(envelope, dict):
+                continue
+            event_id = envelope.get("id") if isinstance(envelope.get("id"), str) else None
+            try:
+                verified = verify_lifecycle_event(
+                    envelope,
+                    public_keys_json=self.settings.lifecycle_event_public_keys_json,
+                    clock_skew_seconds=self.settings.lifecycle_event_clock_skew_seconds,
+                )
+                self.inbox.persist_verified(
+                    self.settings.lifecycle_event_bus_topic, envelope, verified
+                )
+            except LifecycleEvidenceError as exc:
+                self.inbox.persist_rejected(delivery_id, event_id, envelope, str(exc))
+            except sqlite3.Error:
+                await self._ack(delivery_id, negative=True)
+                continue
+            await self._ack(delivery_id, negative=False)
+            processed += 1
+        return processed
+
+    async def _ack(self, delivery_id: str, *, negative: bool) -> None:
+        if self._client is None:
+            return
+        endpoint = "/api/v1/nack" if negative else "/api/v1/ack"
+        response = await self._client.post(
+            endpoint,
+            headers={"X-Auth-Token": self._token()},
+            json={
+                "topic": self.settings.lifecycle_event_bus_topic,
+                "consumer_group": self.settings.lifecycle_event_consumer_group,
+                "delivery_id": delivery_id,
+            },
+        )
+        response.raise_for_status()
+
+    def status(self) -> dict[str, Any]:
+        return {
+            "enabled": self.settings.lifecycle_event_bus_enabled,
+            "topic": self.settings.lifecycle_event_bus_topic,
+            "consumer_group": self.settings.lifecycle_event_consumer_group,
+            "inbox": self.inbox.status(),
+            "forecast_eligible": False,
+            "reason": "Current producer events have verified Service 9 signatures but lack independent vendor/source attestation.",
+        }
