@@ -690,3 +690,15 @@ Transition-history labels describe canonical milestones, while
 canonical `SWEEP_CONFIRMED` transition maps to aggregate state
 `SWEEP_CONFIRMED_AWAITING_DISPLACEMENT`. This separation keeps earlier
 transition IDs and hashes stable as the lifecycle advances.
+
+
+### SQLite deployment boundary
+
+The durable outbox/inbox currently uses SQLite WAL on a persistent Railway
+volume. Deploy **one active replica per service against its own volume**; do
+not attach one SQLite database file to multiple service replicas or mount the
+same volume concurrently across hosts. WAL is not a distributed database or a
+multi-host consensus mechanism. This deployment boundary is intentional and
+must be respected until the persistence adapter is migrated to a shared
+PostgreSQL deployment with transactional locking and tested failover. Do not
+increase replica count as a scaling shortcut.
