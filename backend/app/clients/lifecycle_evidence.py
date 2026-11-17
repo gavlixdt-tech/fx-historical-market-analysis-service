@@ -372,32 +372,6 @@ class LifecycleEvidenceInbox:
             ))
             return "STORED"
 
-    def latest_source_attested_event(
-        self, *, instrument: str, timeframe: str, source_dataset_id: str,
-        price_basis: str, cutoff: datetime,
-    ) -> dict[str, Any] | None:
-        """Return the newest source-attested lifecycle event available by cutoff."""
-        with self._connect() as connection:
-            row = connection.execute(
-                """
-                SELECT envelope_json FROM lifecycle_evidence_inbox
-                WHERE source_verified=1 AND instrument=? AND timeframe=?
-                  AND json_extract(envelope_json, '$.data.provenance.source_dataset_id')=?
-                  AND available_at<=?
-                ORDER BY available_at DESC, received_at DESC LIMIT 1
-                """,
-                (instrument, timeframe, source_dataset_id, cutoff.astimezone(UTC).isoformat()),
-            ).fetchone()
-        if row is None:
-            return None
-        envelope = json.loads(row["envelope_json"])
-        data = envelope.get("data") if isinstance(envelope, dict) else None
-        if not isinstance(data, dict):
-            return None
-        market_basis = data.get("market_basis")
-        if not isinstance(market_basis, dict) or market_basis.get("price_basis") != price_basis:
-            return None
-        return data
 
     def persist_rejected(
         self, delivery_id: str, event_id: str | None, envelope: dict[str, Any], reason: str
@@ -636,9 +610,10 @@ class LifecycleEvidenceConsumer:
             "topic": self.settings.lifecycle_event_bus_topic,
             "consumer_group": self.settings.lifecycle_event_consumer_group,
             "inbox": inbox_status,
-            "forecast_eligible": source_attested,
+            "forecast_eligible": False,
+            "source_attested_events_available": source_attested,
             "reason": (
-                "Service 1 dataset and Service 9 lifecycle signatures verify; replay still requires exact dataset, instrument, timeframe, price basis and actual availability matches. This is not a vendor-origin signature."
+                "Source-attested events are available; feature eligibility is determined per replay origin using exact dataset, instrument, timeframe, price basis and producer/inbox availability. This is not a vendor-origin signature."
                 if source_attested else
                 "No source-attested lifecycle events are stored; caller-supplied lifecycle assertions remain excluded from model features."
             ),
