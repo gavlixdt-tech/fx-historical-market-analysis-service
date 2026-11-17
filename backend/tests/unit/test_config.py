@@ -270,3 +270,34 @@ def test_short_central_settings_credentials_are_rejected_when_enabled() -> None:
             gfx_settings_client_id="short",
             gfx_settings_client_secret="s" * 48,
         )
+
+
+def test_lifecycle_event_consumer_is_disabled_by_default() -> None:
+    settings = Settings()
+    assert settings.lifecycle_event_bus_enabled is False
+    assert settings.lifecycle_event_bus_url is None
+
+
+def test_lifecycle_event_consumer_requires_dedicated_identity_and_public_trust_bundle() -> None:
+    with pytest.raises(PydanticValidationError, match="requires LIFECYCLE_EVENT_BUS_URL"):
+        Settings(lifecycle_event_bus_enabled=True)
+
+
+def test_lifecycle_event_consumer_accepts_complete_private_service_configuration() -> None:
+    settings = Settings(
+        lifecycle_event_bus_enabled=True,
+        lifecycle_event_bus_url="https://event-bus.internal",
+        lifecycle_event_bus_consumer_secret="c" * 32,
+        lifecycle_event_public_keys_json=TRUSTED_HISTORICAL_KEYS_JSON,
+    )
+    assert settings.lifecycle_event_bus_topic == "gfx.liquidity.lifecycle.v1"
+    assert settings.lifecycle_event_consumer_group == "gfx-service2-lifecycle-evidence"
+
+
+def test_lifecycle_event_public_key_bundle_requires_raw_ed25519_keys() -> None:
+    with pytest.raises(PydanticValidationError, match="decode to 32 bytes"):
+        Settings(
+            lifecycle_event_public_keys_json='{"service9-key":"'
+            + base64.b64encode(b"short").decode("ascii")
+            + '"}'
+        )
