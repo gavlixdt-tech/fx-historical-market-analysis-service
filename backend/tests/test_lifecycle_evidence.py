@@ -137,7 +137,9 @@ def signed_envelope(
             "algorithm_version": "1.0.0",
             "classification_reasons": ["observed close confirmed displacement"],
             "sweep_confirmation_time": sweep_occurred_at,
-            "displacement_confirmed_at": observed_at.isoformat().replace("+00:00", "Z"),
+            "displacement_confirmed_at": (
+                None if state == "INVALIDATED" else observed_at.isoformat().replace("+00:00", "Z")
+            ),
             "midpoint_first_reached_at": None,
             "consolidation_candidate_at": None,
             "invalidated_at": displacement_occurred_at if state == "INVALIDATED" else None,
