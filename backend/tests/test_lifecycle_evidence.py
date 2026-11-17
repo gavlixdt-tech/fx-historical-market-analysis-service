@@ -296,10 +296,14 @@ def test_durable_inbox_deduplicates_and_records_event_id_conflicts(tmp_path) -> 
     assert status["highest_transition_sequence"] == 2
 
 
-def test_quarantine_is_durable_and_counted(tmp_path) -> None:
+def test_quarantine_is_durable_and_delivery_id_collisions_are_audited(tmp_path) -> None:
     inbox = LifecycleEvidenceInbox(str(tmp_path / "lifecycle-inbox.sqlite3"))
     inbox.persist_rejected("delivery-1", "bad-event", {"id": "bad-event"}, "signature_invalid")
-    assert inbox.status()["quarantined_deliveries"] == 1
+    inbox.persist_rejected("delivery-1", "other-event", {"id": "other-event"}, "different_payload")
+    inbox.persist_rejected("delivery-1", "other-event", {"id": "other-event"}, "different_payload")
+    status = inbox.status()
+    assert status["quarantined_deliveries"] == 1
+    assert status["conflicts"] == 1
 
 
 def test_point_in_time_inbox_context_excludes_events_until_available_at(tmp_path) -> None:
@@ -808,7 +812,9 @@ def test_postgres_inbox_evidence_and_quarantine_are_append_only() -> None:
     delivery_id = f"rejected-{uuid.uuid4()}"
     inbox.persist_rejected(delivery_id, None, {"invalid": True}, "signature_invalid")
     inbox.persist_rejected(delivery_id, None, {"invalid": False}, "duplicate_delivery")
-    assert inbox.status()["quarantined_deliveries"] >= 1
+    status = inbox.status()
+    assert status["quarantined_deliveries"] >= 1
+    assert status["conflicts"] >= 1
 
 
 @pytest.mark.skipif(
