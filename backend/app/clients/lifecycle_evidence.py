@@ -521,6 +521,10 @@ class LifecycleEvidenceInbox:
             or verified["lifecycle_id"] != row["lifecycle_id"]
             or verified["transition_sequence"] != row["transition_sequence"]
             or verified["transition_sha256"] != row["transition_sha256"]
+            or _epoch_microseconds(_parse_utc(row["available_at"], "stored_available_at"))
+            != int(row["available_at_epoch_us"])
+            or _epoch_microseconds(_parse_utc(row["received_at"], "stored_received_at"))
+            != int(row["received_at_epoch_us"])
             or not bool(row["signature_verified"])
             or not bool(row["source_verified"])
         ):
@@ -760,7 +764,7 @@ class LifecycleEvidenceInbox:
                 """
                 SELECT event_id,topic,envelope_json,payload_sha256,key_id,available_at,received_at,
                        instrument,timeframe,signature_verified,source_verified,lifecycle_id,
-                       transition_sequence,transition_sha256
+                       transition_sequence,transition_sha256,available_at_epoch_us,received_at_epoch_us
                 FROM lifecycle_evidence_inbox
                 WHERE source_verified=1 AND instrument=? AND timeframe=?
                   AND json_extract(envelope_json, '$.data.provenance.source_dataset_id')=?
@@ -952,7 +956,7 @@ class LifecycleEvidenceInbox:
                 """
                 SELECT event_id,topic,envelope_json,payload_sha256,key_id,available_at,received_at,
                        instrument,timeframe,signature_verified,source_verified,lifecycle_id,
-                       transition_sequence,transition_sha256
+                       transition_sequence,transition_sha256,available_at_epoch_us,received_at_epoch_us
                 FROM lifecycle_evidence_inbox
                 WHERE lifecycle_id=? AND source_verified=1
                 ORDER BY transition_sequence DESC
