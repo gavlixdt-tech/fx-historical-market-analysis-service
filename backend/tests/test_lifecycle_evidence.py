@@ -531,3 +531,76 @@ def test_durable_inbox_reconstructs_signed_lifecycle_history(tmp_path) -> None:
     assert history["head_sequence"] == 2
     assert [item["sequence"] for item in history["reconstructed_transition_history"]] == [1, 2]
     assert history["signature_reverified"] is True
+
+
+def test_inbox_rejects_divergent_history_prefix_even_when_each_event_is_signed(tmp_path) -> None:
+    import copy
+
+    private_key = Ed25519PrivateKey.generate()
+    later, trust, source_trust = signed_envelope(private_key)
+    earlier = copy.deepcopy(later)
+    first = earlier["data"]["lifecycle"]["transition_history"][0]
+    earlier["data"]["event_id"] = first["transition_id"]
+    earlier_lifecycle = earlier["data"]["lifecycle"]
+    earlier_lifecycle["transition_id"] = first["transition_id"]
+    earlier_lifecycle["transition_sequence"] = 1
+    earlier_lifecycle["transition_sha256"] = first["transition_sha256"]
+    earlier_lifecycle["previous_transition_sha256"] = first["previous_transition_sha256"]
+    earlier_lifecycle["transition_history"] = [first]
+    earlier_lifecycle["state"] = "SWEEP_CONFIRMED"
+    earlier_lifecycle["displacement_confirmed_at"] = None
+    earlier["data"]["temporal"]["observed_at"] = first["occurred_at"]
+    earlier["data"]["temporal"]["confirmed_at"] = first["occurred_at"]
+    earlier["id"] = first["transition_id"]
+    _resign_service9_event(earlier, private_key)
+
+    divergent = copy.deepcopy(later)
+    data = divergent["data"]
+    lifecycle = data["lifecycle"]
+    history = lifecycle["transition_history"]
+    first_item = history[0]
+    changed_time = (
+        datetime.fromisoformat(first_item["occurred_at"].replace("Z", "+00:00"))
+        + timedelta(seconds=1)
+    ).isoformat().replace("+00:00", "Z")
+    first_item["occurred_at"] = changed_time
+    first_item["transition_id"] = hashlib.sha256(
+        f"{lifecycle['lifecycle_id']}|1|{first_item['state']}|{changed_time}".encode("utf-8")
+    ).hexdigest()
+    first_projection = {
+        key: first_item[key]
+        for key in (
+            "lifecycle_id", "transition_id", "sequence", "state",
+            "occurred_at", "previous_transition_sha256",
+        )
+    }
+    first_item["transition_sha256"] = hashlib.sha256(
+        rfc8785.dumps(first_projection)
+    ).hexdigest()
+    second_item = history[1]
+    second_item["previous_transition_sha256"] = first_item["transition_sha256"]
+    second_projection = {
+        key: second_item[key]
+        for key in (
+            "lifecycle_id", "transition_id", "sequence", "state",
+            "occurred_at", "previous_transition_sha256",
+        )
+    }
+    second_item["transition_sha256"] = hashlib.sha256(
+        rfc8785.dumps(second_projection)
+    ).hexdigest()
+    lifecycle["sweep_confirmation_time"] = changed_time
+    lifecycle["previous_transition_sha256"] = second_item["previous_transition_sha256"]
+    lifecycle["transition_sha256"] = second_item["transition_sha256"]
+    _resign_service9_event(divergent, private_key)
+
+    verified_earlier = verify_lifecycle_event(
+        earlier, public_keys_json=trust, source_public_keys_json=source_trust
+    )
+    verified_divergent = verify_lifecycle_event(
+        divergent, public_keys_json=trust, source_public_keys_json=source_trust
+    )
+    inbox = LifecycleEvidenceInbox(str(tmp_path / "lifecycle-inbox.sqlite3"))
+    assert inbox.persist_verified("gfx.liquidity.lifecycle.v1", earlier, verified_earlier) == "STORED"
+    assert inbox.persist_verified("gfx.liquidity.lifecycle.v1", divergent, verified_divergent) == "CONFLICT"
+    assert inbox.status()["conflicts"] == 1
