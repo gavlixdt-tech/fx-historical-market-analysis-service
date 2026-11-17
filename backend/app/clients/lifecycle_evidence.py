@@ -72,15 +72,16 @@ def _verify_service1_source_attestation(
         "duplicate_count", "candle_count",
     }
     timeframe_map = {
-        "1m": "1M", "5m": "5M", "15m": "15M", "30m": "30M",
-        "1h": "1H", "4h": "4H", "1d": "1D",
+        "1m": ("M1", "1M"), "5m": ("M5", "5M"), "15m": ("M15", "15M"),
+        "30m": ("M30", "30M"), "1h": ("H1", "1H"), "4h": ("H4", "4H"),
+        "1d": ("D1", "1D"),
     }
     if (
         attestation.get("version") != "1"
         or attestation.get("purpose") != "indicator-candle-dataset"
         or attestation.get("algorithm") != "Ed25519"
         or attestation.get("instrument") != instrument.get("canonical_id")
-        or attestation.get("timeframe") != timeframe_map.get(data.get("timeframe"))
+        or attestation.get("timeframe") != (timeframe_map.get(data.get("timeframe")) or (None, None))[1]
         or attestation.get("source_id") != provenance.get("source_dataset_id")
         or attestation.get("dataset_sha256") != provenance.get("source_dataset_sha256")
         or attestation.get("provider_id") != provenance.get("source_provider_id")
@@ -90,7 +91,7 @@ def _verify_service1_source_attestation(
         or not isinstance(attestation_quality, dict)
         or set(attestation_quality) != expected_quality_fields
         or metadata.get("provider_id") != attestation.get("provider_id")
-        or metadata.get("service1_timeframe") != data.get("timeframe")
+        or metadata.get("service1_timeframe") != (timeframe_map.get(data.get("timeframe")) or (None, None))[0]
         or metadata.get("indicator_timeframe") != attestation.get("timeframe")
         or metadata.get("retrieved_at") != attestation.get("observed_at")
         or attestation_quality.get("is_final") is not True
