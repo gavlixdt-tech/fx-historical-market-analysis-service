@@ -308,28 +308,32 @@ async def run_market_data_replay(
         if not isinstance(prediction, dict):
             continue
         reference_value = prediction.get("reference_timestamp")
-        manifest = manifests_by_reference.get(str(reference_value))
-        if manifest is None and isinstance(reference_value, str):
+        resolved_manifest: dict[str, Any] | None = manifests_by_reference.get(
+            str(reference_value)
+        )
+        if resolved_manifest is None and isinstance(reference_value, str):
             try:
                 normalized_reference = (
                     datetime.fromisoformat(reference_value.replace("Z", "+00:00"))
                     .astimezone(UTC)
                     .isoformat()
                 )
-                manifest = manifests_by_reference.get(normalized_reference)
+                resolved_manifest = manifests_by_reference.get(normalized_reference)
             except ValueError:
-                manifest = None
+                resolved_manifest = None
         prediction["lifecycle_evidence"] = (
             {
                 "status": "verified_source_attested"
-                if manifest["evidence_count"]
+                if resolved_manifest["evidence_count"]
                 else "no_verified_evidence",
-                "prediction_origin": manifest["prediction_origin"],
-                "event_ids": [item["event_id"] for item in manifest["evidence"]],
-                "evidence_count": manifest["evidence_count"],
-                "evidence_set_sha256": manifest["evidence_set_sha256"],
+                "prediction_origin": resolved_manifest["prediction_origin"],
+                "event_ids": [
+                    item["event_id"] for item in resolved_manifest["evidence"]
+                ],
+                "evidence_count": resolved_manifest["evidence_count"],
+                "evidence_set_sha256": resolved_manifest["evidence_set_sha256"],
             }
-            if manifest is not None
+            if resolved_manifest is not None
             else {
                 "status": "not_available",
                 "event_ids": [],
