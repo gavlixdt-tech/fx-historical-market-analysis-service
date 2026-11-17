@@ -545,6 +545,8 @@ Configure these variables in Railway → GFX project →
 `fx-historical-market-analysis-service` → backend Variables. Attach a
 persistent Railway Volume mounted at `/data` before enabling the consumer.
 
+For `/api/v1/historical-replay/run-from-market-data`, the request's `source_dataset_id` must equal the `source_id` in the verified Service 1 dataset attestation. The replay path rejects a caller-supplied dataset identifier that does not match the signed attestation. Lifecycle features are selected only for that exact dataset, canonical instrument, mapped timeframe and price basis.
+
 | Variable | Purpose | Where to obtain it | Secret? |
 |---|---|---|---|
 | `LIFECYCLE_EVENT_BUS_ENABLED` | Enables the background consumer; keep false until Service 62 topic/grants and the trust bundle are configured. | Release gate | No |
