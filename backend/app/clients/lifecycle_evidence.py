@@ -14,7 +14,6 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit
 
 import httpx
 import rfc8785
@@ -31,6 +30,10 @@ EXPECTED_SCHEMA = "liquidity-lifecycle-evidence/v1"
 
 class LifecycleEvidenceError(ValueError):
     """Raised when a lifecycle event fails the signed evidence contract."""
+
+
+def _b64url_encode(value: bytes) -> str:
+    return base64.urlsafe_b64encode(value).rstrip(b"=").decode("ascii")
 
 
 def _parse_utc(value: object, field: str) -> datetime:
@@ -127,6 +130,7 @@ def verify_lifecycle_event(
         or not isinstance(instrument.get("canonical_id"), str)
         or len(instrument["canonical_id"]) != 6
         or not instrument["canonical_id"].isalpha()
+        or not instrument["canonical_id"].isupper()
         or instrument["canonical_id"] != instrument.get("base_currency", "") + instrument.get("quote_currency", "")
     ):
         raise LifecycleEvidenceError("instrument_identity_invalid")
@@ -140,6 +144,7 @@ def verify_lifecycle_event(
         not isinstance(provenance, dict)
         or not isinstance(provenance.get("source_payload_sha256"), str)
         or len(provenance["source_payload_sha256"]) != 64
+        or any(char not in "0123456789abcdef" for char in provenance["source_payload_sha256"])
         or not isinstance(provenance.get("lineage"), list)
         or not provenance["lineage"]
     ):
@@ -275,12 +280,16 @@ class LifecycleEvidenceInbox:
 
     def status(self) -> dict[str, int]:
         with self._connect() as connection:
-            accepted = connection.execute("SELECT COUNT(*) AS n FROM lifecycle_evidence_inbox").fetchone()["n"]
-            source_verified = connection.execute(
+            accepted_row = connection.execute("SELECT COUNT(*) AS n FROM lifecycle_evidence_inbox").fetchone()
+            source_row = connection.execute(
                 "SELECT COUNT(*) AS n FROM lifecycle_evidence_inbox WHERE source_verified=1"
-            ).fetchone()["n"]
-            conflicts = connection.execute("SELECT COUNT(*) AS n FROM lifecycle_evidence_conflicts").fetchone()["n"]
-            rejected = connection.execute("SELECT COUNT(*) AS n FROM lifecycle_evidence_quarantine").fetchone()["n"]
+            ).fetchone()
+            conflict_row = connection.execute("SELECT COUNT(*) AS n FROM lifecycle_evidence_conflicts").fetchone()
+            rejected_row = connection.execute("SELECT COUNT(*) AS n FROM lifecycle_evidence_quarantine").fetchone()
+            accepted = int(accepted_row["n"]) if accepted_row else 0
+            source_verified = int(source_row["n"]) if source_row else 0
+            conflicts = int(conflict_row["n"]) if conflict_row else 0
+            rejected = int(rejected_row["n"]) if rejected_row else 0
         return {
             "signature_verified_events": int(accepted),
             "source_attested_events": int(source_verified),
@@ -308,8 +317,7 @@ class LifecycleEvidenceConsumer:
         }, separators=(",", ":")).encode("utf-8")
         secret = (self.settings.lifecycle_event_bus_consumer_secret or "").encode("utf-8")
         signature = hmac.new(secret, body, hashlib.sha256).digest()
-        encode = lambda value: base64.urlsafe_b64encode(value).rstrip(b"=").decode("ascii")
-        return encode(body) + "." + encode(signature)
+            return _b64url_encode(body) + "." + _b64url_encode(signature)
 
     async def start(self) -> None:
         if not self.settings.lifecycle_event_bus_enabled:
