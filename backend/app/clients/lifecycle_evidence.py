@@ -802,10 +802,65 @@ class LifecycleEvidenceInbox:
     ) -> None:
         encoded = json.dumps(envelope, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
         with self._connect() as connection:
-            connection.execute(
-                "INSERT OR IGNORE INTO lifecycle_evidence_quarantine(delivery_id,event_id,envelope_json,rejection_reason,received_at) VALUES(?,?,?,?,?)",
-                (delivery_id, event_id, encoded, reason[:500], datetime.now(UTC).isoformat()),
+            connection.execute("BEGIN IMMEDIATE")
+            now = datetime.now(UTC).isoformat()
+            inserted = connection.execute(
+                """
+                INSERT OR IGNORE INTO lifecycle_evidence_quarantine(
+                    delivery_id,event_id,envelope_json,rejection_reason,received_at
+                ) VALUES(?,?,?,?,?)
+                """,
+                (delivery_id, event_id, encoded, reason[:500], now),
+            ).rowcount
+            if inserted == 1:
+                return
+            existing = connection.execute(
+                """
+                SELECT event_id,envelope_json,rejection_reason
+                FROM lifecycle_evidence_quarantine WHERE delivery_id=?
+                """,
+                (delivery_id,),
+            ).fetchone()
+            if existing is None:
+                raise LifecycleEvidenceError("quarantine_delivery_identity_race")
+            if (
+                existing["event_id"] == event_id
+                and existing["envelope_json"] == encoded
+                and existing["rejection_reason"] == reason[:500]
+            ):
+                return
+            conflict = {
+                "kind": "quarantine_delivery_id_reuse",
+                "delivery_id": delivery_id,
+                "original_event_id": existing["event_id"],
+                "incoming_event_id": event_id,
+                "original_rejection_reason": existing["rejection_reason"],
+                "incoming_rejection_reason": reason[:500],
+                "original_envelope": json.loads(existing["envelope_json"]),
+                "incoming_envelope": envelope,
+            }
+            conflict_json = json.dumps(
+                conflict, sort_keys=True, separators=(",", ":"), ensure_ascii=False
             )
+            conflict_digest = hashlib.sha256(conflict_json.encode("utf-8")).hexdigest()
+            conflict_event_id = f"quarantine:{delivery_id}"
+            duplicate = connection.execute(
+                """
+                SELECT 1 FROM lifecycle_evidence_conflicts
+                WHERE event_id=? AND payload_sha256=? AND envelope_json=?
+                LIMIT 1
+                """,
+                (conflict_event_id, conflict_digest, conflict_json),
+            ).fetchone()
+            if duplicate is None:
+                connection.execute(
+                    """
+                    INSERT INTO lifecycle_evidence_conflicts(
+                        event_id,payload_sha256,envelope_json,received_at
+                    ) VALUES(?,?,?,?)
+                    """,
+                    (conflict_event_id, conflict_digest, conflict_json, now),
+                )
 
     def point_in_time_contexts(
         self,
@@ -1471,15 +1526,61 @@ class PostgresLifecycleEvidenceInbox:
             if database_clock is None:
                 raise RuntimeError("PostgreSQL clock query returned no row")
             received_at = database_clock["now"].astimezone(UTC).isoformat()
-            connection.execute(
+            inserted = connection.execute(
                 """
                 INSERT INTO lifecycle_evidence_quarantine(
                     delivery_id,event_id,envelope_json,rejection_reason,received_at
                 ) VALUES (%s,%s,%s,%s,%s)
                 ON CONFLICT(delivery_id) DO NOTHING
+                RETURNING delivery_id
                 """,
                 (delivery_id, event_id, encoded, reason[:500], received_at),
+            ).fetchone()
+            if inserted is not None:
+                return
+            existing = connection.execute(
+                """
+                SELECT event_id,envelope_json,rejection_reason
+                FROM lifecycle_evidence_quarantine WHERE delivery_id=%s
+                FOR UPDATE
+                """,
+                (delivery_id,),
+            ).fetchone()
+            if existing is None:
+                raise LifecycleEvidenceError("quarantine_delivery_identity_race")
+            if (
+                existing["event_id"] == event_id
+                and existing["envelope_json"] == encoded
+                and existing["rejection_reason"] == reason[:500]
+            ):
+                return
+            conflict = {
+                "kind": "quarantine_delivery_id_reuse",
+                "delivery_id": delivery_id,
+                "original_event_id": existing["event_id"],
+                "incoming_event_id": event_id,
+                "original_rejection_reason": existing["rejection_reason"],
+                "incoming_rejection_reason": reason[:500],
+                "original_envelope": json.loads(existing["envelope_json"]),
+                "incoming_envelope": envelope,
+            }
+            conflict_json = json.dumps(
+                conflict, sort_keys=True, separators=(",", ":"), ensure_ascii=False
             )
+            conflict_digest = hashlib.sha256(conflict_json.encode("utf-8")).hexdigest()
+            conflict_event_id = f"quarantine:{delivery_id}"
+            duplicate = connection.execute(
+                """
+                SELECT 1 FROM lifecycle_evidence_conflicts
+                WHERE event_id=%s AND payload_sha256=%s AND envelope_json=%s
+                LIMIT 1
+                """,
+                (conflict_event_id, conflict_digest, conflict_json),
+            ).fetchone()
+            if duplicate is None:
+                self._record_conflict(
+                    connection, conflict_event_id, conflict_digest, conflict_json, received_at
+                )
 
     def _eligible_rows(
         self, instrument: str, timeframe: str, source_dataset_id: str, max_us: int
