@@ -360,13 +360,22 @@ def verify_lifecycle_event(
         previous_time = occurred
         seen_transition_ids.add(expected_id)
     final_transition = history[-1]
+    aggregate_state_by_transition = {
+        "SWEEP_CONFIRMED": "SWEEP_CONFIRMED_AWAITING_DISPLACEMENT",
+        "SWEEP_CONFIRMED_AWAITING_DISPLACEMENT": "SWEEP_CONFIRMED_AWAITING_DISPLACEMENT",
+        "DISPLACEMENT_CONFIRMED": "DISPLACEMENT_CONFIRMED",
+        "MIDPOINT_REACHED": "MIDPOINT_REACHED",
+        "CONSOLIDATION_CANDIDATE": "MIDPOINT_CONSOLIDATION_CANDIDATE",
+        "MIDPOINT_CONSOLIDATION_CANDIDATE": "MIDPOINT_CONSOLIDATION_CANDIDATE",
+        "INVALIDATED": "INVALIDATED",
+    }
     if (
         lifecycle.get("transition_sequence") != final_transition["sequence"]
         or lifecycle.get("transition_sha256") != final_transition["transition_sha256"]
         or lifecycle.get("previous_transition_sha256") != final_transition["previous_transition_sha256"]
         or lifecycle.get("transition_id") != final_transition["transition_id"]
         or data.get("event_id") != final_transition["transition_id"]
-        or lifecycle.get("state") != final_transition["state"]
+        or lifecycle.get("state") != aggregate_state_by_transition.get(final_transition["state"])
     ):
         raise LifecycleEvidenceError("transition_head_mismatch")
     provenance = data.get("provenance")
