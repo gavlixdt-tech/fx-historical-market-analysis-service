@@ -1578,7 +1578,10 @@ class PostgresLifecycleEvidenceInbox:
                 """
                 SELECT COUNT(*) AS n FROM lifecycle_evidence_inbox i
                 WHERE i.source_verified=TRUE OR EXISTS (
-                    SELECT 1 FROM lifecycle_evidence_source_verifications v WHERE v.event_id=i.event_id
+                    SELECT 1 FROM lifecycle_evidence_source_verifications v
+                    WHERE v.event_id=i.event_id
+                      AND v.payload_sha256=i.payload_sha256
+                      AND v.source_dataset_id=i.source_dataset_id
                 )
                 """
             ).fetchone() or {"n": 0}
