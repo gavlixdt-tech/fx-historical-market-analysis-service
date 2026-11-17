@@ -473,6 +473,30 @@ def verify_lifecycle_event(
     # The current Service 9 input API accepts caller-supplied candles. Its
     # signature is producer-authentic, not a vendor/source attestation.
     source_verified = _verify_service1_source_attestation(data, source_public_keys_json)
+    expected_cloud_event_metadata = {
+        "specversion": "1.0",
+        "source": "urn:gavlix:service:9:fx-liquidity-analysis-service",
+        "subject": f"{instrument['canonical_id']}/{data['timeframe']}",
+        "time": temporal["confirmed_at"],
+        "datacontenttype": "application/json",
+        "correlation_id": lifecycle["lifecycle_id"],
+        "causation_id": lifecycle["sweep_event_id"],
+        "partition_key": instrument["canonical_id"],
+        "idempotency_key": f"liquidity-lifecycle-transition:{data['event_id']}",
+        "producer_service": EXPECTED_PRODUCER,
+        "source_timestamp": temporal["source_candle_at"],
+        "sequence_number": lifecycle["transition_sequence"],
+        "quality_status": quality["quality_status"],
+        "provenance": provenance,
+        "event_time": temporal["confirmed_at"],
+        "classification": "analytical",
+        "sensitivity": "internal",
+    }
+    if any(
+        envelope.get(field) != expected
+        for field, expected in expected_cloud_event_metadata.items()
+    ):
+        raise LifecycleEvidenceError("cloudevent_metadata_mismatch")
     return {
         "event_id": data["event_id"],
         "lifecycle_id": lifecycle["lifecycle_id"],
