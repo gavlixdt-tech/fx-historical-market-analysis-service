@@ -486,7 +486,7 @@ This reference follows the current runtime settings and repository environment t
 | `OTEL_ENABLED` | Enable OpenTelemetry trace export. | Optional |
 | `OTEL_ENDPOINT` | OTLP HTTP endpoint. | Conditional |
 | `METRICS_ENABLED` | Expose Prometheus metrics. | Optional |
-| `DATABASE_URL` | PostgreSQL connection URL for the lifecycle evidence inbox. Required when the lifecycle consumer is enabled in production; credentials are secret-bearing. Obtain from Railway PostgreSQL Variables. | Conditional secret-bearing URL |
+| `DATABASE_URL` | PostgreSQL connection URL for the lifecycle evidence inbox. Required when the lifecycle consumer is enabled in production; credentials are secret-bearing. Obtain from Railway PostgreSQL Variables; see https://docs.railway.com/guides/postgresql. | Conditional secret-bearing URL |
 
 
 ## GFX Service 9 lifecycle evidence integration — deployment gate
