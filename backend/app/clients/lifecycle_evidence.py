@@ -470,6 +470,13 @@ class LifecycleEvidenceInbox:
                 connection.execute(
                     "ALTER TABLE lifecycle_evidence_inbox ADD COLUMN transition_sha256 TEXT"
                 )
+            # Legacy rows predate signed transition chains. Keep them for audit,
+            # but revoke their feature eligibility rather than silently trusting them.
+            connection.execute(
+                "UPDATE lifecycle_evidence_inbox SET source_verified=0 "
+                "WHERE lifecycle_id IS NULL OR transition_sequence IS NULL "
+                "OR transition_sha256 IS NULL"
+            )
 
             legacy_rows = connection.execute(
                 "SELECT rowid,available_at,received_at FROM lifecycle_evidence_inbox "
