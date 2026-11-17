@@ -23,7 +23,7 @@ def signed_envelope(
     event_id: str = "lifecycle-1",
     state: str = "DISPLACEMENT_CONFIRMED",
     reverse_temporal_order: bool = False,
-) -> tuple[dict, str]:
+ ) -> tuple[dict, str, str]:
     now = datetime.now(UTC).replace(microsecond=0)
     source_at = now - timedelta(minutes=4)
     observed_at = now - timedelta(minutes=2)
@@ -33,6 +33,41 @@ def signed_envelope(
         observed_at = now - timedelta(minutes=2)
     public_raw = private_key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
     key_id = "service9-ed25519-test"
+    service1_private_key = Ed25519PrivateKey.generate()
+    service1_public_raw = service1_private_key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+    service1_key_id = "service1-historical-test"
+    source_dataset_sha256 = "b" * 64
+    source_dataset_id = f"historical:test-provider:{source_dataset_sha256[:24]}"
+    source_attestation = {
+        "version": "1",
+        "purpose": "indicator-candle-dataset",
+        "algorithm": "Ed25519",
+        "provider_id": "test-provider",
+        "source_id": source_dataset_id,
+        "key_id": service1_key_id,
+        "issued_at": now.isoformat().replace("+00:00", "Z"),
+        "observed_at": now.isoformat().replace("+00:00", "Z"),
+        "instrument": "EURUSD",
+        "timeframe": "1M",
+        "dataset_sha256": source_dataset_sha256,
+        "quality": {
+            "is_final": True, "valid": True, "coverage_complete": True,
+            "rejected_count": 0, "duplicate_count": 0, "candle_count": 10,
+        },
+        "volume_semantics": "not_supplied",
+        "source_metadata": {
+            "provider_id": "test-provider", "service1_timeframe": "1m",
+            "indicator_timeframe": "1M", "price_basis": "midpoint",
+            "retrieved_at": now.isoformat().replace("+00:00", "Z"),
+            "coverage": {}, "validation_summary": {}, "candle_sources": [],
+            "volume_kinds": [], "limitations": [],
+        },
+    }
+    source_attestation["signature"] = "ed25519=" + base64.b64encode(
+        service1_private_key.sign(json.dumps(
+            source_attestation, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+        ).encode("utf-8"))
+    ).decode("ascii")
     data = {
         "contract_version": "liquidity-lifecycle-evidence/v1",
         "event_id": event_id,
@@ -68,13 +103,14 @@ def signed_envelope(
             "replay_cutoff_at": None,
         },
         "market_basis": {
-            "price_basis": "VENDOR_DEFINED",
-            "source_id": "service1:twelve-data",
+            "price_basis": "MID",
+            "source_id": source_dataset_id,
             "source_timezone": "UTC",
         },
         "quality": {
             "evidence_class": "DERIVED",
-            "quality_status": "UNKNOWN",
+            "quality_status": "PASS",
+            "source_attestation_status": "SERVICE1_DATASET_SIGNATURE_VERIFIED",
             "freshness_status": "FRESH",
             "uncertainty_status": "UNQUANTIFIED",
             "limitations": ["source market data is not independently attested"],
@@ -82,6 +118,10 @@ def signed_envelope(
         "provenance": {
             "source_event_id": "sweep-1",
             "source_payload_sha256": "a" * 64,
+            "source_dataset_id": source_dataset_id,
+            "source_dataset_sha256": source_dataset_sha256,
+            "source_provider_id": "test-provider",
+            "source_attestation": source_attestation,
             "lineage": [{
                 "service_id": "fx-liquidity-analysis-service",
                 "artifact_id": "causal-post-sweep-lifecycle",
@@ -113,15 +153,18 @@ def signed_envelope(
         "data": data,
     }
     trust = json.dumps({key_id: base64.b64encode(public_raw).decode("ascii")})
-    return envelope, trust
+    source_trust = json.dumps({service1_key_id: base64.b64encode(service1_public_raw).decode("ascii")})
+    return envelope, trust, source_trust
 
 
 def test_verifies_service9_ed25519_signature_and_temporal_contract() -> None:
     private_key = Ed25519PrivateKey.generate()
-    envelope, trust = signed_envelope(private_key)
-    result = verify_lifecycle_event(envelope, public_keys_json=trust)
+    envelope, trust, source_trust = signed_envelope(private_key)
+    result = verify_lifecycle_event(
+        envelope, public_keys_json=trust, source_public_keys_json=source_trust
+    )
     assert result["signature_verified"] is True
-    assert result["source_verified"] is False
+    assert result["source_verified"] is True
     assert result["instrument"] == "EURUSD"
     assert result["timeframe"] == "1m"
 
@@ -131,7 +174,7 @@ def test_rejects_payload_tampering_after_signature() -> None:
     envelope, trust = signed_envelope(private_key)
     envelope["data"]["lifecycle"]["state"] = "INVALIDATED"
     with pytest.raises(LifecycleEvidenceError, match="payload_digest_mismatch"):
-        verify_lifecycle_event(envelope, public_keys_json=trust)
+        verify_lifecycle_event(envelope, public_keys_json=trust, source_public_keys_json=source_trust)
 
 
 def test_rejects_unknown_signing_key() -> None:
@@ -139,36 +182,39 @@ def test_rejects_unknown_signing_key() -> None:
     envelope, trust = signed_envelope(private_key)
     envelope["data"]["integrity"]["key_id"] = "untrusted-key"
     with pytest.raises(LifecycleEvidenceError, match="signing_key_untrusted"):
-        verify_lifecycle_event(envelope, public_keys_json=trust)
+        verify_lifecycle_event(envelope, public_keys_json=trust, source_public_keys_json=source_trust)
 
 
 def test_rejects_non_monotonic_event_timestamps_even_with_valid_signature() -> None:
     private_key = Ed25519PrivateKey.generate()
     envelope, trust = signed_envelope(private_key, reverse_temporal_order=True)
     with pytest.raises(LifecycleEvidenceError, match="temporal_order_invalid"):
-        verify_lifecycle_event(envelope, public_keys_json=trust)
+        verify_lifecycle_event(envelope, public_keys_json=trust, source_public_keys_json=source_trust)
 
 
 def test_durable_inbox_deduplicates_and_records_event_id_conflicts(tmp_path) -> None:
     private_key = Ed25519PrivateKey.generate()
-    envelope, trust = signed_envelope(private_key)
-    verified = verify_lifecycle_event(envelope, public_keys_json=trust)
+    envelope, trust, source_trust = signed_envelope(private_key)
+    verified = verify_lifecycle_event(
+        envelope, public_keys_json=trust, source_public_keys_json=source_trust
+    )
     inbox = LifecycleEvidenceInbox(str(tmp_path / "lifecycle-inbox.sqlite3"))
     assert inbox.persist_verified("gfx.liquidity.lifecycle.v1", envelope, verified) == "STORED"
     assert inbox.persist_verified("gfx.liquidity.lifecycle.v1", envelope, verified) == "DUPLICATE"
 
-    conflicting, conflicting_trust = signed_envelope(
+    conflicting, conflicting_trust, conflicting_source_trust = signed_envelope(
         private_key, event_id="lifecycle-1", state="INVALIDATED"
     )
     conflicting_verified = verify_lifecycle_event(
-        conflicting, public_keys_json=conflicting_trust
+        conflicting, public_keys_json=conflicting_trust,
+        source_public_keys_json=conflicting_source_trust,
     )
     assert inbox.persist_verified(
         "gfx.liquidity.lifecycle.v1", conflicting, conflicting_verified
     ) == "CONFLICT"
     assert inbox.status() == {
         "signature_verified_events": 1,
-        "source_attested_events": 0,
+        "source_attested_events": 1,
         "conflicts": 1,
         "quarantined_deliveries": 0,
     }
