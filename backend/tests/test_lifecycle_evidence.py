@@ -1000,6 +1000,9 @@ def test_sqlite_inbox_cutover_preserves_evidence_conflicts_and_quarantine(tmp_pa
             public_keys_json=trust_a,
             source_public_keys_json=source_trust_a,
         )
+        pre_migration.assert_sqlite_cutover_complete(
+            str(tmp_path / "new-install-without-legacy.sqlite3")
+        )
         with pytest.raises(RuntimeError, match="not fully imported"):
             pre_migration.assert_sqlite_cutover_complete(str(sqlite_path))
 
