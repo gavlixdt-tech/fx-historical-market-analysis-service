@@ -950,7 +950,7 @@ class LifecycleEvidenceInbox:
         with self._connect() as connection:
             rows = connection.execute(
                 """
-                SELECT event_id,envelope_json,payload_sha256,key_id,available_at,received_at,
+                SELECT event_id,topic,envelope_json,payload_sha256,key_id,available_at,received_at,
                        instrument,timeframe,signature_verified,source_verified,lifecycle_id,
                        transition_sequence,transition_sha256
                 FROM lifecycle_evidence_inbox
