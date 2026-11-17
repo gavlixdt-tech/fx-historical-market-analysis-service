@@ -159,11 +159,37 @@ def migrate(sqlite_path: Path, dsn: str) -> dict[str, int | str]:
                     ON CONFLICT(event_id) DO NOTHING
                 """, values)
                 stored = target.execute(
-                    "SELECT payload_sha256,envelope_json,topic FROM lifecycle_evidence_inbox WHERE event_id=%s",
+                    """
+                    SELECT topic,envelope_json,payload_sha256,key_id,available_at,instrument,
+                           timeframe,signature_verified,source_verified,received_at,
+                           available_at_epoch_us,received_at_epoch_us,lifecycle_id,
+                           transition_sequence,transition_sha256,source_dataset_id
+                    FROM lifecycle_evidence_inbox WHERE event_id=%s
+                    """,
                     (raw["event_id"],),
                 ).fetchone()
-                if stored is None or stored["payload_sha256"] != raw["payload_sha256"] or stored["envelope_json"] != envelope_text or stored["topic"] != raw["topic"]:
-                    raise RuntimeError(f"PostgreSQL event conflict while importing {raw['event_id']}")
+                expected = {
+                    "topic": raw["topic"],
+                    "envelope_json": envelope_text,
+                    "payload_sha256": raw["payload_sha256"],
+                    "key_id": raw["key_id"],
+                    "available_at": raw["available_at"],
+                    "instrument": raw["instrument"],
+                    "timeframe": raw["timeframe"],
+                    "signature_verified": bool(raw["signature_verified"]),
+                    "source_verified": bool(raw["source_verified"]),
+                    "received_at": raw["received_at"],
+                    "available_at_epoch_us": available,
+                    "received_at_epoch_us": received,
+                    "lifecycle_id": raw.get("lifecycle_id"),
+                    "transition_sequence": raw.get("transition_sequence"),
+                    "transition_sha256": raw.get("transition_sha256"),
+                    "source_dataset_id": source_dataset_id,
+                }
+                if stored is None or any(stored[key] != value for key, value in expected.items()):
+                    raise RuntimeError(
+                        f"PostgreSQL event conflict or indexed-metadata mismatch while importing {raw['event_id']}"
+                    )
                 imported["inbox"] += 1
 
             inbox_by_id = {dict(row)["event_id"]: dict(row) for row in inbox_rows}
