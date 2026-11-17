@@ -625,6 +625,32 @@ class LifecycleEvidenceInbox:
                     (verified["event_id"], verified["payload_sha256"], encoded, now),
                 )
                 return "CONFLICT"
+            incoming_history = envelope.get("data", {}).get("lifecycle", {}).get(
+                "transition_history", []
+            )
+            prior_rows = connection.execute(
+                "SELECT event_id,envelope_json FROM lifecycle_evidence_inbox "
+                "WHERE lifecycle_id=? AND source_verified=1",
+                (verified["lifecycle_id"],),
+            ).fetchall()
+            for prior in prior_rows:
+                prior_envelope = json.loads(prior["envelope_json"])
+                prior_history = prior_envelope.get("data", {}).get("lifecycle", {}).get(
+                    "transition_history", []
+                )
+                common_length = min(len(prior_history), len(incoming_history))
+                if any(
+                    prior_history[index].get("transition_id")
+                    != incoming_history[index].get("transition_id")
+                    or prior_history[index].get("transition_sha256")
+                    != incoming_history[index].get("transition_sha256")
+                    for index in range(common_length)
+                ):
+                    connection.execute(
+                        "INSERT INTO lifecycle_evidence_conflicts(event_id,payload_sha256,envelope_json,received_at) VALUES(?,?,?,?)",
+                        (verified["event_id"], verified["payload_sha256"], encoded, now),
+                    )
+                    return "CONFLICT"
             sequence_existing = connection.execute(
                 "SELECT event_id,transition_sha256 FROM lifecycle_evidence_inbox "
                 "WHERE lifecycle_id=? AND transition_sequence=?",
