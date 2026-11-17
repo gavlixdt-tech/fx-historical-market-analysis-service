@@ -11,7 +11,7 @@ import logging
 import sqlite3
 import time
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -158,7 +158,7 @@ def verify_lifecycle_event(
     if signed_at < produced_at or signed_at > available_at:
         raise LifecycleEvidenceError("signature_time_invalid")
     now = datetime.now(UTC)
-    if available_at > now.replace(microsecond=0) + __import__("datetime").timedelta(seconds=clock_skew_seconds):
+    if available_at > now.replace(microsecond=0) + timedelta(seconds=clock_skew_seconds):
         raise LifecycleEvidenceError("availability_time_in_future")
     quality = data.get("quality")
     if not isinstance(quality, dict) or quality.get("quality_status") not in {
@@ -167,9 +167,8 @@ def verify_lifecycle_event(
         raise LifecycleEvidenceError("quality_metadata_invalid")
     # The current Service 9 input API accepts caller-supplied candles. Its
     # signature is producer-authentic, not a vendor/source attestation.
-    source_verified = quality.get("quality_status") == "PASS" and quality.get(
-        "source_attestation_status"
-    ) == "VERIFIED"
+    # A producer-signed assertion is not an independent upstream source attestation.
+    source_verified = False
     return {
         "event_id": data["event_id"],
         "payload_sha256": digest,
@@ -297,7 +296,7 @@ class LifecycleEvidenceConsumer:
         self.settings = settings
         self.inbox = LifecycleEvidenceInbox(settings.lifecycle_event_inbox_db_path)
         self._client: httpx.AsyncClient | None = None
-        self._task: asyncio.Task | None = None
+        self._task: asyncio.Task[None] | None = None
         self._stop = asyncio.Event()
 
     def _token(self) -> str:
@@ -337,7 +336,7 @@ class LifecycleEvidenceConsumer:
         while not self._stop.is_set():
             try:
                 await self.consume_once()
-            except (httpx.HTTPError, ValueError, RuntimeError) as exc:
+            except (httpx.HTTPError, ValueError, RuntimeError, sqlite3.Error) as exc:
                 logger.warning("lifecycle_evidence_poll_failed", extra={"error": str(exc)[:300]})
             try:
                 await asyncio.wait_for(
@@ -367,6 +366,8 @@ class LifecycleEvidenceConsumer:
             delivery = message.get("delivery", {})
             delivery_id = delivery.get("delivery_id")
             envelope = message.get("envelope", {})
+            if not isinstance(message, dict) or not isinstance(delivery, dict):
+                continue
             if not isinstance(delivery_id, str) or not isinstance(envelope, dict):
                 continue
             event_id = envelope.get("id") if isinstance(envelope.get("id"), str) else None
@@ -380,7 +381,11 @@ class LifecycleEvidenceConsumer:
                     self.settings.lifecycle_event_bus_topic, envelope, verified
                 )
             except LifecycleEvidenceError as exc:
-                self.inbox.persist_rejected(delivery_id, event_id, envelope, str(exc))
+                try:
+                    self.inbox.persist_rejected(delivery_id, event_id, envelope, str(exc))
+                except sqlite3.Error:
+                    await self._ack(delivery_id, negative=True)
+                    continue
             except sqlite3.Error:
                 await self._ack(delivery_id, negative=True)
                 continue
