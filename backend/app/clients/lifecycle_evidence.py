@@ -1198,11 +1198,11 @@ class PostgresLifecycleEvidenceInbox:
             """)
             connection.execute("""
                 CREATE OR REPLACE FUNCTION reject_lifecycle_evidence_mutation()
-                RETURNS trigger LANGUAGE plpgsql AS $
+                RETURNS trigger LANGUAGE plpgsql AS $function$
                 BEGIN
                     RAISE EXCEPTION 'lifecycle evidence records are append-only';
                 END;
-                $
+                $function$
             """)
             for table, trigger in (
                 ("lifecycle_evidence_inbox", "trg_lifecycle_inbox_immutable"),
