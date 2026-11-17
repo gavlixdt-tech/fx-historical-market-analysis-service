@@ -106,9 +106,7 @@ def signed_envelope(
             "previous_transition_sha256": previous_transition_hash,
         }
         transition_hash = hashlib.sha256(rfc8785.dumps(transition_projection)).hexdigest()
-        transition_history.append({
-            **transition_projection, "transition_sha256": transition_hash
-        })
+        transition_history.append({**transition_projection, "transition_sha256": transition_hash})
         previous_transition_hash = transition_hash
     transition_id = transition_history[-1]["transition_id"]
     transition_hash = transition_history[-1]["transition_sha256"]
@@ -253,7 +251,9 @@ def test_rejects_unknown_signing_key() -> None:
 def test_rejects_non_monotonic_event_timestamps_even_with_valid_signature() -> None:
     private_key = Ed25519PrivateKey.generate()
     envelope, trust, source_trust = signed_envelope(private_key, reverse_temporal_order=True)
-    with pytest.raises(LifecycleEvidenceError, match="temporal_order_invalid|transition_history_time_regression"):
+    with pytest.raises(
+        LifecycleEvidenceError, match="temporal_order_invalid|transition_history_time_regression"
+    ):
         verify_lifecycle_event(
             envelope, public_keys_json=trust, source_public_keys_json=source_trust
         )
@@ -345,7 +345,9 @@ def test_rejects_invalid_service1_signature_even_when_service9_event_signature_i
         )
 
 
-def test_point_in_time_contexts_use_utc_instants_and_preserve_unsorted_cutoff_order(tmp_path) -> None:
+def test_point_in_time_contexts_use_utc_instants_and_preserve_unsorted_cutoff_order(
+    tmp_path,
+) -> None:
     private_key = Ed25519PrivateKey.generate()
     envelope, trust, source_trust = signed_envelope(private_key)
     verified = verify_lifecycle_event(
@@ -366,9 +368,7 @@ def test_point_in_time_contexts_use_utc_instants_and_preserve_unsorted_cutoff_or
             (verified["event_id"],),
         ).fetchone()["received_at"]
     receipt_at = datetime.fromisoformat(received_value)
-    equivalent_z_instant = datetime.fromisoformat(
-        receipt_at.isoformat().replace("+00:00", "Z")
-    )
+    equivalent_z_instant = datetime.fromisoformat(receipt_at.isoformat().replace("+00:00", "Z"))
 
     contexts = inbox.point_in_time_contexts(
         instrument="EURUSD",
@@ -411,7 +411,10 @@ def test_rejects_a_forked_or_tampered_transition_hash_chain() -> None:
     envelope, trust, source_trust = signed_envelope(private_key)
     envelope["data"]["lifecycle"]["transition_history"][0]["state"] = "INVALIDATED"
     _resign_service9_event(envelope, private_key)
-    with pytest.raises(LifecycleEvidenceError, match="transition_identity_invalid|transition_hash_chain_invalid|transition_history_order_invalid"):
+    with pytest.raises(
+        LifecycleEvidenceError,
+        match="transition_identity_invalid|transition_hash_chain_invalid|transition_history_order_invalid",
+    ):
         verify_lifecycle_event(
             envelope, public_keys_json=trust, source_public_keys_json=source_trust
         )
@@ -451,7 +454,9 @@ def test_late_lower_sequence_transition_cannot_roll_back_replay_state(tmp_path) 
         source_public_keys_json=source_trust,
     )
     assert inbox.persist_verified("gfx.liquidity.lifecycle.v1", later, verified_later) == "STORED"
-    assert inbox.persist_verified("gfx.liquidity.lifecycle.v1", earlier, verified_earlier) == "STORED"
+    assert (
+        inbox.persist_verified("gfx.liquidity.lifecycle.v1", earlier, verified_earlier) == "STORED"
+    )
 
     contexts = inbox.point_in_time_contexts(
         instrument="EURUSD",
@@ -490,7 +495,9 @@ def test_prediction_origin_manifest_identifies_exact_evidence(tmp_path) -> None:
     assert manifest["evidence"][0]["consumer_received_at"] <= origin.isoformat()
 
 
-def test_replay_reverifies_persisted_signed_bytes_and_fails_closed_on_database_tampering(tmp_path) -> None:
+def test_replay_reverifies_persisted_signed_bytes_and_fails_closed_on_database_tampering(
+    tmp_path,
+) -> None:
     private_key = Ed25519PrivateKey.generate()
     envelope, trust, source_trust = signed_envelope(private_key)
     verified = verify_lifecycle_event(
@@ -567,9 +574,13 @@ def test_inbox_rejects_divergent_history_prefix_even_when_each_event_is_signed(t
     history = lifecycle["transition_history"]
     first_item = history[0]
     changed_time = (
-        datetime.fromisoformat(first_item["occurred_at"].replace("Z", "+00:00"))
-        + timedelta(seconds=1)
-    ).isoformat().replace("+00:00", "Z")
+        (
+            datetime.fromisoformat(first_item["occurred_at"].replace("Z", "+00:00"))
+            + timedelta(seconds=1)
+        )
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
     first_item["occurred_at"] = changed_time
     first_item["transition_id"] = hashlib.sha256(
         f"{lifecycle['lifecycle_id']}|1|{first_item['state']}|{changed_time}".encode()
@@ -577,25 +588,29 @@ def test_inbox_rejects_divergent_history_prefix_even_when_each_event_is_signed(t
     first_projection = {
         key: first_item[key]
         for key in (
-            "lifecycle_id", "transition_id", "sequence", "state",
-            "occurred_at", "previous_transition_sha256",
+            "lifecycle_id",
+            "transition_id",
+            "sequence",
+            "state",
+            "occurred_at",
+            "previous_transition_sha256",
         )
     }
-    first_item["transition_sha256"] = hashlib.sha256(
-        rfc8785.dumps(first_projection)
-    ).hexdigest()
+    first_item["transition_sha256"] = hashlib.sha256(rfc8785.dumps(first_projection)).hexdigest()
     second_item = history[1]
     second_item["previous_transition_sha256"] = first_item["transition_sha256"]
     second_projection = {
         key: second_item[key]
         for key in (
-            "lifecycle_id", "transition_id", "sequence", "state",
-            "occurred_at", "previous_transition_sha256",
+            "lifecycle_id",
+            "transition_id",
+            "sequence",
+            "state",
+            "occurred_at",
+            "previous_transition_sha256",
         )
     }
-    second_item["transition_sha256"] = hashlib.sha256(
-        rfc8785.dumps(second_projection)
-    ).hexdigest()
+    second_item["transition_sha256"] = hashlib.sha256(rfc8785.dumps(second_projection)).hexdigest()
     lifecycle["sweep_confirmation_time"] = changed_time
     lifecycle["previous_transition_sha256"] = second_item["previous_transition_sha256"]
     lifecycle["transition_sha256"] = second_item["transition_sha256"]
@@ -608,8 +623,13 @@ def test_inbox_rejects_divergent_history_prefix_even_when_each_event_is_signed(t
         divergent, public_keys_json=trust, source_public_keys_json=source_trust
     )
     inbox = LifecycleEvidenceInbox(str(tmp_path / "lifecycle-inbox.sqlite3"))
-    assert inbox.persist_verified("gfx.liquidity.lifecycle.v1", earlier, verified_earlier) == "STORED"
-    assert inbox.persist_verified("gfx.liquidity.lifecycle.v1", divergent, verified_divergent) == "CONFLICT"
+    assert (
+        inbox.persist_verified("gfx.liquidity.lifecycle.v1", earlier, verified_earlier) == "STORED"
+    )
+    assert (
+        inbox.persist_verified("gfx.liquidity.lifecycle.v1", divergent, verified_divergent)
+        == "CONFLICT"
+    )
     assert inbox.status()["conflicts"] == 1
 
 
@@ -644,7 +664,9 @@ def test_replay_rejects_tampered_consumer_receipt_epoch(tmp_path) -> None:
 POSTGRES_DSN = os.getenv("TEST_POSTGRES_URL", "").strip()
 
 
-@pytest.mark.skipif(not POSTGRES_DSN, reason="TEST_POSTGRES_URL is required for PostgreSQL integration tests")
+@pytest.mark.skipif(
+    not POSTGRES_DSN, reason="TEST_POSTGRES_URL is required for PostgreSQL integration tests"
+)
 def test_postgres_inbox_restart_history_and_point_in_time_evidence() -> None:
     private_key = Ed25519PrivateKey.generate()
     lifecycle_id = f"postgres-lifecycle-{uuid.uuid4()}"
@@ -654,29 +676,37 @@ def test_postgres_inbox_restart_history_and_point_in_time_evidence() -> None:
     )
     topic = "gfx.liquidity.lifecycle.v1"
     inbox = PostgresLifecycleEvidenceInbox(
-        POSTGRES_DSN, public_keys_json=trust,
-        source_public_keys_json=source_trust, expected_topic=topic,
+        POSTGRES_DSN,
+        public_keys_json=trust,
+        source_public_keys_json=source_trust,
+        expected_topic=topic,
     )
     assert inbox.persist_verified(topic, envelope, verified) == "STORED"
     restarted = PostgresLifecycleEvidenceInbox(
-        POSTGRES_DSN, public_keys_json=trust,
-        source_public_keys_json=source_trust, expected_topic=topic,
+        POSTGRES_DSN,
+        public_keys_json=trust,
+        source_public_keys_json=source_trust,
+        expected_topic=topic,
     )
     assert restarted.persist_verified(topic, envelope, verified) == "DUPLICATE"
 
     before_receipt = datetime.now(UTC) - timedelta(seconds=1)
     after_receipt = datetime.now(UTC) + timedelta(minutes=1)
     manifests = restarted.point_in_time_evidence(
-        instrument="EURUSD", timeframe="1m",
-        source_dataset_id=verified["source_dataset_id"], price_basis="MID",
+        instrument="EURUSD",
+        timeframe="1m",
+        source_dataset_id=verified["source_dataset_id"],
+        price_basis="MID",
         cutoffs=[before_receipt, after_receipt],
     )
     assert manifests[0]["evidence_count"] == 0
     assert manifests[1]["evidence_count"] == 1
     assert manifests[1]["evidence"][0]["event_id"] == verified["event_id"]
     contexts = restarted.point_in_time_contexts(
-        instrument="EURUSD", timeframe="1m",
-        source_dataset_id=verified["source_dataset_id"], price_basis="MID",
+        instrument="EURUSD",
+        timeframe="1m",
+        source_dataset_id=verified["source_dataset_id"],
+        price_basis="MID",
         cutoffs=[after_receipt],
     )
     assert contexts[0] is not None
@@ -686,16 +716,16 @@ def test_postgres_inbox_restart_history_and_point_in_time_evidence() -> None:
     assert history["signature_reverified"] is True
 
 
-@pytest.mark.skipif(not POSTGRES_DSN, reason="TEST_POSTGRES_URL is required for PostgreSQL integration tests")
+@pytest.mark.skipif(
+    not POSTGRES_DSN, reason="TEST_POSTGRES_URL is required for PostgreSQL integration tests"
+)
 def test_postgres_inbox_serializes_concurrent_history_forks() -> None:
     lifecycle_id = f"postgres-fork-{uuid.uuid4()}"
     key_a, key_b = Ed25519PrivateKey.generate(), Ed25519PrivateKey.generate()
     env_a, trust_a, source_a = signed_envelope(
         key_a, event_id=lifecycle_id, state="DISPLACEMENT_CONFIRMED"
     )
-    env_b, trust_b, source_b = signed_envelope(
-        key_b, event_id=lifecycle_id, state="INVALIDATED"
-    )
+    env_b, trust_b, source_b = signed_envelope(key_b, event_id=lifecycle_id, state="INVALIDATED")
     verified_a = verify_lifecycle_event(
         env_a, public_keys_json=trust_a, source_public_keys_json=source_a
     )
@@ -705,11 +735,13 @@ def test_postgres_inbox_serializes_concurrent_history_forks() -> None:
     merged_trust = {**json.loads(trust_a), **json.loads(trust_b)}
     merged_source = {**json.loads(source_a), **json.loads(source_b)}
     inbox_a = PostgresLifecycleEvidenceInbox(
-        POSTGRES_DSN, public_keys_json=json.dumps(merged_trust),
+        POSTGRES_DSN,
+        public_keys_json=json.dumps(merged_trust),
         source_public_keys_json=json.dumps(merged_source),
     )
     inbox_b = PostgresLifecycleEvidenceInbox(
-        POSTGRES_DSN, public_keys_json=json.dumps(merged_trust),
+        POSTGRES_DSN,
+        public_keys_json=json.dumps(merged_trust),
         source_public_keys_json=json.dumps(merged_source),
     )
     args = (
@@ -717,17 +749,21 @@ def test_postgres_inbox_serializes_concurrent_history_forks() -> None:
         ("gfx.liquidity.lifecycle.v1", env_b, verified_b),
     )
     with ThreadPoolExecutor(max_workers=2) as pool:
-        results = list(pool.map(
-            lambda item: (
-                inbox_a if item[1]["data"]["event_id"] == verified_a["event_id"] else inbox_b
-            ).persist_verified(*item),
-            args,
-        ))
+        results = list(
+            pool.map(
+                lambda item: (
+                    inbox_a if item[1]["data"]["event_id"] == verified_a["event_id"] else inbox_b
+                ).persist_verified(*item),
+                args,
+            )
+        )
     assert sorted(results) == ["CONFLICT", "STORED"]
     assert inbox_a.status()["conflicts"] >= 1
 
 
-@pytest.mark.skipif(not POSTGRES_DSN, reason="TEST_POSTGRES_URL is required for PostgreSQL integration tests")
+@pytest.mark.skipif(
+    not POSTGRES_DSN, reason="TEST_POSTGRES_URL is required for PostgreSQL integration tests"
+)
 def test_postgres_inbox_evidence_and_quarantine_are_append_only() -> None:
     private_key = Ed25519PrivateKey.generate()
     lifecycle_id = f"postgres-immutable-{uuid.uuid4()}"
