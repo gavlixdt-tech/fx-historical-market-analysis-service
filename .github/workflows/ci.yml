@@ -71,6 +71,9 @@ jobs:
           path: backend-lint.log
           if-no-files-found: ignore
 
+      - name: Formatter diagnostic for lifecycle evidence
+        run: ruff format --diff app/clients/lifecycle_evidence.py
+
       - name: Lint (ruff format --check)
         run: ruff format --check app tests
 
