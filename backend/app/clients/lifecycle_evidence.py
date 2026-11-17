@@ -301,7 +301,17 @@ def verify_lifecycle_event(
         raise LifecycleEvidenceError("transition_history_invalid")
     previous_hash = "0" * 64
     previous_time: datetime | None = None
+    previous_state_rank = -1
     seen_transition_ids: set[str] = set()
+    transition_state_ranks = {
+        "SWEEP_CONFIRMED": 0,
+        "SWEEP_CONFIRMED_AWAITING_DISPLACEMENT": 0,
+        "DISPLACEMENT_CONFIRMED": 1,
+        "MIDPOINT_REACHED": 2,
+        "CONSOLIDATION_CANDIDATE": 3,
+        "MIDPOINT_CONSOLIDATION_CANDIDATE": 3,
+        "INVALIDATED": 4,
+    }
     for expected_sequence, item in enumerate(history, start=1):
         if not isinstance(item, dict) or set(item) != {
             "lifecycle_id", "transition_id", "sequence", "state",
@@ -313,10 +323,12 @@ def verify_lifecycle_event(
             or item.get("sequence") != expected_sequence
             or isinstance(item.get("sequence"), bool)
             or not isinstance(item.get("state"), str)
-            or not item["state"]
+            or item.get("state") not in transition_state_ranks
+            or transition_state_ranks.get(item.get("state"), -1) <= previous_state_rank
             or item.get("previous_transition_sha256") != previous_hash
         ):
             raise LifecycleEvidenceError("transition_history_order_invalid")
+        previous_state_rank = transition_state_ranks[item["state"]]
         occurred = _parse_utc(item.get("occurred_at"), "transition_occurred_at")
         if previous_time is not None and occurred < previous_time:
             raise LifecycleEvidenceError("transition_history_time_regression")
