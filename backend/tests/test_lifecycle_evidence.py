@@ -3,8 +3,12 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import os
+import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 
+import psycopg
 import pytest
 import rfc8785
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -13,6 +17,7 @@ from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from backend.app.clients.lifecycle_evidence import (
     LifecycleEvidenceError,
     LifecycleEvidenceInbox,
+    PostgresLifecycleEvidenceInbox,
     verify_lifecycle_event,
 )
 
@@ -634,3 +639,113 @@ def test_replay_rejects_tampered_consumer_receipt_epoch(tmp_path) -> None:
             price_basis="MID",
             cutoffs=[datetime.now(UTC) + timedelta(minutes=1)],
         )
+
+
+POSTGRES_DSN = os.getenv("TEST_POSTGRES_URL", "").strip()
+
+
+@pytest.mark.skipif(not POSTGRES_DSN, reason="TEST_POSTGRES_URL is required for PostgreSQL integration tests")
+def test_postgres_inbox_restart_history_and_point_in_time_evidence() -> None:
+    private_key = Ed25519PrivateKey.generate()
+    lifecycle_id = f"postgres-lifecycle-{uuid.uuid4()}"
+    envelope, trust, source_trust = signed_envelope(private_key, event_id=lifecycle_id)
+    verified = verify_lifecycle_event(
+        envelope, public_keys_json=trust, source_public_keys_json=source_trust
+    )
+    topic = "gfx.liquidity.lifecycle.v1"
+    inbox = PostgresLifecycleEvidenceInbox(
+        POSTGRES_DSN, public_keys_json=trust,
+        source_public_keys_json=source_trust, expected_topic=topic,
+    )
+    assert inbox.persist_verified(topic, envelope, verified) == "STORED"
+    restarted = PostgresLifecycleEvidenceInbox(
+        POSTGRES_DSN, public_keys_json=trust,
+        source_public_keys_json=source_trust, expected_topic=topic,
+    )
+    assert restarted.persist_verified(topic, envelope, verified) == "DUPLICATE"
+
+    before_receipt = datetime.now(UTC) - timedelta(seconds=1)
+    after_receipt = datetime.now(UTC) + timedelta(minutes=1)
+    manifests = restarted.point_in_time_evidence(
+        instrument="EURUSD", timeframe="1m",
+        source_dataset_id=verified["source_dataset_id"], price_basis="MID",
+        cutoffs=[before_receipt, after_receipt],
+    )
+    assert manifests[0]["evidence_count"] == 0
+    assert manifests[1]["evidence_count"] == 1
+    assert manifests[1]["evidence"][0]["event_id"] == verified["event_id"]
+    contexts = restarted.point_in_time_contexts(
+        instrument="EURUSD", timeframe="1m",
+        source_dataset_id=verified["source_dataset_id"], price_basis="MID",
+        cutoffs=[after_receipt],
+    )
+    assert contexts[0] is not None
+    history = restarted.lifecycle_history(lifecycle_id)
+    assert history is not None
+    assert history["head_event_id"] == verified["event_id"]
+    assert history["signature_reverified"] is True
+
+
+@pytest.mark.skipif(not POSTGRES_DSN, reason="TEST_POSTGRES_URL is required for PostgreSQL integration tests")
+def test_postgres_inbox_serializes_concurrent_history_forks() -> None:
+    lifecycle_id = f"postgres-fork-{uuid.uuid4()}"
+    key_a, key_b = Ed25519PrivateKey.generate(), Ed25519PrivateKey.generate()
+    env_a, trust_a, source_a = signed_envelope(
+        key_a, event_id=lifecycle_id, state="DISPLACEMENT_CONFIRMED"
+    )
+    env_b, trust_b, source_b = signed_envelope(
+        key_b, event_id=lifecycle_id, state="INVALIDATED"
+    )
+    verified_a = verify_lifecycle_event(
+        env_a, public_keys_json=trust_a, source_public_keys_json=source_a
+    )
+    verified_b = verify_lifecycle_event(
+        env_b, public_keys_json=trust_b, source_public_keys_json=source_b
+    )
+    merged_trust = {**json.loads(trust_a), **json.loads(trust_b)}
+    merged_source = {**json.loads(source_a), **json.loads(source_b)}
+    inbox_a = PostgresLifecycleEvidenceInbox(
+        POSTGRES_DSN, public_keys_json=json.dumps(merged_trust),
+        source_public_keys_json=json.dumps(merged_source),
+    )
+    inbox_b = PostgresLifecycleEvidenceInbox(
+        POSTGRES_DSN, public_keys_json=json.dumps(merged_trust),
+        source_public_keys_json=json.dumps(merged_source),
+    )
+    args = (
+        ("gfx.liquidity.lifecycle.v1", env_a, verified_a),
+        ("gfx.liquidity.lifecycle.v1", env_b, verified_b),
+    )
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(
+            lambda item: (
+                inbox_a if item[1]["data"]["event_id"] == verified_a["event_id"] else inbox_b
+            ).persist_verified(*item),
+            args,
+        ))
+    assert sorted(results) == ["CONFLICT", "STORED"]
+    assert inbox_a.status()["conflicts"] >= 1
+
+
+@pytest.mark.skipif(not POSTGRES_DSN, reason="TEST_POSTGRES_URL is required for PostgreSQL integration tests")
+def test_postgres_inbox_evidence_and_quarantine_are_append_only() -> None:
+    private_key = Ed25519PrivateKey.generate()
+    lifecycle_id = f"postgres-immutable-{uuid.uuid4()}"
+    envelope, trust, source_trust = signed_envelope(private_key, event_id=lifecycle_id)
+    verified = verify_lifecycle_event(
+        envelope, public_keys_json=trust, source_public_keys_json=source_trust
+    )
+    inbox = PostgresLifecycleEvidenceInbox(
+        POSTGRES_DSN, public_keys_json=trust, source_public_keys_json=source_trust
+    )
+    assert inbox.persist_verified("gfx.liquidity.lifecycle.v1", envelope, verified) == "STORED"
+    with pytest.raises(psycopg.Error, match="append-only"):
+        with psycopg.connect(POSTGRES_DSN) as db:
+            db.execute(
+                "UPDATE lifecycle_evidence_inbox SET envelope_json='{}' WHERE event_id=%s",
+                (verified["event_id"],),
+            )
+    delivery_id = f"rejected-{uuid.uuid4()}"
+    inbox.persist_rejected(delivery_id, None, {"invalid": True}, "signature_invalid")
+    inbox.persist_rejected(delivery_id, None, {"invalid": False}, "duplicate_delivery")
+    assert inbox.status()["quarantined_deliveries"] >= 1
