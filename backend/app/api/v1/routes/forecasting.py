@@ -139,6 +139,7 @@ async def run_historical_replay_from_market_data(
             settings=request.app.state.settings,
             upstream=request.app.state.upstream_client,
             request_id=rid,
+            lifecycle_consumer=getattr(request.app.state, "lifecycle_evidence_consumer", None),
         )
     except ValueError as exc:
         raise AppValidationError(str(exc)) from exc
