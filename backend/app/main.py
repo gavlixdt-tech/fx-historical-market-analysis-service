@@ -22,8 +22,8 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.responses import Response
 
 from backend.app.api.v1.router import router as api_v1_router
-from backend.app.clients.market_data import MarketDataClient
 from backend.app.clients.lifecycle_evidence import LifecycleEvidenceConsumer
+from backend.app.clients.market_data import MarketDataClient
 from backend.app.core.config import Settings, get_settings
 from backend.app.core.errors import (
     AppError,
