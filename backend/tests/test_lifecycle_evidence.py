@@ -360,7 +360,7 @@ def test_point_in_time_contexts_use_utc_instants_and_preserve_unsorted_cutoff_or
         ).fetchone()["received_at"]
     receipt_at = datetime.fromisoformat(received_value)
     equivalent_z_instant = datetime.fromisoformat(
-        receipt_at.isoformat().replace("+00:00", "Z").replace("Z", "+00:00")
+        receipt_at.isoformat().replace("+00:00", "Z")
     )
 
     contexts = inbox.point_in_time_contexts(
