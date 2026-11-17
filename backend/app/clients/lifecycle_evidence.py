@@ -571,7 +571,8 @@ class LifecycleEvidenceInbox:
                     received_at_epoch_us INTEGER,
                     lifecycle_id TEXT,
                     transition_sequence INTEGER,
-                    transition_sha256 TEXT
+                    transition_sha256 TEXT,
+                    source_dataset_id TEXT
                 )
             """)
             columns = {
@@ -597,6 +598,10 @@ class LifecycleEvidenceInbox:
             if "transition_sha256" not in columns:
                 connection.execute(
                     "ALTER TABLE lifecycle_evidence_inbox ADD COLUMN transition_sha256 TEXT"
+                )
+            if "source_dataset_id" not in columns:
+                connection.execute(
+                    "ALTER TABLE lifecycle_evidence_inbox ADD COLUMN source_dataset_id TEXT"
                 )
             # Legacy rows predate signed transition chains. Keep them for audit,
             # but revoke their feature eligibility rather than silently trusting them.
@@ -628,8 +633,14 @@ class LifecycleEvidenceInbox:
                 "WHERE lifecycle_id IS NOT NULL AND transition_sequence IS NOT NULL"
             )
             connection.execute(
-                "CREATE INDEX IF NOT EXISTS idx_lifecycle_evidence_point_in_time "
-                "ON lifecycle_evidence_inbox(instrument,timeframe,available_at_epoch_us,received_at_epoch_us)"
+                "CREATE INDEX IF NOT EXISTS idx_lifecycle_evidence_point_in_time_v2 "
+                "ON lifecycle_evidence_inbox(instrument,timeframe,source_dataset_id,"
+                "available_at_epoch_us,received_at_epoch_us)"
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_lifecycle_evidence_replay_v2 "
+                "ON lifecycle_evidence_inbox(instrument,timeframe,source_dataset_id,"
+                "available_at_epoch_us,received_at_epoch_us)"
             )
             connection.execute("""
                 CREATE TABLE IF NOT EXISTS lifecycle_evidence_source_verifications (
