@@ -407,6 +407,64 @@ class LifecycleEvidenceInbox:
                 (delivery_id, event_id, encoded, reason[:500], datetime.now(UTC).isoformat()),
             )
 
+    def point_in_time_contexts(
+        self, *, instrument: str, timeframe: str, source_dataset_id: str,
+        price_basis: str, cutoffs: list[datetime],
+    ) -> list[dict[str, float] | None]:
+        """Build per-observation features from only events available by each origin."""
+        if not cutoffs:
+            return []
+        max_cutoff = max(cutoffs).astimezone(UTC).isoformat()
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT envelope_json FROM lifecycle_evidence_inbox
+                WHERE source_verified=1 AND instrument=? AND timeframe=?
+                  AND json_extract(envelope_json, '$.data.provenance.source_dataset_id')=?
+                  AND available_at<=?
+                ORDER BY available_at ASC, received_at ASC
+                """,
+                (instrument, timeframe, source_dataset_id, max_cutoff),
+            ).fetchall()
+        events: list[tuple[datetime, dict[str, Any]]] = []
+        for row in rows:
+            envelope = json.loads(row["envelope_json"])
+            data = envelope.get("data") if isinstance(envelope, dict) else None
+            if not isinstance(data, dict):
+                continue
+            market_basis = data.get("market_basis")
+            temporal = data.get("temporal")
+            if (
+                not isinstance(market_basis, dict)
+                or market_basis.get("price_basis") != price_basis
+                or not isinstance(temporal, dict)
+            ):
+                continue
+            available_at = _parse_utc(temporal.get("available_at"), "available_at")
+            events.append((available_at, data))
+
+        contexts: list[dict[str, float] | None] = []
+        event_index = 0
+        latest: dict[str, Any] | None = None
+        for cutoff in cutoffs:
+            normalized_cutoff = cutoff.astimezone(UTC)
+            while event_index < len(events) and events[event_index][0] <= normalized_cutoff:
+                latest = events[event_index][1]
+                event_index += 1
+            if latest is None:
+                contexts.append(None)
+                continue
+            lifecycle = latest.get("lifecycle", {})
+            contexts.append({
+                "liquidity_sweep_bullish": float(lifecycle.get("direction") == "BULLISH"),
+                "liquidity_sweep_bearish": float(lifecycle.get("direction") == "BEARISH"),
+                "liquidity_displacement_confirmed": float(lifecycle.get("displacement_confirmed_at") is not None),
+                "liquidity_midpoint_reached": float(lifecycle.get("midpoint_first_reached_at") is not None),
+                "liquidity_midpoint_consolidation": float(lifecycle.get("consolidation_candidate_at") is not None),
+                "liquidity_invalidated": float(lifecycle.get("invalidated_at") is not None),
+            })
+        return contexts
+
     def status(self) -> dict[str, int]:
         with self._connect() as connection:
             accepted_row = connection.execute("SELECT COUNT(*) AS n FROM lifecycle_evidence_inbox").fetchone()
@@ -559,59 +617,13 @@ class LifecycleEvidenceConsumer:
         self, *, instrument: str, timeframe: str, source_dataset_id: str,
         price_basis: str, cutoffs: list[datetime],
     ) -> list[dict[str, float] | None]:
-        """Build per-observation features from only events available by each origin."""
-        if not cutoffs:
-            return []
-        max_cutoff = max(cutoffs).astimezone(UTC).isoformat()
-        with self.inbox._connect() as connection:
-            rows = connection.execute(
-                """
-                SELECT envelope_json FROM lifecycle_evidence_inbox
-                WHERE source_verified=1 AND instrument=? AND timeframe=?
-                  AND json_extract(envelope_json, '$.data.provenance.source_dataset_id')=?
-                  AND available_at<=?
-                ORDER BY available_at ASC, received_at ASC
-                """,
-                (instrument, timeframe, source_dataset_id, max_cutoff),
-            ).fetchall()
-        events: list[tuple[datetime, dict[str, Any]]] = []
-        for row in rows:
-            envelope = json.loads(row["envelope_json"])
-            data = envelope.get("data") if isinstance(envelope, dict) else None
-            if not isinstance(data, dict):
-                continue
-            market_basis = data.get("market_basis")
-            temporal = data.get("temporal")
-            if (
-                not isinstance(market_basis, dict)
-                or market_basis.get("price_basis") != price_basis
-                or not isinstance(temporal, dict)
-            ):
-                continue
-            available_at = _parse_utc(temporal.get("available_at"), "available_at")
-            events.append((available_at, data))
-
-        contexts: list[dict[str, float] | None] = []
-        event_index = 0
-        latest: dict[str, Any] | None = None
-        for cutoff in cutoffs:
-            normalized_cutoff = cutoff.astimezone(UTC)
-            while event_index < len(events) and events[event_index][0] <= normalized_cutoff:
-                latest = events[event_index][1]
-                event_index += 1
-            if latest is None:
-                contexts.append(None)
-                continue
-            lifecycle = latest.get("lifecycle", {})
-            contexts.append({
-                "liquidity_sweep_bullish": float(lifecycle.get("direction") == "BULLISH"),
-                "liquidity_sweep_bearish": float(lifecycle.get("direction") == "BEARISH"),
-                "liquidity_displacement_confirmed": float(lifecycle.get("displacement_confirmed_at") is not None),
-                "liquidity_midpoint_reached": float(lifecycle.get("midpoint_first_reached_at") is not None),
-                "liquidity_midpoint_consolidation": float(lifecycle.get("consolidation_candidate_at") is not None),
-                "liquidity_invalidated": float(lifecycle.get("invalidated_at") is not None),
-            })
-        return contexts
+        return self.inbox.point_in_time_contexts(
+            instrument=instrument,
+            timeframe=timeframe,
+            source_dataset_id=source_dataset_id,
+            price_basis=price_basis,
+            cutoffs=cutoffs,
+        )
 
     def status(self) -> dict[str, Any]:
         return {
