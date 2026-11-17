@@ -244,8 +244,12 @@ jobs:
           pip install -e ".[dev]" pip-audit
           pip-audit --local --skip-editable
 
-      - name: Audit npm dependencies
+      - name: Audit production npm dependencies
         working-directory: frontend
         run: |
           npm ci --no-audit --no-fund
-          npm audit --audit-level=high
+          npm audit --omit=dev --audit-level=high
+
+      - name: Audit full npm tree with narrow upstream advisory exception
+        working-directory: frontend
+        run: node scripts/check-npm-audit.mjs
