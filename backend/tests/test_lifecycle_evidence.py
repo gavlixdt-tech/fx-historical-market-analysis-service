@@ -318,7 +318,7 @@ def test_point_in_time_contexts_use_utc_instants_and_preserve_unsorted_cutoff_or
     )
     with inbox._connect() as connection:
         connection.execute(
-            "UPDATE lifecycle_evidence_inbox SET received_at=? WHERE event_id=?",
+            "UPDATE lifecycle_evidence_inbox SET received_at=?,received_at_epoch_us=available_at_epoch_us WHERE event_id=?",
             (available_at.isoformat(), verified["event_id"]),
         )
 
