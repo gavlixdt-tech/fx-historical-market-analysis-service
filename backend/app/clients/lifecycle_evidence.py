@@ -1593,7 +1593,10 @@ class PostgresLifecycleEvidenceInbox:
                        COALESCE(MAX(transition_sequence),0) AS max_sequence
                 FROM lifecycle_evidence_inbox i
                 WHERE i.source_verified=TRUE OR EXISTS (
-                    SELECT 1 FROM lifecycle_evidence_source_verifications v WHERE v.event_id=i.event_id
+                    SELECT 1 FROM lifecycle_evidence_source_verifications v
+                    WHERE v.event_id=i.event_id
+                      AND v.payload_sha256=i.payload_sha256
+                      AND v.source_dataset_id=i.source_dataset_id
                 )
                 """
             ).fetchone() or {"lifecycles": 0, "max_sequence": 0}
