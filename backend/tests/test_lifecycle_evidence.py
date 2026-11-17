@@ -479,3 +479,30 @@ def test_prediction_origin_manifest_identifies_exact_evidence(tmp_path) -> None:
     assert manifest["evidence"][0]["event_id"] == verified["event_id"]
     assert len(manifest["evidence_set_sha256"]) == 64
     assert manifest["evidence"][0]["consumer_received_at"] <= origin.isoformat()
+
+
+def test_replay_reverifies_persisted_signed_bytes_and_fails_closed_on_database_tampering(tmp_path) -> None:
+    private_key = Ed25519PrivateKey.generate()
+    envelope, trust, source_trust = signed_envelope(private_key)
+    verified = verify_lifecycle_event(
+        envelope, public_keys_json=trust, source_public_keys_json=source_trust
+    )
+    inbox = LifecycleEvidenceInbox(
+        str(tmp_path / "lifecycle-inbox.sqlite3"),
+        public_keys_json=trust,
+        source_public_keys_json=source_trust,
+    )
+    inbox.persist_verified("gfx.liquidity.lifecycle.v1", envelope, verified)
+    with inbox._connect() as connection:
+        connection.execute(
+            "UPDATE lifecycle_evidence_inbox SET envelope_json=json_set(envelope_json, '$.data.lifecycle.direction', 'BULLISH') WHERE event_id=?",
+            (verified["event_id"],),
+        )
+    with pytest.raises(LifecycleEvidenceError):
+        inbox.point_in_time_contexts(
+            instrument="EURUSD",
+            timeframe="1m",
+            source_dataset_id=verified["source_dataset_id"],
+            price_basis="MID",
+            cutoffs=[datetime.now(UTC) + timedelta(minutes=1)],
+        )
