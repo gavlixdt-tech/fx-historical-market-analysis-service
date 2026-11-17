@@ -449,22 +449,37 @@ class LifecycleEvidenceInbox:
         price_basis: str,
         cutoffs: list[datetime],
     ) -> list[dict[str, float] | None]:
-        """Build features using producer availability and durable inbox receipt cutoffs."""
+        """Build causal features at each origin using actual UTC instants.
+
+        SQLite TEXT ordering is not a safe comparison for timestamps with
+        different ISO-8601 UTC suffixes (for example Z and +00:00).
+        Compare parsed instants with SQLite julianday(), then sort and apply
+        cutoffs in Python. Results retain the caller's original cutoff order.
+        """
         if not cutoffs:
             return []
-        max_cutoff = max(cutoffs).astimezone(UTC).isoformat()
+
+        indexed_cutoffs: list[tuple[int, datetime]] = []
+        for index, cutoff in enumerate(cutoffs):
+            if cutoff.tzinfo is None or cutoff.utcoffset() is None:
+                raise ValueError("point-in-time replay cutoffs must be timezone-aware")
+            indexed_cutoffs.append((index, cutoff.astimezone(UTC)))
+
+        max_cutoff = max(value for _, value in indexed_cutoffs).isoformat()
         with self._connect() as connection:
             rows = connection.execute(
                 """
-                SELECT envelope_json,available_at,received_at FROM lifecycle_evidence_inbox
+                SELECT envelope_json,available_at,received_at
+                FROM lifecycle_evidence_inbox
                 WHERE source_verified=1 AND instrument=? AND timeframe=?
                   AND json_extract(envelope_json, '$.data.provenance.source_dataset_id')=?
-                  AND available_at<=? AND received_at<=?
-                ORDER BY CASE WHEN received_at > available_at THEN received_at ELSE available_at END ASC
+                  AND julianday(available_at)<=julianday(?)
+                  AND julianday(received_at)<=julianday(?)
                 """,
                 (instrument, timeframe, source_dataset_id, max_cutoff, max_cutoff),
             ).fetchall()
-        events: list[tuple[datetime, dict[str, Any]]] = []
+
+        events: list[tuple[datetime, str, dict[str, Any]]] = []
         for row in rows:
             envelope = json.loads(row["envelope_json"])
             data = envelope.get("data") if isinstance(envelope, dict) else None
@@ -480,36 +495,39 @@ class LifecycleEvidenceInbox:
                 continue
             producer_available_at = _parse_utc(temporal.get("available_at"), "available_at")
             inbox_received_at = _parse_utc(row["received_at"], "inbox_received_at")
-            events.append((max(producer_available_at, inbox_received_at), data))
+            effective_at = max(producer_available_at, inbox_received_at)
+            if effective_at <= max(value for _, value in indexed_cutoffs):
+                events.append((effective_at, str(data.get("event_id", "")), data))
 
-        contexts: list[dict[str, float] | None] = []
+        # Never depend on SQLite's textual timestamp ordering. The event ID is
+        # a deterministic tie-breaker for events first available at one instant.
+        events.sort(key=lambda item: (item[0], item[1]))
+        ordered_cutoffs = sorted(indexed_cutoffs, key=lambda item: (item[1], item[0]))
+        contexts: list[dict[str, float] | None] = [None] * len(cutoffs)
         event_index = 0
         latest: dict[str, Any] | None = None
-        for cutoff in cutoffs:
-            normalized_cutoff = cutoff.astimezone(UTC)
+        for original_index, normalized_cutoff in ordered_cutoffs:
             while event_index < len(events) and events[event_index][0] <= normalized_cutoff:
-                latest = events[event_index][1]
+                latest = events[event_index][2]
                 event_index += 1
             if latest is None:
-                contexts.append(None)
+                contexts[original_index] = None
                 continue
             lifecycle = latest.get("lifecycle", {})
-            contexts.append(
-                {
-                    "liquidity_sweep_bullish": float(lifecycle.get("direction") == "BULLISH"),
-                    "liquidity_sweep_bearish": float(lifecycle.get("direction") == "BEARISH"),
-                    "liquidity_displacement_confirmed": float(
-                        lifecycle.get("displacement_confirmed_at") is not None
-                    ),
-                    "liquidity_midpoint_reached": float(
-                        lifecycle.get("midpoint_first_reached_at") is not None
-                    ),
-                    "liquidity_midpoint_consolidation": float(
-                        lifecycle.get("consolidation_candidate_at") is not None
-                    ),
-                    "liquidity_invalidated": float(lifecycle.get("invalidated_at") is not None),
-                }
-            )
+            contexts[original_index] = {
+                "liquidity_sweep_bullish": float(lifecycle.get("direction") == "BULLISH"),
+                "liquidity_sweep_bearish": float(lifecycle.get("direction") == "BEARISH"),
+                "liquidity_displacement_confirmed": float(
+                    lifecycle.get("displacement_confirmed_at") is not None
+                ),
+                "liquidity_midpoint_reached": float(
+                    lifecycle.get("midpoint_first_reached_at") is not None
+                ),
+                "liquidity_midpoint_consolidation": float(
+                    lifecycle.get("consolidation_candidate_at") is not None
+                ),
+                "liquidity_invalidated": float(lifecycle.get("invalidated_at") is not None),
+            }
         return contexts
 
     def status(self) -> dict[str, int]:
