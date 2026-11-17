@@ -449,10 +449,12 @@ class Settings(BaseSettings):
                 raise ValueError("lifecycle event consumer requires a non-empty LIFECYCLE_EVENT_PUBLIC_KEYS_JSON trust bundle")
             if self.is_production:
                 parsed = urlsplit(self.lifecycle_event_bus_url)
-                private_railway_http = parsed.scheme == "http"
+                private_railway_http = (
+                    parsed.scheme == "http"
                     and parsed.hostname is not None
                     and parsed.hostname.endswith(".railway.internal")
                     and parsed.port is not None
+                )
                 if parsed.scheme != "https" and not private_railway_http:
                     raise ValueError("production LIFECYCLE_EVENT_BUS_URL must use HTTPS or explicit-port Railway private DNS")
                 if self.lifecycle_event_inbox_db_path == ":memory:":
