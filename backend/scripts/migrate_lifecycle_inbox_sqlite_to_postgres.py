@@ -93,6 +93,10 @@ def migrate(sqlite_path: Path, dsn: str) -> dict[str, int | str]:
 
         imported = {"inbox": 0, "source_verifications": 0, "conflicts": 0, "quarantine": 0}
         with psycopg.connect(dsn, row_factory=dict_row) as target:
+            target.execute(
+                "SELECT pg_advisory_xact_lock(hashtext(%s))",
+                ("fx-historical-market-analysis-service-lifecycle-inbox-sqlite-import-v1",),
+            )
             target.execute("""
                 CREATE TABLE IF NOT EXISTS lifecycle_evidence_imports (
                     source_fingerprint TEXT PRIMARY KEY,
