@@ -80,7 +80,9 @@ def _verify_service1_source_attestation(
         attestation.get("version") != "1"
         or attestation.get("purpose") != "indicator-candle-dataset"
         or attestation.get("algorithm") != "Ed25519"
-        or attestation.get("instrument") != instrument.get("canonical_id")
+        or attestation.get("instrument") != provenance.get("source_dataset_instrument")
+        or not isinstance(provenance.get("source_dataset_instrument"), str)
+        or "".join(char for char in provenance["source_dataset_instrument"] if char.isalpha()).upper() != instrument.get("canonical_id")
         or attestation.get("timeframe") != (timeframe_map.get(data.get("timeframe")) or (None, None))[1]
         or attestation.get("source_id") != provenance.get("source_dataset_id")
         or attestation.get("dataset_sha256") != provenance.get("source_dataset_sha256")
