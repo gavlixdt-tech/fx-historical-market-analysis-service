@@ -390,6 +390,25 @@ def verify_lifecycle_event(
     signed_at = _parse_utc(integrity.get("signed_at"), "signed_at")
     if not source_at <= observed_at <= confirmed_at <= produced_at <= available_at:
         raise LifecycleEvidenceError("temporal_order_invalid")
+    transition_time_fields = {
+        "SWEEP_CONFIRMED": "sweep_confirmation_time",
+        "SWEEP_CONFIRMED_AWAITING_DISPLACEMENT": "sweep_confirmation_time",
+        "DISPLACEMENT_CONFIRMED": "displacement_confirmed_at",
+        "MIDPOINT_REACHED": "midpoint_first_reached_at",
+        "CONSOLIDATION_CANDIDATE": "consolidation_candidate_at",
+        "MIDPOINT_CONSOLIDATION_CANDIDATE": "consolidation_candidate_at",
+        "INVALIDATED": "invalidated_at",
+    }
+    for transition in history:
+        field_name = transition_time_fields[transition["state"]]
+        lifecycle_time = lifecycle.get(field_name)
+        if _parse_utc(lifecycle_time, field_name) != _parse_utc(
+            transition["occurred_at"], "transition_occurred_at"
+        ):
+            raise LifecycleEvidenceError("transition_time_does_not_match_lifecycle_snapshot")
+    if _parse_utc(final_transition["occurred_at"], "transition_occurred_at") != observed_at:
+        raise LifecycleEvidenceError("transition_head_time_mismatch")
+
     if signed_at < produced_at or signed_at > available_at:
         raise LifecycleEvidenceError("signature_time_invalid")
     now = datetime.now(UTC)
