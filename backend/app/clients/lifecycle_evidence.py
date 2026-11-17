@@ -2189,6 +2189,8 @@ class LifecycleEvidenceConsumer:
             clock_skew_seconds=settings.lifecycle_event_clock_skew_seconds,
             expected_topic=settings.lifecycle_event_bus_topic,
         )
+        if isinstance(self.inbox, PostgresLifecycleEvidenceInbox):
+            self.inbox.assert_sqlite_cutover_complete(settings.lifecycle_event_inbox_db_path)
         self._client: httpx.AsyncClient | None = None
         self._task: asyncio.Task[None] | None = None
         self._stop = asyncio.Event()
