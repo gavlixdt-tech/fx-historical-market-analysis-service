@@ -522,8 +522,8 @@ class LifecycleEvidenceInbox:
             # but revoke their feature eligibility rather than silently trusting them.
             connection.execute(
                 "UPDATE lifecycle_evidence_inbox SET source_verified=0 "
-                "WHERE lifecycle_id IS NULL OR transition_sequence IS NULL "
-                "OR transition_sha256 IS NULL"
+                "WHERE source_verified!=0 AND (lifecycle_id IS NULL OR transition_sequence IS NULL "
+                "OR transition_sha256 IS NULL)"
             )
 
             legacy_rows = connection.execute(
