@@ -156,10 +156,11 @@ def test_context_features_are_attached_only_after_their_availability_cutoff() ->
     assert features[0]["session_new_york"] == 1.0
     assert features[0]["kill_zone_ict_london"] == 1.0
     assert features[0]["session_overlap_count"] == 2.0
-    assert features[0]["liquidity_sweep_bullish"] == 1.0
-    assert features[0]["liquidity_displacement_confirmed"] == 1.0
-    assert features[0]["liquidity_midpoint_reached"] == 1.0
-    assert features[0]["liquidity_midpoint_consolidation"] == 1.0
+    assert "liquidity_sweep_bullish" not in names
+    assert "liquidity_displacement_confirmed" not in names
+    assert "liquidity_midpoint_reached" not in names
+    assert "liquidity_midpoint_consolidation" not in names
+    assert all(not name.startswith("liquidity_") for name in features[0])
 
 
 def test_late_context_is_null_and_cannot_enter_the_feature_row() -> None:
@@ -189,7 +190,7 @@ def test_late_context_is_null_and_cannot_enter_the_feature_row() -> None:
 
     assert features[0]["session_london"] is None
     assert features[0]["session_overlap_count"] is None
-    assert features[0]["liquidity_sweep_bullish"] is None
+    assert "liquidity_sweep_bullish" not in features[0]
 
 
 def test_invalidated_lifecycle_preserves_prior_transition_features() -> None:
@@ -217,13 +218,11 @@ def test_invalidated_lifecycle_preserves_prior_transition_features() -> None:
         )
     )
     features = [{"reference_index": 0}]
-    _attach_market_context_features(features, [observation], [candle_available_at])
+    names, has_context = _attach_market_context_features(features, [observation], [candle_available_at])
 
-    assert features[0]["liquidity_sweep_bullish"] == 1.0
-    assert features[0]["liquidity_displacement_confirmed"] == 1.0
-    assert features[0]["liquidity_midpoint_reached"] == 1.0
-    assert features[0]["liquidity_midpoint_consolidation"] is None
-    assert features[0]["liquidity_invalidated"] == 1.0
+    assert has_context is False
+    assert not any(name.startswith("liquidity_") for name in names)
+    assert not any(name.startswith("liquidity_") for name in features[0])
 
 
 def test_lifecycle_transition_cannot_postdate_context_observation() -> None:
