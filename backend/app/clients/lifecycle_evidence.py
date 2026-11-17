@@ -380,7 +380,12 @@ class LifecycleEvidenceConsumer:
                 continue
             delivery_id = delivery.get("delivery_id")
             envelope = message.get("envelope", {})
-            if not isinstance(delivery_id, str) or not isinstance(envelope, dict):
+            if not isinstance(delivery_id, str):
+                continue
+            if not isinstance(envelope, dict):
+                self.inbox.persist_rejected(delivery_id, None, {}, "envelope_invalid")
+                await self._ack(delivery_id, negative=False)
+                processed += 1
                 continue
             event_id = envelope.get("id") if isinstance(envelope.get("id"), str) else None
             try:
