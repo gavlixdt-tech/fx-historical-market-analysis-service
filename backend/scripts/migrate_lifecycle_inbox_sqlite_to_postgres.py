@@ -16,9 +16,8 @@ import sys
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
-
 import psycopg
+from psycopg.rows import dict_row
 
 BACKEND = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND))
@@ -77,7 +76,7 @@ def migrate(sqlite_path: Path, dsn: str) -> dict[str, int | str]:
         quarantine_rows = rows(source, "lifecycle_evidence_quarantine")
 
         imported = {"inbox": 0, "source_verifications": 0, "conflicts": 0, "quarantine": 0}
-        with psycopg.connect(dsn) as target:
+        with psycopg.connect(dsn, row_factory=dict_row) as target:
             target.execute("""
                 CREATE TABLE IF NOT EXISTS lifecycle_evidence_imports (
                     source_fingerprint TEXT PRIMARY KEY,
@@ -94,6 +93,7 @@ def migrate(sqlite_path: Path, dsn: str) -> dict[str, int | str]:
                 (fingerprint,),
             ).fetchone()
             if already:
+                source.close()
                 return {"status": "already_imported", "source_fingerprint": fingerprint}
 
             for row in inbox_rows:
@@ -102,8 +102,8 @@ def migrate(sqlite_path: Path, dsn: str) -> dict[str, int | str]:
                 envelope = json.loads(envelope_text)
                 data = envelope.get("data", {}) if isinstance(envelope, dict) else {}
                 provenance = data.get("provenance", {}) if isinstance(data, dict) else {}
-                available = raw["available_at_epoch_us"]
-                received = raw["received_at_epoch_us"]
+                available = raw.get("available_at_epoch_us")
+                received = raw.get("received_at_epoch_us")
                 available = int(available) if available is not None else epoch_us(raw["available_at"])
                 received = int(received) if received is not None else epoch_us(raw["received_at"])
                 values = (
@@ -153,6 +153,12 @@ def migrate(sqlite_path: Path, dsn: str) -> dict[str, int | str]:
                         conflict_id,event_id,payload_sha256,envelope_json,received_at
                     ) VALUES (%s,%s,%s,%s,%s) ON CONFLICT(conflict_id) DO NOTHING
                 """, (raw["conflict_id"], raw["event_id"], raw["payload_sha256"], raw["envelope_json"], raw["received_at"]))
+                stored = target.execute(
+                    "SELECT event_id,payload_sha256,envelope_json,received_at FROM lifecycle_evidence_conflicts WHERE conflict_id=%s",
+                    (raw["conflict_id"],),
+                ).fetchone()
+                if stored is None or any(stored[key] != raw[key] for key in ("event_id", "payload_sha256", "envelope_json", "received_at")):
+                    raise RuntimeError(f"PostgreSQL conflict-ledger mismatch for conflict {raw['conflict_id']}")
                 imported["conflicts"] += 1
 
             for row in quarantine_rows:
@@ -162,6 +168,12 @@ def migrate(sqlite_path: Path, dsn: str) -> dict[str, int | str]:
                         delivery_id,event_id,envelope_json,rejection_reason,received_at
                     ) VALUES (%s,%s,%s,%s,%s) ON CONFLICT(delivery_id) DO NOTHING
                 """, (raw["delivery_id"], raw["event_id"], raw["envelope_json"], raw["rejection_reason"], raw["received_at"]))
+                stored = target.execute(
+                    "SELECT event_id,envelope_json,rejection_reason,received_at FROM lifecycle_evidence_quarantine WHERE delivery_id=%s",
+                    (raw["delivery_id"],),
+                ).fetchone()
+                if stored is None or any(stored[key] != raw[key] for key in ("event_id", "envelope_json", "rejection_reason", "received_at")):
+                    raise RuntimeError(f"PostgreSQL quarantine mismatch for delivery {raw['delivery_id']}")
                 imported["quarantine"] += 1
 
             target.execute("""
