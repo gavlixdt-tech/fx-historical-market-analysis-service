@@ -559,19 +559,50 @@ class LifecycleEvidenceConsumer:
         self, *, instrument: str, timeframe: str, source_dataset_id: str,
         price_basis: str, cutoffs: list[datetime],
     ) -> list[dict[str, float] | None]:
+        """Build per-observation features from only events available by each origin."""
+        if not cutoffs:
+            return []
+        max_cutoff = max(cutoffs).astimezone(UTC).isoformat()
+        with self.inbox._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT envelope_json FROM lifecycle_evidence_inbox
+                WHERE source_verified=1 AND instrument=? AND timeframe=?
+                  AND json_extract(envelope_json, '$.data.provenance.source_dataset_id')=?
+                  AND available_at<=?
+                ORDER BY available_at ASC, received_at ASC
+                """,
+                (instrument, timeframe, source_dataset_id, max_cutoff),
+            ).fetchall()
+        events: list[tuple[datetime, dict[str, Any]]] = []
+        for row in rows:
+            envelope = json.loads(row["envelope_json"])
+            data = envelope.get("data") if isinstance(envelope, dict) else None
+            if not isinstance(data, dict):
+                continue
+            market_basis = data.get("market_basis")
+            temporal = data.get("temporal")
+            if (
+                not isinstance(market_basis, dict)
+                or market_basis.get("price_basis") != price_basis
+                or not isinstance(temporal, dict)
+            ):
+                continue
+            available_at = _parse_utc(temporal.get("available_at"), "available_at")
+            events.append((available_at, data))
+
         contexts: list[dict[str, float] | None] = []
+        event_index = 0
+        latest: dict[str, Any] | None = None
         for cutoff in cutoffs:
-            data = self.inbox.latest_source_attested_event(
-                instrument=instrument,
-                timeframe=timeframe,
-                source_dataset_id=source_dataset_id,
-                price_basis=price_basis,
-                cutoff=cutoff,
-            )
-            if data is None:
+            normalized_cutoff = cutoff.astimezone(UTC)
+            while event_index < len(events) and events[event_index][0] <= normalized_cutoff:
+                latest = events[event_index][1]
+                event_index += 1
+            if latest is None:
                 contexts.append(None)
                 continue
-            lifecycle = data.get("lifecycle", {})
+            lifecycle = latest.get("lifecycle", {})
             contexts.append({
                 "liquidity_sweep_bullish": float(lifecycle.get("direction") == "BULLISH"),
                 "liquidity_sweep_bearish": float(lifecycle.get("direction") == "BEARISH"),
