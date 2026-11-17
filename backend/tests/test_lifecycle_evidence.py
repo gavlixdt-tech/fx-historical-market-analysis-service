@@ -355,6 +355,7 @@ def test_separately_verified_source_attestation_is_eligible_for_sqlite_replay(tm
         initial_inbox.persist_verified("gfx.liquidity.lifecycle.v1", envelope, initially_unattested)
         == "STORED"
     )
+    assert initial_inbox.status()["pending_source_attestation_events"] == 1
     # A process restart with an updated source trust bundle promotes the
     # existing immutable event without requiring a broker redelivery.
     inbox = LifecycleEvidenceInbox(
@@ -371,6 +372,7 @@ def test_separately_verified_source_attestation_is_eligible_for_sqlite_replay(tm
     )
     assert manifest[0]["evidence_count"] == 1
     assert manifest[0]["evidence"][0]["event_id"] == later_attested["event_id"]
+    assert inbox.status()["pending_source_attestation_events"] == 0
 
 
 def test_rejects_invalid_service1_signature_even_when_service9_event_signature_is_valid() -> None:
@@ -737,6 +739,7 @@ def test_postgres_inbox_restart_history_and_point_in_time_evidence() -> None:
         expected_topic=topic,
     )
     assert initial_inbox.persist_verified(topic, envelope, initially_unattested) == "STORED"
+    assert initial_inbox.status()["pending_source_attestation_events"] == 1
     # The replay reader promotes the immutable event after the source key is
     # added to the trusted bundle; no broker redelivery is required.
     restarted = PostgresLifecycleEvidenceInbox(
@@ -759,6 +762,7 @@ def test_postgres_inbox_restart_history_and_point_in_time_evidence() -> None:
     assert manifests[0]["evidence_count"] == 0
     assert manifests[1]["evidence_count"] == 1
     assert manifests[1]["evidence"][0]["event_id"] == verified["event_id"]
+    assert restarted.status()["pending_source_attestation_events"] == 0
     contexts = restarted.point_in_time_contexts(
         instrument="EURUSD",
         timeframe="1m",
