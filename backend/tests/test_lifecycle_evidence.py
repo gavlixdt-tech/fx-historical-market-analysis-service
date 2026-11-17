@@ -140,7 +140,7 @@ def signed_envelope(
             "displacement_confirmed_at": observed_at.isoformat().replace("+00:00", "Z"),
             "midpoint_first_reached_at": None,
             "consolidation_candidate_at": None,
-            "invalidated_at": None,
+            "invalidated_at": displacement_occurred_at if state == "INVALIDATED" else None,
         },
         "temporal": {
             "source_candle_at": source_at.isoformat().replace("+00:00", "Z"),
