@@ -583,17 +583,18 @@ event observation/confirmation time, producer availability, and consumer
 receipt are distinct clocks; an earlier candle/event timestamp never
 backdates downstream availability.
 
-The inbox replay selector compares UTC instants with SQLite julianday(),
-not lexical ISO-8601 TEXT ordering. This is required because producer timestamps
-may use the RFC3339 Z suffix while SQLite receipt timestamps use +00:00; these
-can represent the same instant but compare differently as strings. Event
-records are ordered by parsed effective availability max(producer available_at,
-inbox received_at). Replay cutoffs must be timezone-aware, are evaluated
-chronologically, and results are returned in the caller's original cutoff
-order. Equal-time events use event ID as a stable tie-breaker.
+The inbox replay selector stores and compares exact UTC epoch-microsecond
+values for both producer availability and durable consumer receipt. It does
+not rely on lexical ISO-8601 TEXT ordering (Z versus +00:00) or SQLite
+julianday floating-point precision. Existing inbox rows are migrated and
+backfilled at startup. Event records are ordered by parsed effective
+availability max(producer available_at, inbox received_at). Replay cutoffs
+must be timezone-aware, are evaluated chronologically, and results are
+returned in the caller's original cutoff order. Equal-time events use event ID
+as a stable tie-breaker.
 
 Regression coverage includes exact-instant equality across Z and +00:00
-representations, out-of-order replay cutoffs, and rejection of naive
-timestamps. Run pytest backend/tests/test_lifecycle_evidence.py from the
+representations, a sub-millisecond future-evidence exclusion, out-of-order
+replay cutoffs, and rejection of naive timestamps. Run pytest backend/tests/test_lifecycle_evidence.py from the
 repository root. This source change is not a substitute for the separate live
 Service 9 → Service 62 → Service 2 deployment acceptance test.
