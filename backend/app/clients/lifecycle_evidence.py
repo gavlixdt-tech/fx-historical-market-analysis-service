@@ -931,11 +931,14 @@ class LifecycleEvidenceInbox:
                 """
                 SELECT event_id,topic,envelope_json,payload_sha256,key_id,available_at,received_at,
                        instrument,timeframe,signature_verified,source_verified,lifecycle_id,
-                       transition_sequence,transition_sha256,available_at_epoch_us,received_at_epoch_us
+                       transition_sequence,transition_sha256,source_dataset_id,
+                       available_at_epoch_us,received_at_epoch_us
                 FROM lifecycle_evidence_inbox
                 WHERE (source_verified=1 OR EXISTS (
                     SELECT 1 FROM lifecycle_evidence_source_verifications v
                     WHERE v.event_id=lifecycle_evidence_inbox.event_id
+                      AND v.payload_sha256=lifecycle_evidence_inbox.payload_sha256
+                      AND v.source_dataset_id=lifecycle_evidence_inbox.source_dataset_id
                 )) AND instrument=? AND timeframe=?
                   AND json_extract(envelope_json, '$.data.provenance.source_dataset_id')=?
                   AND available_at_epoch_us<=? AND received_at_epoch_us<=?
@@ -1659,7 +1662,8 @@ class PostgresLifecycleEvidenceInbox:
                 """
                 SELECT event_id,topic,envelope_json,payload_sha256,key_id,available_at,received_at,
                        instrument,timeframe,signature_verified,source_verified,lifecycle_id,
-                       transition_sequence,transition_sha256,available_at_epoch_us,received_at_epoch_us
+                       transition_sequence,transition_sha256,source_dataset_id,
+                       available_at_epoch_us,received_at_epoch_us
                 FROM lifecycle_evidence_inbox
                 WHERE lifecycle_id=%s AND (source_verified=TRUE OR EXISTS (
                     SELECT 1 FROM lifecycle_evidence_source_verifications v
