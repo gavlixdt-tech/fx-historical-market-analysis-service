@@ -9,6 +9,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import psycopg
 import pytest
@@ -16,7 +17,6 @@ import rfc8785
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from psycopg import sql
-from psycopg.conninfo import make_conninfo
 
 from backend.app.clients.lifecycle_evidence import (
     LifecycleEvidenceError,
@@ -871,7 +871,18 @@ def test_sqlite_inbox_cutover_preserves_evidence_conflicts_and_quarantine(tmp_pa
     schema_name = f"migration_test_{uuid.uuid4().hex}"
     with psycopg.connect(POSTGRES_DSN) as connection:
         connection.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema_name)))
-    isolated_dsn = make_conninfo(POSTGRES_DSN, options=f"-csearch_path={schema_name}")
+    dsn_parts = urlsplit(POSTGRES_DSN)
+    dsn_query = dict(parse_qsl(dsn_parts.query, keep_blank_values=True))
+    dsn_query["options"] = f"-csearch_path={schema_name}"
+    isolated_dsn = urlunsplit(
+        (
+            dsn_parts.scheme,
+            dsn_parts.netloc,
+            dsn_parts.path,
+            urlencode(dsn_query),
+            dsn_parts.fragment,
+        )
+    )
     try:
         migration_module = runpy.run_path(str(script))
         migrate = migration_module["migrate"]
