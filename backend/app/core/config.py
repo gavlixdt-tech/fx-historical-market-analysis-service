@@ -10,7 +10,7 @@ refuses to start rather than serving traffic with unsafe defaults.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta
+from datetime import datetime
 from functools import lru_cache
 from urllib.parse import urlsplit, urlunsplit
 
@@ -555,8 +555,6 @@ class Settings(BaseSettings):
                     "upstream_api_key is required when the production market-data URL is configured"
                 )
             if self.upstream_market_data_base_url:
-                import json
-
                 trusted_keys = json.loads(self.upstream_historical_attestation_public_keys_json)
                 if not self.upstream_historical_attestation_required or not trusted_keys:
                     raise ValueError(
