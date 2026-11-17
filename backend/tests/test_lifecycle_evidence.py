@@ -606,3 +606,31 @@ def test_inbox_rejects_divergent_history_prefix_even_when_each_event_is_signed(t
     assert inbox.persist_verified("gfx.liquidity.lifecycle.v1", earlier, verified_earlier) == "STORED"
     assert inbox.persist_verified("gfx.liquidity.lifecycle.v1", divergent, verified_divergent) == "CONFLICT"
     assert inbox.status()["conflicts"] == 1
+
+
+def test_replay_rejects_tampered_consumer_receipt_epoch(tmp_path) -> None:
+    private_key = Ed25519PrivateKey.generate()
+    envelope, trust, source_trust = signed_envelope(private_key)
+    verified = verify_lifecycle_event(
+        envelope, public_keys_json=trust, source_public_keys_json=source_trust
+    )
+    inbox = LifecycleEvidenceInbox(
+        str(tmp_path / "lifecycle-inbox.sqlite3"),
+        public_keys_json=trust,
+        source_public_keys_json=source_trust,
+    )
+    inbox.persist_verified("gfx.liquidity.lifecycle.v1", envelope, verified)
+    with inbox._connect() as connection:
+        connection.execute("DROP TRIGGER trg_lifecycle_inbox_no_update")
+        connection.execute(
+            "UPDATE lifecycle_evidence_inbox SET received_at_epoch_us=0 WHERE event_id=?",
+            (verified["event_id"],),
+        )
+    with pytest.raises(LifecycleEvidenceError, match="persisted_evidence_integrity_mismatch"):
+        inbox.point_in_time_contexts(
+            instrument="EURUSD",
+            timeframe="1m",
+            source_dataset_id=verified["source_dataset_id"],
+            price_basis="MID",
+            cutoffs=[datetime.now(UTC) + timedelta(minutes=1)],
+        )
