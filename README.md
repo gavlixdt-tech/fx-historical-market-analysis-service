@@ -585,12 +585,15 @@ Before switching a deployed Service 2 instance from SQLite to PostgreSQL:
    to capture and validate a consistent WAL snapshot. It verifies each signed
    payload digest, source-dataset index, and both stored UTC epoch-microsecond
    indexes against their ISO-8601 timestamps before import. It verifies
-   accepted-event and conflict-ledger digests, imports accepted events,
-   source-verification records, conflict history and quarantine records in one
-   PostgreSQL transaction, reconciles every indexed metadata field against
-   existing PostgreSQL rows, preserves event IDs and receipt times, and records
-   a PostgreSQL advisory lock serializes concurrent importers, and the source
-   fingerprint prevents an identical snapshot from being imported twice.
+   accepted-event, source-verification and conflict-ledger digests; reconciles
+   every indexed metadata field; and imports accepted events, source-verification
+   records, conflict history and quarantine records in one PostgreSQL transaction.
+   It preserves event IDs and receipt times, advances the conflict-ledger
+   sequence after explicit ID imports, and serializes concurrent importers with
+   a PostgreSQL advisory lock. Any invalid row, metadata mismatch or conflicting
+   existing record aborts the entire transaction; no partial import or source
+   fingerprint is committed. The fingerprint prevents repeating an identical
+   successful import.
 5. Restart Service 2 with `DATABASE_URL` set. Verify the inbox status, selected
    lifecycle history and point-in-time evidence manifests before re-enabling
    normal consumer traffic.
