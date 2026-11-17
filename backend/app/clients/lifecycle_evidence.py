@@ -318,17 +318,23 @@ def verify_lifecycle_event(
             "occurred_at", "previous_transition_sha256", "transition_sha256",
         }:
             raise LifecycleEvidenceError("transition_history_entry_invalid")
+        current_state_rank = transition_state_ranks.get(item.get("state"), -1) if isinstance(item, dict) else -1
+        progression_skips_required_state = (
+            previous_state_rank >= 0
+            and current_state_rank != 4
+            and current_state_rank != previous_state_rank + 1
+        )
         if (
             item.get("lifecycle_id") != lifecycle.get("lifecycle_id")
             or item.get("sequence") != expected_sequence
             or isinstance(item.get("sequence"), bool)
             or not isinstance(item.get("state"), str)
-            or item.get("state") not in transition_state_ranks
-            or transition_state_ranks.get(item.get("state"), -1) <= previous_state_rank
+            or current_state_rank <= previous_state_rank
+            or progression_skips_required_state
             or item.get("previous_transition_sha256") != previous_hash
         ):
             raise LifecycleEvidenceError("transition_history_order_invalid")
-        previous_state_rank = transition_state_ranks[item["state"]]
+        previous_state_rank = current_state_rank
         occurred = _parse_utc(item.get("occurred_at"), "transition_occurred_at")
         if previous_time is not None and occurred < previous_time:
             raise LifecycleEvidenceError("transition_history_time_regression")
