@@ -254,6 +254,16 @@ def test_verifies_service9_ed25519_signature_and_temporal_contract() -> None:
     assert result["timeframe"] == "1m"
 
 
+def test_rejects_tampered_cloud_event_routing_metadata() -> None:
+    private_key = Ed25519PrivateKey.generate()
+    envelope, trust, source_trust = signed_envelope(private_key)
+    envelope["subject"] = "GBPUSD/1m"
+    with pytest.raises(LifecycleEvidenceError, match="cloudevent_metadata_mismatch"):
+        verify_lifecycle_event(
+            envelope, public_keys_json=trust, source_public_keys_json=source_trust
+        )
+
+
 def test_rejects_payload_tampering_after_signature() -> None:
     private_key = Ed25519PrivateKey.generate()
     envelope, trust, source_trust = signed_envelope(private_key)
