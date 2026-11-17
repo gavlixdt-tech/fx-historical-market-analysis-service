@@ -730,6 +730,8 @@ constraints, append-only evidence/conflict/quarantine tables, and indexed
 integer UTC epoch-microsecond cutoffs. Concurrent consumers serialize history
 fork checks for the same lifecycle while independent lifecycle aggregates can
 be ingested concurrently. The SQLite fallback remains single-active-process
-only. The full pipeline is not yet horizontally scalable until Service 9 and
-Service 62 are both configured against their PostgreSQL adapters, historical
-SQLite data is migrated safely, and end-to-end acceptance/recovery tests pass.
+only. All three services now provide PostgreSQL persistence adapters. The complete
+pipeline is not yet certified for horizontal scaling until Service 9, Service
+62 and Service 2 are configured against PostgreSQL, all existing SQLite records
+are imported safely, and end-to-end concurrency, restart, conflict and
+point-in-time replay acceptance tests pass.
