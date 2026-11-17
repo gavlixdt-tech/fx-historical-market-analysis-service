@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 import hashlib
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -411,7 +412,7 @@ async def test_market_data_replay_verifies_service1_historical_attestation(
 async def test_market_data_replay_attaches_only_matching_source_attested_lifecycle_context(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    captured: dict[str, object] = {}
+    captured: dict[str, Any] = {}
 
     def fake_run(replay_request, trusted_lifecycle_contexts=None):
         captured["request"] = replay_request
@@ -424,7 +425,22 @@ async def test_market_data_replay_attaches_only_matching_source_attested_lifecyc
         }
 
     class FakeLifecycleConsumer:
-        def point_in_time_contexts(self, **kwargs):
+        def point_in_time_contexts(
+            self,
+            *,
+            instrument: str,
+            timeframe: str,
+            source_dataset_id: str,
+            price_basis: str,
+            cutoffs: list[datetime],
+        ) -> list[dict[str, float] | None]:
+            kwargs = {
+                "instrument": instrument,
+                "timeframe": timeframe,
+                "source_dataset_id": source_dataset_id,
+                "price_basis": price_basis,
+                "cutoffs": cutoffs,
+            }
             captured["lifecycle_query"] = kwargs
             return [{"liquidity_sweep_bullish": 1.0}] + [None] * 51
 
