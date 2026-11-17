@@ -495,6 +495,9 @@ def test_replay_reverifies_persisted_signed_bytes_and_fails_closed_on_database_t
     )
     inbox.persist_verified("gfx.liquidity.lifecycle.v1", envelope, verified)
     with inbox._connect() as connection:
+        # Simulate an offline administrator/attacker modifying the SQLite file
+        # outside the application's append-only trigger protections.
+        connection.execute("DROP TRIGGER trg_lifecycle_inbox_no_update")
         connection.execute(
             "UPDATE lifecycle_evidence_inbox SET envelope_json=json_set(envelope_json, '$.data.lifecycle.direction', 'BULLISH') WHERE event_id=?",
             (verified["event_id"],),
