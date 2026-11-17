@@ -235,9 +235,16 @@ async def run_market_data_replay(
             "last": "LAST", "close": "LAST",
         }
         lifecycle_price_basis = price_basis_map.get(str(data.price_basis.value).lower(), "VENDOR_DEFINED")
+        lifecycle_timeframe_map = {
+            "M1": "1m", "M5": "5m", "M15": "15m", "M30": "30m",
+            "H1": "1h", "H4": "4h", "D1": "1d",
+        }
+        lifecycle_timeframe = lifecycle_timeframe_map.get(payload.timeframe)
+        if lifecycle_timeframe is None:
+            raise ValidationError("No Service 9 lifecycle evidence timeframe mapping exists for this replay timeframe.")
         trusted_lifecycle_contexts = lifecycle_consumer.point_in_time_contexts(
             instrument=data.canonical_instrument,
-            timeframe=payload.timeframe,
+            timeframe=lifecycle_timeframe,
             source_dataset_id=attested_source_id,
             price_basis=lifecycle_price_basis,
             cutoffs=[item.available_at for item in observations],
