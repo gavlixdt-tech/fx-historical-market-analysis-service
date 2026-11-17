@@ -177,12 +177,12 @@ def migrate(sqlite_path: Path, dsn: str) -> dict[str, int | str]:
                     "envelope_json": envelope_text,
                     "payload_sha256": raw["payload_sha256"],
                     "key_id": raw["key_id"],
-                    "available_at": parse_timestamp(raw["available_at"]),
+                    "available_at": raw["available_at"],
                     "instrument": raw["instrument"],
                     "timeframe": raw["timeframe"],
                     "signature_verified": bool(raw["signature_verified"]),
                     "source_verified": bool(raw["source_verified"]),
-                    "received_at": parse_timestamp(raw["received_at"]),
+                    "received_at": raw["received_at"],
                     "available_at_epoch_us": available,
                     "received_at_epoch_us": received,
                     "lifecycle_id": raw.get("lifecycle_id"),
@@ -220,7 +220,7 @@ def migrate(sqlite_path: Path, dsn: str) -> dict[str, int | str]:
                     stored is None
                     or stored["source_dataset_id"] != raw["source_dataset_id"]
                     or stored["payload_sha256"] != raw["payload_sha256"]
-                    or stored["verified_at"] != parse_timestamp(raw["verified_at"])
+                    or stored["verified_at"] != raw["verified_at"]
                 ):
                     raise RuntimeError(f"PostgreSQL source-verification conflict for {raw['event_id']}")
                 imported["source_verifications"] += 1
@@ -295,7 +295,7 @@ def migrate(sqlite_path: Path, dsn: str) -> dict[str, int | str]:
                     or stored["event_id"] != raw["event_id"]
                     or stored["envelope_json"] != raw["envelope_json"]
                     or stored["rejection_reason"] != raw["rejection_reason"]
-                    or stored["received_at"] != parse_timestamp(raw["received_at"])
+                    or stored["received_at"] != raw["received_at"]
                 ):
                     raise RuntimeError(f"PostgreSQL quarantine mismatch for delivery {raw['delivery_id']}")
                 imported["quarantine"] += 1
