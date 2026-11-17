@@ -289,8 +289,68 @@ def verify_lifecycle_event(
     if not isinstance(data.get("timeframe"), str) or not data["timeframe"]:
         raise LifecycleEvidenceError("timeframe_missing")
     lifecycle = data.get("lifecycle")
-    if not isinstance(lifecycle, dict) or lifecycle.get("lifecycle_id") != data.get("event_id"):
+    if (
+        not isinstance(lifecycle, dict)
+        or not isinstance(lifecycle.get("lifecycle_id"), str)
+        or not lifecycle.get("lifecycle_id")
+        or lifecycle.get("transition_id") != data.get("event_id")
+    ):
         raise LifecycleEvidenceError("lifecycle_identity_invalid")
+    history = lifecycle.get("transition_history")
+    if not isinstance(history, list) or not history or len(history) > 100:
+        raise LifecycleEvidenceError("transition_history_invalid")
+    previous_hash = "0" * 64
+    previous_time: datetime | None = None
+    seen_transition_ids: set[str] = set()
+    for expected_sequence, item in enumerate(history, start=1):
+        if not isinstance(item, dict) or set(item) != {
+            "lifecycle_id", "transition_id", "sequence", "state",
+            "occurred_at", "previous_transition_sha256", "transition_sha256",
+        }:
+            raise LifecycleEvidenceError("transition_history_entry_invalid")
+        if (
+            item.get("lifecycle_id") != lifecycle.get("lifecycle_id")
+            or item.get("sequence") != expected_sequence
+            or isinstance(item.get("sequence"), bool)
+            or not isinstance(item.get("state"), str)
+            or not item["state"]
+            or item.get("previous_transition_sha256") != previous_hash
+        ):
+            raise LifecycleEvidenceError("transition_history_order_invalid")
+        occurred = _parse_utc(item.get("occurred_at"), "transition_occurred_at")
+        if previous_time is not None and occurred < previous_time:
+            raise LifecycleEvidenceError("transition_history_time_regression")
+        expected_id = hashlib.sha256(
+            f"{lifecycle['lifecycle_id']}|{expected_sequence}|{item['state']}|{item['occurred_at']}".encode("utf-8")
+        ).hexdigest()
+        if item.get("transition_id") != expected_id or expected_id in seen_transition_ids:
+            raise LifecycleEvidenceError("transition_identity_invalid")
+        projection = {
+            "lifecycle_id": item["lifecycle_id"],
+            "transition_id": item["transition_id"],
+            "sequence": item["sequence"],
+            "state": item["state"],
+            "occurred_at": item["occurred_at"],
+            "previous_transition_sha256": item["previous_transition_sha256"],
+        }
+        calculated_hash = hashlib.sha256(rfc8785.dumps(projection)).hexdigest()
+        if not isinstance(item.get("transition_sha256"), str) or not hmac.compare_digest(
+            item["transition_sha256"], calculated_hash
+        ):
+            raise LifecycleEvidenceError("transition_hash_chain_invalid")
+        previous_hash = calculated_hash
+        previous_time = occurred
+        seen_transition_ids.add(expected_id)
+    final_transition = history[-1]
+    if (
+        lifecycle.get("transition_sequence") != final_transition["sequence"]
+        or lifecycle.get("transition_sha256") != final_transition["transition_sha256"]
+        or lifecycle.get("previous_transition_sha256") != final_transition["previous_transition_sha256"]
+        or lifecycle.get("transition_id") != final_transition["transition_id"]
+        or data.get("event_id") != final_transition["transition_id"]
+        or lifecycle.get("state") != final_transition["state"]
+    ):
+        raise LifecycleEvidenceError("transition_head_mismatch")
     provenance = data.get("provenance")
     if (
         not isinstance(provenance, dict)
@@ -330,6 +390,10 @@ def verify_lifecycle_event(
     source_verified = _verify_service1_source_attestation(data, source_public_keys_json)
     return {
         "event_id": data["event_id"],
+        "lifecycle_id": lifecycle["lifecycle_id"],
+        "transition_sequence": final_transition["sequence"],
+        "transition_sha256": final_transition["transition_sha256"],
+        "transition_head_sha256": final_transition["transition_sha256"],
         "payload_sha256": digest,
         "key_id": key_id,
         "available_at": available_at.isoformat(),
