@@ -1799,7 +1799,7 @@ class LifecycleEvidenceConsumer:
         while not self._stop.is_set():
             try:
                 await self.consume_once()
-            except (httpx.HTTPError, ValueError, RuntimeError, sqlite3.Error) as exc:
+            except (httpx.HTTPError, ValueError, RuntimeError, sqlite3.Error, psycopg.Error) as exc:
                 logger.warning("lifecycle_evidence_poll_failed", extra={"error": str(exc)[:300]})
             try:
                 await asyncio.wait_for(
