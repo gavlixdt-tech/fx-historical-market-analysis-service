@@ -9,6 +9,9 @@ import hmac
 import json
 import logging
 import sqlite3
+
+import psycopg
+from psycopg.rows import dict_row
 import time
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -1069,6 +1072,497 @@ class LifecycleEvidenceInbox:
             "persisted_signatures_reverified_on_replay": True,
             "replay_fails_closed_on_integrity_error": True,
         }
+
+
+
+class PostgresLifecycleEvidenceInbox(LifecycleEvidenceInbox):
+    """PostgreSQL inbox with transactionally serialized lifecycle histories."""
+
+    def __init__(
+        self,
+        dsn: str,
+        *,
+        public_keys_json: str = "{}",
+        source_public_keys_json: str = "{}",
+        clock_skew_seconds: int = 60,
+        expected_topic: str | None = None,
+    ) -> None:
+        if not dsn or not dsn.startswith(("postgres://", "postgresql://")):
+            raise ValueError("DATABASE_URL must be a PostgreSQL connection URL")
+        self.dsn = dsn
+        self.public_keys_json = public_keys_json
+        self.source_public_keys_json = source_public_keys_json
+        self.clock_skew_seconds = clock_skew_seconds
+        self.expected_topic = expected_topic
+        self._initialize()
+
+    def _connect(self) -> psycopg.Connection:
+        return psycopg.connect(self.dsn, row_factory=dict_row, connect_timeout=10)
+
+    def _initialize(self) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                "SELECT pg_advisory_xact_lock(hashtext(%s))",
+                ("fx-historical-market-analysis-service-lifecycle-inbox-v1",),
+            )
+            connection.execute("""
+                CREATE TABLE IF NOT EXISTS lifecycle_evidence_inbox (
+                    event_id TEXT PRIMARY KEY,
+                    topic TEXT NOT NULL,
+                    envelope_json TEXT NOT NULL,
+                    payload_sha256 TEXT NOT NULL,
+                    key_id TEXT NOT NULL,
+                    available_at TEXT NOT NULL,
+                    instrument TEXT NOT NULL,
+                    timeframe TEXT NOT NULL,
+                    signature_verified BOOLEAN NOT NULL,
+                    source_verified BOOLEAN NOT NULL,
+                    received_at TEXT NOT NULL,
+                    available_at_epoch_us BIGINT NOT NULL,
+                    received_at_epoch_us BIGINT NOT NULL,
+                    lifecycle_id TEXT NOT NULL,
+                    transition_sequence INTEGER NOT NULL,
+                    transition_sha256 TEXT NOT NULL,
+                    source_dataset_id TEXT NOT NULL
+                )
+            """)
+            connection.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_lifecycle_lifecycle_sequence
+                ON lifecycle_evidence_inbox(lifecycle_id,transition_sequence)
+            """)
+            connection.execute("""
+                CREATE INDEX IF NOT EXISTS idx_lifecycle_evidence_point_in_time
+                ON lifecycle_evidence_inbox(
+                    instrument,timeframe,source_dataset_id,
+                    available_at_epoch_us,received_at_epoch_us
+                )
+            """)
+            connection.execute("""
+                CREATE TABLE IF NOT EXISTS lifecycle_evidence_source_verifications (
+                    event_id TEXT PRIMARY KEY REFERENCES lifecycle_evidence_inbox(event_id),
+                    source_dataset_id TEXT NOT NULL,
+                    payload_sha256 TEXT NOT NULL,
+                    verified_at TEXT NOT NULL
+                )
+            """)
+            connection.execute("""
+                CREATE TABLE IF NOT EXISTS lifecycle_evidence_conflicts (
+                    conflict_id BIGSERIAL PRIMARY KEY,
+                    event_id TEXT NOT NULL,
+                    payload_sha256 TEXT NOT NULL,
+                    envelope_json TEXT NOT NULL,
+                    received_at TEXT NOT NULL
+                )
+            """)
+            connection.execute("""
+                CREATE TABLE IF NOT EXISTS lifecycle_evidence_quarantine (
+                    delivery_id TEXT PRIMARY KEY,
+                    event_id TEXT,
+                    envelope_json TEXT NOT NULL,
+                    rejection_reason TEXT NOT NULL,
+                    received_at TEXT NOT NULL
+                )
+            """)
+            connection.execute("""
+                CREATE OR REPLACE FUNCTION reject_lifecycle_evidence_mutation()
+                RETURNS trigger LANGUAGE plpgsql AS $
+                BEGIN
+                    RAISE EXCEPTION 'lifecycle evidence records are append-only';
+                END;
+                $
+            """)
+            for table, trigger in (
+                ("lifecycle_evidence_inbox", "trg_lifecycle_inbox_immutable"),
+                ("lifecycle_evidence_source_verifications", "trg_source_verification_immutable"),
+                ("lifecycle_evidence_conflicts", "trg_lifecycle_conflict_immutable"),
+                ("lifecycle_evidence_quarantine", "trg_lifecycle_quarantine_immutable"),
+            ):
+                connection.execute(f"DROP TRIGGER IF EXISTS {trigger} ON {table}")
+                connection.execute(
+                    f"CREATE TRIGGER {trigger} BEFORE UPDATE OR DELETE ON {table} "
+                    "FOR EACH ROW EXECUTE FUNCTION reject_lifecycle_evidence_mutation()"
+                )
+            connection.execute("""
+                CREATE TABLE IF NOT EXISTS lifecycle_evidence_schema_migrations (
+                    version INTEGER PRIMARY KEY,
+                    applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+            """)
+            connection.execute("""
+                INSERT INTO lifecycle_evidence_schema_migrations(version)
+                VALUES (1) ON CONFLICT(version) DO NOTHING
+            """)
+
+    def _record_conflict(
+        self, connection: psycopg.Connection, event_id: str,
+        payload_sha256: str, encoded: str, now: str,
+    ) -> None:
+        connection.execute(
+            """
+            INSERT INTO lifecycle_evidence_conflicts(event_id,payload_sha256,envelope_json,received_at)
+            VALUES (%s,%s,%s,%s)
+            """,
+            (event_id, payload_sha256, encoded, now),
+        )
+
+    def persist_verified(
+        self, topic: str, envelope: dict[str, Any], verified: dict[str, Any]
+    ) -> str:
+        encoded = json.dumps(envelope, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        now_dt = datetime.now(UTC)
+        now = now_dt.isoformat()
+        lifecycle_id = verified["lifecycle_id"]
+        with self._connect() as connection:
+            # Serialize all history/fork/sequence decisions for this aggregate.
+            connection.execute(
+                "SELECT pg_advisory_xact_lock(hashtext(%s))", (lifecycle_id,)
+            )
+            existing = connection.execute(
+                """
+                SELECT topic,payload_sha256 FROM lifecycle_evidence_inbox
+                WHERE event_id=%s FOR UPDATE
+                """,
+                (verified["event_id"],),
+            ).fetchone()
+            if existing is not None:
+                if (
+                    existing["topic"] == topic
+                    and hmac.compare_digest(existing["payload_sha256"], verified["payload_sha256"])
+                ):
+                    if verified["source_verified"]:
+                        connection.execute(
+                            """
+                            INSERT INTO lifecycle_evidence_source_verifications(
+                                event_id,source_dataset_id,payload_sha256,verified_at
+                            ) VALUES (%s,%s,%s,%s)
+                            ON CONFLICT(event_id) DO NOTHING
+                            """,
+                            (
+                                verified["event_id"], verified["source_dataset_id"],
+                                verified["payload_sha256"], now,
+                            ),
+                        )
+                    return "DUPLICATE"
+                self._record_conflict(
+                    connection, verified["event_id"], verified["payload_sha256"], encoded, now
+                )
+                return "CONFLICT"
+
+            incoming_history = envelope.get("data", {}).get("lifecycle", {}).get(
+                "transition_history", []
+            )
+            prior_rows = connection.execute(
+                """
+                SELECT event_id,envelope_json FROM lifecycle_evidence_inbox
+                WHERE lifecycle_id=%s
+                """,
+                (lifecycle_id,),
+            ).fetchall()
+            for prior in prior_rows:
+                prior_envelope = json.loads(prior["envelope_json"])
+                prior_history = prior_envelope.get("data", {}).get("lifecycle", {}).get(
+                    "transition_history", []
+                )
+                common_length = min(len(prior_history), len(incoming_history))
+                if any(
+                    prior_history[index].get("transition_id") != incoming_history[index].get("transition_id")
+                    or prior_history[index].get("transition_sha256") != incoming_history[index].get("transition_sha256")
+                    for index in range(common_length)
+                ):
+                    self._record_conflict(
+                        connection, verified["event_id"], verified["payload_sha256"], encoded, now
+                    )
+                    return "CONFLICT"
+
+            sequence_existing = connection.execute(
+                """
+                SELECT event_id,transition_sha256 FROM lifecycle_evidence_inbox
+                WHERE lifecycle_id=%s AND transition_sequence=%s
+                """,
+                (lifecycle_id, verified["transition_sequence"]),
+            ).fetchone()
+            if sequence_existing is not None:
+                self._record_conflict(
+                    connection, verified["event_id"], verified["payload_sha256"], encoded, now
+                )
+                return "CONFLICT"
+
+            inserted = connection.execute(
+                """
+                INSERT INTO lifecycle_evidence_inbox(
+                    event_id,topic,envelope_json,payload_sha256,key_id,available_at,
+                    instrument,timeframe,signature_verified,source_verified,received_at,
+                    available_at_epoch_us,received_at_epoch_us,lifecycle_id,
+                    transition_sequence,transition_sha256,source_dataset_id
+                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                ON CONFLICT DO NOTHING RETURNING event_id
+                """,
+                (
+                    verified["event_id"], topic, encoded, verified["payload_sha256"],
+                    verified["key_id"], verified["available_at"], verified["instrument"],
+                    verified["timeframe"], True, bool(verified["source_verified"]), now,
+                    _epoch_microseconds(_parse_utc(verified["available_at"], "available_at")),
+                    _epoch_microseconds(now_dt), lifecycle_id, verified["transition_sequence"],
+                    verified["transition_sha256"], verified["source_dataset_id"],
+                ),
+            ).fetchone()
+            if inserted is None:
+                self._record_conflict(
+                    connection, verified["event_id"], verified["payload_sha256"], encoded, now
+                )
+                return "CONFLICT"
+            return "STORED"
+
+    def persist_rejected(
+        self, delivery_id: str, event_id: str | None, envelope: dict[str, Any], reason: str
+    ) -> None:
+        encoded = json.dumps(envelope, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO lifecycle_evidence_quarantine(
+                    delivery_id,event_id,envelope_json,rejection_reason,received_at
+                ) VALUES (%s,%s,%s,%s,%s)
+                ON CONFLICT(delivery_id) DO NOTHING
+                """,
+                (delivery_id, event_id, encoded, reason[:500], datetime.now(UTC).isoformat()),
+            )
+
+    def _eligible_rows(
+        self, instrument: str, timeframe: str, source_dataset_id: str, max_us: int
+    ) -> list[dict[str, Any]]:
+        with self._connect() as connection:
+            return connection.execute(
+                """
+                SELECT event_id,topic,envelope_json,payload_sha256,key_id,available_at,received_at,
+                       instrument,timeframe,signature_verified,source_verified,lifecycle_id,
+                       transition_sequence,transition_sha256,available_at_epoch_us,received_at_epoch_us
+                FROM lifecycle_evidence_inbox i
+                WHERE (i.source_verified=TRUE OR EXISTS (
+                    SELECT 1 FROM lifecycle_evidence_source_verifications v
+                    WHERE v.event_id=i.event_id
+                )) AND i.instrument=%s AND i.timeframe=%s AND i.source_dataset_id=%s
+                  AND i.available_at_epoch_us<=%s AND i.received_at_epoch_us<=%s
+                """,
+                (instrument, timeframe, source_dataset_id, max_us, max_us),
+            ).fetchall()
+
+    def point_in_time_contexts(
+        self, *, instrument: str, timeframe: str, source_dataset_id: str,
+        price_basis: str, cutoffs: list[datetime],
+    ) -> list[dict[str, float] | None]:
+        if not cutoffs:
+            return []
+        indexed = []
+        for index, cutoff in enumerate(cutoffs):
+            if cutoff.tzinfo is None or cutoff.utcoffset() is None:
+                raise ValueError("point-in-time replay cutoffs must be timezone-aware")
+            indexed.append((index, cutoff.astimezone(UTC)))
+        max_us = max(_epoch_microseconds(value) for _, value in indexed)
+        rows = self._eligible_rows(instrument, timeframe, source_dataset_id, max_us)
+        events = []
+        for row in rows:
+            envelope = self._verify_persisted_row(row)
+            data = envelope.get("data", {})
+            market_basis, temporal, lifecycle = data.get("market_basis"), data.get("temporal"), data.get("lifecycle")
+            if not isinstance(market_basis, dict) or market_basis.get("price_basis") != price_basis:
+                continue
+            if not isinstance(temporal, dict) or not isinstance(lifecycle, dict):
+                continue
+            producer_at = _parse_utc(temporal.get("available_at"), "available_at")
+            received_at = _parse_utc(row["received_at"], "inbox_received_at")
+            effective_at = max(producer_at, received_at)
+            if _epoch_microseconds(effective_at) <= max_us:
+                events.append((
+                    effective_at, str(data.get("event_id", "")),
+                    str(lifecycle.get("lifecycle_id", "")),
+                    int(lifecycle.get("transition_sequence", 0)),
+                    _parse_utc(temporal.get("observed_at"), "observed_at"), data,
+                ))
+        events.sort(key=lambda item: (item[0], item[1]))
+        output: list[dict[str, float] | None] = [None] * len(cutoffs)
+        latest_by_lifecycle: dict[str, tuple[int, datetime, dict[str, Any]]] = {}
+        cursor = 0
+        for original_index, origin in sorted(indexed, key=lambda item: (item[1], item[0])):
+            while cursor < len(events) and events[cursor][0] <= origin:
+                _, _, lifecycle_id, sequence, observed_at, data = events[cursor]
+                current = latest_by_lifecycle.get(lifecycle_id)
+                if current is None or sequence > current[0]:
+                    latest_by_lifecycle[lifecycle_id] = (sequence, observed_at, data)
+                cursor += 1
+            latest = max(
+                latest_by_lifecycle.values(),
+                key=lambda item: (item[1], item[0], str(item[2].get("event_id", ""))),
+                default=None,
+            )
+            if latest is None:
+                continue
+            lifecycle = latest[2].get("lifecycle", {})
+            output[original_index] = {
+                "liquidity_sweep_bullish": float(lifecycle.get("direction") == "BULLISH"),
+                "liquidity_sweep_bearish": float(lifecycle.get("direction") == "BEARISH"),
+                "liquidity_displacement_confirmed": float(lifecycle.get("displacement_confirmed_at") is not None),
+                "liquidity_midpoint_reached": float(lifecycle.get("midpoint_first_reached_at") is not None),
+                "liquidity_midpoint_consolidation": float(lifecycle.get("consolidation_candidate_at") is not None),
+                "liquidity_invalidated": float(lifecycle.get("invalidated_at") is not None),
+            }
+        return output
+
+    def point_in_time_evidence(
+        self, *, instrument: str, timeframe: str, source_dataset_id: str,
+        price_basis: str, cutoffs: list[datetime],
+    ) -> list[dict[str, Any]]:
+        indexed = []
+        for index, cutoff in enumerate(cutoffs):
+            if cutoff.tzinfo is None or cutoff.utcoffset() is None:
+                raise ValueError("point-in-time replay cutoffs must be timezone-aware")
+            indexed.append((index, cutoff.astimezone(UTC)))
+        if not indexed:
+            return []
+        max_us = max(_epoch_microseconds(value) for _, value in indexed)
+        rows = self._eligible_rows(instrument, timeframe, source_dataset_id, max_us)
+        events = []
+        for row in rows:
+            envelope = self._verify_persisted_row(row)
+            data = envelope.get("data", {})
+            lifecycle, temporal = data.get("lifecycle", {}), data.get("temporal", {})
+            if data.get("market_basis", {}).get("price_basis") != price_basis:
+                continue
+            producer_at = _parse_utc(temporal.get("available_at"), "available_at")
+            received_at = _parse_utc(row["received_at"], "received_at")
+            events.append({
+                "event_id": row["event_id"], "payload_sha256": row["payload_sha256"],
+                "lifecycle_id": lifecycle.get("lifecycle_id"),
+                "transition_sequence": int(lifecycle.get("transition_sequence", 0)),
+                "transition_sha256": lifecycle.get("transition_sha256"),
+                "observed_at": _parse_utc(temporal.get("observed_at"), "observed_at"),
+                "producer_available_at": producer_at, "consumer_received_at": received_at,
+                "effective_available_at": max(producer_at, received_at),
+            })
+        events.sort(key=lambda item: (item["effective_available_at"], item["event_id"]))
+        output: list[dict[str, Any] | None] = [None] * len(cutoffs)
+        by_lifecycle: dict[str, dict[str, Any]] = {}
+        cursor = 0
+        for original_index, origin in sorted(indexed, key=lambda item: (item[1], item[0])):
+            while cursor < len(events) and events[cursor]["effective_available_at"] <= origin:
+                item = events[cursor]
+                key = str(item["lifecycle_id"])
+                previous = by_lifecycle.get(key)
+                if previous is None or item["transition_sequence"] > previous["transition_sequence"]:
+                    by_lifecycle[key] = item
+                cursor += 1
+            manifest = sorted(by_lifecycle.values(), key=lambda item: (item["observed_at"], item["lifecycle_id"]))
+            canonical_manifest = [{
+                "event_id": item["event_id"], "payload_sha256": item["payload_sha256"],
+                "lifecycle_id": item["lifecycle_id"], "transition_sequence": item["transition_sequence"],
+                "transition_sha256": item["transition_sha256"],
+                "producer_available_at": item["producer_available_at"].isoformat(),
+                "consumer_received_at": item["consumer_received_at"].isoformat(),
+            } for item in manifest]
+            output[original_index] = {
+                "prediction_origin": origin.isoformat(), "instrument": instrument,
+                "timeframe": timeframe, "source_dataset_id": source_dataset_id,
+                "price_basis": price_basis, "evidence_count": len(canonical_manifest),
+                "evidence": canonical_manifest,
+                "evidence_set_sha256": hashlib.sha256(rfc8785.dumps(canonical_manifest)).hexdigest(),
+            }
+        return [item if item is not None else {
+            "prediction_origin": cutoff.astimezone(UTC).isoformat(),
+            "instrument": instrument, "timeframe": timeframe, "source_dataset_id": source_dataset_id,
+            "price_basis": price_basis, "evidence_count": 0, "evidence": [],
+            "evidence_set_sha256": hashlib.sha256(rfc8785.dumps([])).hexdigest(),
+        } for item, cutoff in zip(output, cutoffs)]
+
+    def lifecycle_history(self, lifecycle_id: str) -> dict[str, Any] | None:
+        if not lifecycle_id or len(lifecycle_id) > 200:
+            raise ValueError("lifecycle_id must contain 1 to 200 characters")
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT event_id,topic,envelope_json,payload_sha256,key_id,available_at,received_at,
+                       instrument,timeframe,signature_verified,source_verified,lifecycle_id,
+                       transition_sequence,transition_sha256,available_at_epoch_us,received_at_epoch_us
+                FROM lifecycle_evidence_inbox
+                WHERE lifecycle_id=%s AND (source_verified=TRUE OR EXISTS (
+                    SELECT 1 FROM lifecycle_evidence_source_verifications v WHERE v.event_id=lifecycle_evidence_inbox.event_id
+                ))
+                ORDER BY transition_sequence DESC
+                """,
+                (lifecycle_id,),
+            ).fetchall()
+        if not rows:
+            return None
+        latest_row = rows[0]
+        latest_envelope = self._verify_persisted_row(latest_row)
+        history = latest_envelope["data"]["lifecycle"]["transition_history"]
+        stored_events = []
+        for row in reversed(rows):
+            stored = self._verify_persisted_row(row)
+            stored_history = stored["data"]["lifecycle"]["transition_history"]
+            if len(stored_history) > len(history) or any(
+                stored_history[index].get("transition_id") != history[index].get("transition_id")
+                or stored_history[index].get("transition_sha256") != history[index].get("transition_sha256")
+                for index in range(len(stored_history))
+            ):
+                raise LifecycleEvidenceError("stored_lifecycle_history_fork_detected")
+            stored_events.append({
+                "event_id": row["event_id"], "payload_sha256": row["payload_sha256"],
+                "transition_sequence": row["transition_sequence"],
+                "transition_sha256": row["transition_sha256"],
+                "producer_available_at": row["available_at"],
+                "consumer_received_at": row["received_at"],
+            })
+        return {
+            "lifecycle_id": lifecycle_id, "head_event_id": latest_row["event_id"],
+            "head_sequence": latest_row["transition_sequence"],
+            "head_transition_sha256": latest_row["transition_sha256"],
+            "reconstructed_transition_history": history,
+            "individually_received_transition_events": stored_events,
+            "history_complete_in_signed_head": True, "signature_reverified": True,
+        }
+
+    def status(self) -> dict[str, Any]:
+        with self._connect() as connection:
+            accepted = connection.execute("SELECT COUNT(*) AS n FROM lifecycle_evidence_inbox").fetchone()
+            source = connection.execute(
+                """
+                SELECT COUNT(*) AS n FROM lifecycle_evidence_inbox i
+                WHERE i.source_verified=TRUE OR EXISTS (
+                    SELECT 1 FROM lifecycle_evidence_source_verifications v WHERE v.event_id=i.event_id
+                )
+                """
+            ).fetchone()
+            conflicts = connection.execute("SELECT COUNT(*) AS n FROM lifecycle_evidence_conflicts").fetchone()
+            rejected = connection.execute("SELECT COUNT(*) AS n FROM lifecycle_evidence_quarantine").fetchone()
+            history = connection.execute(
+                """
+                SELECT COUNT(DISTINCT lifecycle_id) AS lifecycles,
+                       COALESCE(MAX(transition_sequence),0) AS max_sequence
+                FROM lifecycle_evidence_inbox i
+                WHERE i.source_verified=TRUE OR EXISTS (
+                    SELECT 1 FROM lifecycle_evidence_source_verifications v WHERE v.event_id=i.event_id
+                )
+                """
+            ).fetchone()
+        return {
+            "signature_verified_events": int(accepted["n"]),
+            "source_attested_events": int(source["n"]),
+            "conflicts": int(conflicts["n"]),
+            "quarantined_deliveries": int(rejected["n"]),
+            "unique_lifecycle_aggregates": int(history["lifecycles"]),
+            "highest_transition_sequence": int(history["max_sequence"]),
+            "persisted_signatures_reverified_on_replay": True,
+            "replay_fails_closed_on_integrity_error": True,
+            "persistence_backend": "postgresql",
+        }
+
+    def health(self) -> dict[str, Any]:
+        try:
+            with self._connect() as connection:
+                connection.execute("SELECT 1").fetchone()
+            return {"configured": True, "connected": True, "backend": "postgresql"}
+        except Exception as exc:
+            return {"configured": True, "connected": False, "backend": "postgresql", "detail": type(exc).__name__}
 
 
 class LifecycleEvidenceConsumer:
