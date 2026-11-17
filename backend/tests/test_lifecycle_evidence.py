@@ -376,3 +376,90 @@ def test_point_in_time_contexts_reject_naive_cutoffs(tmp_path) -> None:
             price_basis="MID",
             cutoffs=[datetime(2026, 1, 1)],
         )
+
+
+def _resign_service9_event(envelope: dict, private_key: Ed25519PrivateKey) -> None:
+    data = envelope["data"]
+    integrity = data.pop("integrity")
+    digest = hashlib.sha256(rfc8785.dumps(data)).hexdigest()
+    data["integrity"] = {
+        **integrity,
+        "payload_sha256": digest,
+        "signature": base64.b64encode(private_key.sign(bytes.fromhex(digest))).decode("ascii"),
+    }
+
+
+def test_rejects_a_forked_or_tampered_transition_hash_chain() -> None:
+    private_key = Ed25519PrivateKey.generate()
+    envelope, trust, source_trust = signed_envelope(private_key)
+    envelope["data"]["lifecycle"]["transition_history"][0]["state"] = "INVALIDATED"
+    _resign_service9_event(envelope, private_key)
+    with pytest.raises(LifecycleEvidenceError, match="transition_identity_invalid|transition_hash_chain_invalid"):
+        verify_lifecycle_event(
+            envelope, public_keys_json=trust, source_public_keys_json=source_trust
+        )
+
+
+def test_late_lower_sequence_transition_cannot_roll_back_replay_state(tmp_path) -> None:
+    import copy
+
+    private_key = Ed25519PrivateKey.generate()
+    later, trust, source_trust = signed_envelope(private_key, state="DISPLACEMENT_CONFIRMED")
+    earlier = copy.deepcopy(later)
+    first = earlier["data"]["lifecycle"]["transition_history"][0]
+    data = earlier["data"]
+    lifecycle = data["lifecycle"]
+    data["event_id"] = first["transition_id"]
+    lifecycle["transition_id"] = first["transition_id"]
+    lifecycle["transition_sequence"] = 1
+    lifecycle["transition_sha256"] = first["transition_sha256"]
+    lifecycle["previous_transition_sha256"] = first["previous_transition_sha256"]
+    lifecycle["transition_history"] = [first]
+    lifecycle["state"] = "SWEEP_CONFIRMED"
+    lifecycle["displacement_confirmed_at"] = None
+    data["temporal"]["observed_at"] = first["occurred_at"]
+    data["temporal"]["confirmed_at"] = first["occurred_at"]
+    earlier["id"] = first["transition_id"]
+    _resign_service9_event(earlier, private_key)
+
+    verified_later = verify_lifecycle_event(
+        later, public_keys_json=trust, source_public_keys_json=source_trust
+    )
+    verified_earlier = verify_lifecycle_event(
+        earlier, public_keys_json=trust, source_public_keys_json=source_trust
+    )
+    inbox = LifecycleEvidenceInbox(str(tmp_path / "lifecycle-inbox.sqlite3"))
+    assert inbox.persist_verified("gfx.liquidity.lifecycle.v1", later, verified_later) == "STORED"
+    assert inbox.persist_verified("gfx.liquidity.lifecycle.v1", earlier, verified_earlier) == "STORED"
+
+    contexts = inbox.point_in_time_contexts(
+        instrument="EURUSD",
+        timeframe="1m",
+        source_dataset_id=verified_later["source_dataset_id"],
+        price_basis="MID",
+        cutoffs=[datetime.now(UTC) + timedelta(minutes=1)],
+    )
+    assert contexts[0] is not None
+    assert contexts[0]["liquidity_displacement_confirmed"] == 1.0
+
+
+def test_prediction_origin_manifest_identifies_exact_evidence(tmp_path) -> None:
+    private_key = Ed25519PrivateKey.generate()
+    envelope, trust, source_trust = signed_envelope(private_key)
+    verified = verify_lifecycle_event(
+        envelope, public_keys_json=trust, source_public_keys_json=source_trust
+    )
+    inbox = LifecycleEvidenceInbox(str(tmp_path / "lifecycle-inbox.sqlite3"))
+    inbox.persist_verified("gfx.liquidity.lifecycle.v1", envelope, verified)
+    origin = datetime.now(UTC) + timedelta(minutes=1)
+    manifest = inbox.point_in_time_evidence(
+        instrument="EURUSD",
+        timeframe="1m",
+        source_dataset_id=verified["source_dataset_id"],
+        price_basis="MID",
+        cutoffs=[origin],
+    )[0]
+    assert manifest["evidence_count"] == 1
+    assert manifest["evidence"][0]["event_id"] == verified["event_id"]
+    assert len(manifest["evidence_set_sha256"]) == 64
+    assert manifest["evidence"][0]["consumer_received_at"] <= origin.isoformat()
