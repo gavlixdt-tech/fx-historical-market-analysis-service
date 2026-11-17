@@ -598,3 +598,63 @@ representations, a sub-millisecond future-evidence exclusion, out-of-order
 replay cutoffs, and rejection of naive timestamps. Run pytest backend/tests/test_lifecycle_evidence.py from the
 repository root. This source change is not a substitute for the separate live
 Service 9 → Service 62 → Service 2 deployment acceptance test.
+
+
+## Lifecycle transition identity, history reconstruction and replay evidence
+
+Service 9 lifecycle aggregate identity is distinct from each transition event
+identity. Service 2 now requires the signed `lifecycle.transition_id` to match
+the CloudEvents/payload event ID and verifies the full transition history:
+strict sequence numbering, deterministic transition IDs, monotonic transition
+times, previous-hash linkage, each RFC-8785 SHA-256 transition digest, and the
+final transition head. Reusing a lifecycle sequence with a different event is
+recorded as a conflict; the unique lifecycle/sequence index prevents two
+competing heads from silently becoming canonical.
+
+The inbox persists aggregate ID, transition sequence and transition digest
+alongside the immutable signed envelope. It keeps duplicate deliveries
+idempotent, records event-ID conflicts and lifecycle-sequence forks, and
+quarantines invalid signatures or malformed history. A conflict is never
+silently overwritten. Legacy inbox rows that predate signed transition chains
+are retained for audit but have `source_verified` revoked during migration so
+they cannot enter model features.
+
+### Late delivery and prediction-origin evidence manifests
+
+Replay selection is based on the maximum of producer-signed availability and
+durable consumer receipt. For each lifecycle, the selector advances only to
+a higher verified transition sequence; a late lower-sequence delivery cannot
+roll a previously observed lifecycle state backwards. Among eligible
+lifecycles, the most recently observed transition is selected deterministically.
+
+The market-data replay response now includes
+`reproducibility.lifecycle_evidence` with:
+
+- A deduplicated evidence registry containing immutable event IDs, payload
+  digests, lifecycle IDs, transition sequence/head digests, producer
+  availability and consumer receipt timestamps.
+- A `prediction_origin_evidence` entry for each replay observation origin,
+  containing the exact event IDs available at that origin and a SHA-256 digest
+  of that evidence set.
+- The RFC-8785 manifest algorithm and the precise availability policy.
+
+This makes the evidence inputs auditable and reproducible without embedding
+the full signed envelope repeatedly in every prediction row. It does not
+promote caller-asserted events to trusted features and does not establish a
+vendor-origin signature.
+
+Run the lifecycle evidence tests with:
+
+```bash
+pytest backend/tests/test_lifecycle_evidence.py
+```
+
+Run the Service 9 transition identity/outbox fencing tests with:
+
+```bash
+pytest backend/tests/test_lifecycle_transition_history.py
+```
+
+The feature remains research-only. Live provider entitlements, approved
+cross-service contract publication, trust-key provisioning and a deployed
+end-to-end acceptance run remain separate production gates.
