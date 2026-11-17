@@ -820,11 +820,14 @@ class LifecycleEvidenceInbox:
                 """
                 SELECT event_id,topic,envelope_json,payload_sha256,key_id,available_at,received_at,
                        instrument,timeframe,signature_verified,source_verified,lifecycle_id,
-                       transition_sequence,transition_sha256,available_at_epoch_us,received_at_epoch_us
+                       transition_sequence,transition_sha256,source_dataset_id,
+                       available_at_epoch_us,received_at_epoch_us
                 FROM lifecycle_evidence_inbox
                 WHERE (source_verified=1 OR EXISTS (
                     SELECT 1 FROM lifecycle_evidence_source_verifications v
                     WHERE v.event_id=lifecycle_evidence_inbox.event_id
+                      AND v.payload_sha256=lifecycle_evidence_inbox.payload_sha256
+                      AND v.source_dataset_id=lifecycle_evidence_inbox.source_dataset_id
                 )) AND instrument=? AND timeframe=?
                   AND json_extract(envelope_json, '$.data.provenance.source_dataset_id')=?
                   AND available_at_epoch_us<=?
@@ -1031,11 +1034,14 @@ class LifecycleEvidenceInbox:
                 """
                 SELECT event_id,topic,envelope_json,payload_sha256,key_id,available_at,received_at,
                        instrument,timeframe,signature_verified,source_verified,lifecycle_id,
-                       transition_sequence,transition_sha256,available_at_epoch_us,received_at_epoch_us
+                       transition_sequence,transition_sha256,source_dataset_id,
+                       available_at_epoch_us,received_at_epoch_us
                 FROM lifecycle_evidence_inbox
                 WHERE lifecycle_id=? AND (source_verified=1 OR EXISTS (
                     SELECT 1 FROM lifecycle_evidence_source_verifications v
                     WHERE v.event_id=lifecycle_evidence_inbox.event_id
+                      AND v.payload_sha256=lifecycle_evidence_inbox.payload_sha256
+                      AND v.source_dataset_id=lifecycle_evidence_inbox.source_dataset_id
                 ))
                 ORDER BY transition_sequence DESC
                 """,
@@ -1409,6 +1415,21 @@ class PostgresLifecycleEvidenceInbox:
                     connection, verified["event_id"], verified["payload_sha256"], encoded, now
                 )
                 return "CONFLICT"
+            if verified["source_verified"]:
+                connection.execute(
+                    """
+                    INSERT INTO lifecycle_evidence_source_verifications(
+                        event_id,source_dataset_id,payload_sha256,verified_at
+                    ) VALUES (%s,%s,%s,%s)
+                    ON CONFLICT(event_id) DO NOTHING
+                    """,
+                    (
+                        verified["event_id"],
+                        verified["source_dataset_id"],
+                        verified["payload_sha256"],
+                        now,
+                    ),
+                )
             return "STORED"
 
     def persist_rejected(
@@ -1438,7 +1459,8 @@ class PostgresLifecycleEvidenceInbox:
                 """
                 SELECT event_id,topic,envelope_json,payload_sha256,key_id,available_at,received_at,
                        instrument,timeframe,signature_verified,source_verified,lifecycle_id,
-                       transition_sequence,transition_sha256,available_at_epoch_us,received_at_epoch_us
+                       transition_sequence,transition_sha256,source_dataset_id,
+                       available_at_epoch_us,received_at_epoch_us
                 FROM lifecycle_evidence_inbox i
                 WHERE (i.source_verified=TRUE OR EXISTS (
                     SELECT 1 FROM lifecycle_evidence_source_verifications v
