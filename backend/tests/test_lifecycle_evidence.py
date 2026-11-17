@@ -511,3 +511,23 @@ def test_replay_reverifies_persisted_signed_bytes_and_fails_closed_on_database_t
             price_basis="MID",
             cutoffs=[datetime.now(UTC) + timedelta(minutes=1)],
         )
+
+
+def test_durable_inbox_reconstructs_signed_lifecycle_history(tmp_path) -> None:
+    private_key = Ed25519PrivateKey.generate()
+    envelope, trust, source_trust = signed_envelope(private_key)
+    verified = verify_lifecycle_event(
+        envelope, public_keys_json=trust, source_public_keys_json=source_trust
+    )
+    inbox = LifecycleEvidenceInbox(
+        str(tmp_path / "lifecycle-inbox.sqlite3"),
+        public_keys_json=trust,
+        source_public_keys_json=source_trust,
+    )
+    inbox.persist_verified("gfx.liquidity.lifecycle.v1", envelope, verified)
+    history = inbox.lifecycle_history(verified["lifecycle_id"])
+    assert history is not None
+    assert history["head_event_id"] == verified["event_id"]
+    assert history["head_sequence"] == 2
+    assert [item["sequence"] for item in history["reconstructed_transition_history"]] == [1, 2]
+    assert history["signature_reverified"] is True
