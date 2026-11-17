@@ -575,12 +575,14 @@ Before switching a deployed Service 2 instance from SQLite to PostgreSQL:
      --sqlite-path /data/lifecycle-inbox.sqlite3
    ```
 
-4. The importer uses SQLite's online backup API to capture a consistent WAL
-   snapshot, imports accepted events, source-verification records, conflict
-   history and quarantine records in one PostgreSQL transaction, preserves
-   event IDs and receipt times, checks for conflicting existing records, and
-   records the source snapshot fingerprint so an identical snapshot is not
-   imported twice.
+4. The importer uses SQLite's online backup API and `PRAGMA integrity_check`
+   to capture and validate a consistent WAL snapshot. It verifies each signed
+   payload digest, source-dataset index, and both stored UTC epoch-microsecond
+   indexes against their ISO-8601 timestamps before import. It imports accepted
+   events, source-verification records, conflict history and quarantine records
+   in one PostgreSQL transaction, preserves event IDs and receipt times, checks
+   existing records for conflicts, and records the source fingerprint so an
+   identical snapshot is not imported twice.
 5. Restart Service 2 with `DATABASE_URL` set. Verify the inbox status, selected
    lifecycle history and point-in-time evidence manifests before re-enabling
    normal consumer traffic.
