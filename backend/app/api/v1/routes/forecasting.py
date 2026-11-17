@@ -513,3 +513,25 @@ async def research_readiness(
         research_readiness_status=result.get("research_readiness_status"),
     )
     return ApiResponse(data=data, meta=build_meta(request.app.state.settings, rid))
+
+
+@router.get("/forecasting/lifecycle-evidence/status")
+async def lifecycle_evidence_status(request: Request) -> ApiResponse[dict[str, Any]]:
+    """Report durable inbox verification counts without exposing event payloads."""
+    rid = getattr(request.state, "request_id", "unknown")
+    consumer = getattr(request.app.state, "lifecycle_evidence_consumer", None)
+    if consumer is None:
+        status = {
+            "enabled": False,
+            "inbox": {
+                "signature_verified_events": 0,
+                "source_attested_events": 0,
+                "conflicts": 0,
+                "quarantined_deliveries": 0,
+            },
+            "forecast_eligible": False,
+            "reason": "Service 62 lifecycle evidence consumer is disabled.",
+        }
+    else:
+        status = consumer.status()
+    return ApiResponse(data=status, meta=build_meta(request.app.state.settings, rid))
