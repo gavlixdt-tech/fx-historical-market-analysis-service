@@ -933,7 +933,14 @@ class LifecycleEvidenceInbox:
         history = data["lifecycle"]["transition_history"]
         stored_events = []
         for row in reversed(rows):
-            self._verify_persisted_row(row)
+            stored_envelope = self._verify_persisted_row(row)
+            stored_history = stored_envelope["data"]["lifecycle"]["transition_history"]
+            if len(stored_history) > len(history) or any(
+                stored_history[index].get("transition_id") != history[index].get("transition_id")
+                or stored_history[index].get("transition_sha256") != history[index].get("transition_sha256")
+                for index in range(len(stored_history))
+            ):
+                raise LifecycleEvidenceError("stored_lifecycle_history_fork_detected")
             stored_events.append({
                 "event_id": row["event_id"],
                 "payload_sha256": row["payload_sha256"],
