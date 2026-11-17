@@ -266,11 +266,11 @@ class Settings(BaseSettings):
     )
     metrics_enabled: bool = Field(default=True, description="Expose Prometheus metrics")
 
-    # ---- Persistence ----
-    # No database is provisioned. The field is reserved for a future,
-    # separately approved persistence integration.
+    # ---- Shared persistence ----
     database_url: str | None = Field(
-        default=None, description="Database connection string (unused)"
+        default=None,
+        repr=False,
+        description="PostgreSQL connection URL for the lifecycle evidence inbox; server-side secret",
     )
 
     @field_validator("environment")
@@ -299,6 +299,18 @@ class Settings(BaseSettings):
         if value != "research-simulation":
             raise ValueError("service_mode must be 'research-simulation' for this scaffold phase")
         return value
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def _validate_database_url(cls, value: object) -> str | None:
+        if value is None or value == "":
+            return None
+        if not isinstance(value, str):
+            raise ValueError("DATABASE_URL must be a PostgreSQL connection URL")
+        parsed = urlsplit(value.strip())
+        if parsed.scheme not in {"postgres", "postgresql"} or not parsed.hostname:
+            raise ValueError("DATABASE_URL must be a PostgreSQL connection URL")
+        return value.strip()
 
     @field_validator("lifecycle_event_bus_url")
     @classmethod
@@ -504,9 +516,9 @@ class Settings(BaseSettings):
                     raise ValueError(
                         "production LIFECYCLE_EVENT_BUS_URL must use HTTPS or explicit-port Railway private DNS"
                     )
-                if self.lifecycle_event_inbox_db_path == ":memory:":
+                if not self.database_url:
                     raise ValueError(
-                        "production lifecycle evidence inbox must use persistent storage"
+                        "production lifecycle evidence consumer requires DATABASE_URL for PostgreSQL persistence"
                     )
         if self.gfx_settings_required and not self.gfx_settings_enabled:
             raise ValueError("GFX_SETTINGS_REQUIRED=true requires GFX_SETTINGS_ENABLED=true")
