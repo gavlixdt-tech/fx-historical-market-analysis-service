@@ -405,3 +405,62 @@ async def test_market_data_replay_verifies_service1_historical_attestation(
     assert result["forecast_eligible"] is False
     assert result["reproducibility"]["data_source"]["historical_attestation_status"] == "verified"
     assert captured["request"].observations
+
+
+@pytest.mark.asyncio
+async def test_market_data_replay_attaches_only_matching_source_attested_lifecycle_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run(replay_request, trusted_lifecycle_contexts=None):
+        captured["request"] = replay_request
+        captured["trusted_contexts"] = trusted_lifecycle_contexts
+        return {
+            "status": "completed",
+            "warnings": [],
+            "limitations": [],
+            "reproducibility": {},
+        }
+
+    class FakeLifecycleConsumer:
+        def point_in_time_contexts(self, **kwargs):
+            captured["lifecycle_query"] = kwargs
+            return [{"liquidity_sweep_bullish": 1.0}] + [None] * 51
+
+    monkeypatch.setattr(
+        "backend.app.services.replay_market_data.run_historical_replay",
+        fake_run,
+    )
+    data, public_keys = _attested_data()
+    request = _request().model_copy(
+        update={"source_dataset_id": data.provenance["source_id"]}
+    )
+    result = await run_market_data_replay(
+        request,
+        settings=_settings(public_keys_json=public_keys, attestation_required=True),
+        upstream=_FakeMarketDataClient(data=data),
+        request_id="request-1",
+        lifecycle_consumer=FakeLifecycleConsumer(),
+    )
+    query = captured["lifecycle_query"]
+    assert query["instrument"] == "EURUSD"
+    assert query["timeframe"] == "1d"
+    assert query["source_dataset_id"] == data.provenance["source_id"]
+    assert query["price_basis"] == "MID"
+    assert captured["trusted_contexts"][0]["liquidity_sweep_bullish"] == 1.0
+    assert result["reproducibility"]["lifecycle_evidence"][
+        "point_in_time_observations_with_source_attested_events"
+    ] == 1
+
+
+@pytest.mark.asyncio
+async def test_market_data_replay_rejects_source_dataset_id_not_matching_attestation() -> None:
+    data, public_keys = _attested_data()
+    with pytest.raises(AppValidationError, match="must match the independently attested"):
+        await run_market_data_replay(
+            _request(),
+            settings=_settings(public_keys_json=public_keys, attestation_required=True),
+            upstream=_FakeMarketDataClient(data=data),
+            request_id="request-1",
+        )
