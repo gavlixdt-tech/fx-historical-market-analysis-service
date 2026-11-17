@@ -569,6 +569,17 @@ class LifecycleEvidenceInbox:
                     received_at TEXT NOT NULL
                 )
             """)
+            connection.execute("""
+                CREATE TRIGGER IF NOT EXISTS trg_lifecycle_inbox_no_update
+                BEFORE UPDATE ON lifecycle_evidence_inbox
+                BEGIN SELECT RAISE(ABORT, 'lifecycle inbox evidence is immutable'); END
+            """)
+            connection.execute("""
+                CREATE TRIGGER IF NOT EXISTS trg_lifecycle_inbox_no_delete
+                BEFORE DELETE ON lifecycle_evidence_inbox
+                BEGIN SELECT RAISE(ABORT, 'lifecycle inbox evidence is immutable'); END
+            """)
+
 
     def persist_verified(
         self, topic: str, envelope: dict[str, Any], verified: dict[str, Any]
