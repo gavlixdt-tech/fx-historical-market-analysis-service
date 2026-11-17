@@ -280,6 +280,8 @@ def verify_lifecycle_event(
         "available_at": available_at.isoformat(),
         "instrument": instrument["canonical_id"],
         "timeframe": data["timeframe"],
+        "source_dataset_id": data["provenance"]["source_dataset_id"],
+        "price_basis": data["market_basis"]["price_basis"],
         "source_verified": source_verified,
         "signature_verified": True,
     }
@@ -366,6 +368,33 @@ class LifecycleEvidenceInbox:
                 verified["timeframe"], 1, int(verified["source_verified"]), now,
             ))
             return "STORED"
+
+    def latest_source_attested_event(
+        self, *, instrument: str, timeframe: str, source_dataset_id: str,
+        price_basis: str, cutoff: datetime,
+    ) -> dict[str, Any] | None:
+        """Return the newest source-attested lifecycle event available by cutoff."""
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT envelope_json FROM lifecycle_evidence_inbox
+                WHERE source_verified=1 AND instrument=? AND timeframe=?
+                  AND json_extract(envelope_json, '$.data.provenance.source_dataset_id')=?
+                  AND available_at<=?
+                ORDER BY available_at DESC, received_at DESC LIMIT 1
+                """,
+                (instrument, timeframe, source_dataset_id, cutoff.astimezone(UTC).isoformat()),
+            ).fetchone()
+        if row is None:
+            return None
+        envelope = json.loads(row["envelope_json"])
+        data = envelope.get("data") if isinstance(envelope, dict) else None
+        if not isinstance(data, dict):
+            return None
+        market_basis = data.get("market_basis")
+        if not isinstance(market_basis, dict) or market_basis.get("price_basis") != price_basis:
+            return None
+        return data
 
     def persist_rejected(
         self, delivery_id: str, event_id: str | None, envelope: dict[str, Any], reason: str
@@ -524,6 +553,33 @@ class LifecycleEvidenceConsumer:
             },
         )
         response.raise_for_status()
+
+    def point_in_time_contexts(
+        self, *, instrument: str, timeframe: str, source_dataset_id: str,
+        price_basis: str, cutoffs: list[datetime],
+    ) -> list[dict[str, float] | None]:
+        contexts: list[dict[str, float] | None] = []
+        for cutoff in cutoffs:
+            data = self.inbox.latest_source_attested_event(
+                instrument=instrument,
+                timeframe=timeframe,
+                source_dataset_id=source_dataset_id,
+                price_basis=price_basis,
+                cutoff=cutoff,
+            )
+            if data is None:
+                contexts.append(None)
+                continue
+            lifecycle = data.get("lifecycle", {})
+            contexts.append({
+                "liquidity_sweep_bullish": float(lifecycle.get("direction") == "BULLISH"),
+                "liquidity_sweep_bearish": float(lifecycle.get("direction") == "BEARISH"),
+                "liquidity_displacement_confirmed": float(lifecycle.get("displacement_confirmed_at") is not None),
+                "liquidity_midpoint_reached": float(lifecycle.get("midpoint_first_reached_at") is not None),
+                "liquidity_midpoint_consolidation": float(lifecycle.get("consolidation_candidate_at") is not None),
+                "liquidity_invalidated": float(lifecycle.get("invalidated_at") is not None),
+            })
+        return contexts
 
     def status(self) -> dict[str, Any]:
         return {
