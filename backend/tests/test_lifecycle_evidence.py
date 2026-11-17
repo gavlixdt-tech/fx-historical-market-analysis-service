@@ -893,10 +893,14 @@ def test_sqlite_inbox_cutover_preserves_evidence_conflicts_and_quarantine(tmp_pa
     try:
         migration_module = runpy.run_path(str(script))
         migrate = migration_module["migrate"]
-        first = migrate(sqlite_path, isolated_dsn)
-        second = migrate(sqlite_path, isolated_dsn)
-        assert first["status"] == "imported"
-        assert second["status"] == "already_imported"
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(
+                pool.map(lambda _: migrate(sqlite_path, isolated_dsn), range(2))
+            )
+        assert sorted(result["status"] for result in results) == [
+            "already_imported",
+            "imported",
+        ]
 
         migrated = PostgresLifecycleEvidenceInbox(
             isolated_dsn,
