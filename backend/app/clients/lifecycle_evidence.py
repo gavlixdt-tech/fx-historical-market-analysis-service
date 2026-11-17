@@ -26,7 +26,9 @@ logger = logging.getLogger(__name__)
 EXPECTED_PRODUCER = "fx-liquidity-analysis-service"
 EXPECTED_EVENT_TYPE = "com.gavlix.market.liquidity.lifecycle.v1"
 EXPECTED_SCHEMA = "liquidity-lifecycle-evidence/v1"
-EXPECTED_SCHEMA_ID = "https://contracts.gavlix.com/schemas/liquidity-lifecycle-evidence/v1/event.schema.json"
+EXPECTED_SCHEMA_ID = (
+    "https://contracts.gavlix.com/schemas/liquidity-lifecycle-evidence/v1/event.schema.json"
+)
 
 
 class LifecycleEvidenceError(ValueError):
@@ -43,9 +45,7 @@ def _service1_canonical_json(value: object) -> bytes:
     ).encode("utf-8")
 
 
-def _verify_service1_source_attestation(
-    data: dict[str, Any], source_public_keys_json: str
-) -> bool:
+def _verify_service1_source_attestation(data: dict[str, Any], source_public_keys_json: str) -> bool:
     provenance = data.get("provenance")
     instrument = data.get("instrument")
     market_basis = data.get("market_basis")
@@ -54,26 +54,53 @@ def _verify_service1_source_attestation(
         raise LifecycleEvidenceError("source_attestation_context_invalid")
     attestation = provenance.get("source_attestation")
     expected_fields = {
-        "version", "purpose", "algorithm", "provider_id", "source_id", "key_id",
-        "issued_at", "observed_at", "instrument", "timeframe", "dataset_sha256",
-        "quality", "volume_semantics", "source_metadata", "signature",
+        "version",
+        "purpose",
+        "algorithm",
+        "provider_id",
+        "source_id",
+        "key_id",
+        "issued_at",
+        "observed_at",
+        "instrument",
+        "timeframe",
+        "dataset_sha256",
+        "quality",
+        "volume_semantics",
+        "source_metadata",
+        "signature",
     }
     if not isinstance(attestation, dict) or set(attestation) != expected_fields:
         raise LifecycleEvidenceError("source_attestation_missing_or_invalid")
     metadata = attestation.get("source_metadata")
     attestation_quality = attestation.get("quality")
     expected_metadata_fields = {
-        "provider_id", "service1_timeframe", "indicator_timeframe", "price_basis",
-        "retrieved_at", "coverage", "validation_summary", "candle_sources",
-        "volume_kinds", "limitations",
+        "provider_id",
+        "service1_timeframe",
+        "indicator_timeframe",
+        "price_basis",
+        "retrieved_at",
+        "coverage",
+        "validation_summary",
+        "candle_sources",
+        "volume_kinds",
+        "limitations",
     }
     expected_quality_fields = {
-        "is_final", "valid", "coverage_complete", "rejected_count",
-        "duplicate_count", "candle_count",
+        "is_final",
+        "valid",
+        "coverage_complete",
+        "rejected_count",
+        "duplicate_count",
+        "candle_count",
     }
     timeframe_map = {
-        "1m": ("M1", "1M"), "5m": ("M5", "5M"), "15m": ("M15", "15M"),
-        "30m": ("M30", "30M"), "1h": ("H1", "1H"), "4h": ("H4", "4H"),
+        "1m": ("M1", "1M"),
+        "5m": ("M5", "5M"),
+        "15m": ("M15", "15M"),
+        "30m": ("M30", "30M"),
+        "1h": ("H1", "1H"),
+        "4h": ("H4", "4H"),
         "1d": ("D1", "1D"),
     }
     if (
@@ -82,8 +109,12 @@ def _verify_service1_source_attestation(
         or attestation.get("algorithm") != "Ed25519"
         or attestation.get("instrument") != provenance.get("source_dataset_instrument")
         or not isinstance(provenance.get("source_dataset_instrument"), str)
-        or "".join(char for char in provenance["source_dataset_instrument"] if char.isalpha()).upper() != instrument.get("canonical_id")
-        or attestation.get("timeframe") != (timeframe_map.get(data.get("timeframe")) or (None, None))[1]
+        or "".join(
+            char for char in provenance["source_dataset_instrument"] if char.isalpha()
+        ).upper()
+        != instrument.get("canonical_id")
+        or attestation.get("timeframe")
+        != (timeframe_map.get(data.get("timeframe")) or (None, None))[1]
         or attestation.get("source_id") != provenance.get("source_dataset_id")
         or attestation.get("dataset_sha256") != provenance.get("source_dataset_sha256")
         or attestation.get("provider_id") != provenance.get("source_provider_id")
@@ -93,7 +124,8 @@ def _verify_service1_source_attestation(
         or not isinstance(attestation_quality, dict)
         or set(attestation_quality) != expected_quality_fields
         or metadata.get("provider_id") != attestation.get("provider_id")
-        or metadata.get("service1_timeframe") != (timeframe_map.get(data.get("timeframe")) or (None, None))[0]
+        or metadata.get("service1_timeframe")
+        != (timeframe_map.get(data.get("timeframe")) or (None, None))[0]
         or metadata.get("indicator_timeframe") != attestation.get("timeframe")
         or metadata.get("retrieved_at") != attestation.get("observed_at")
         or attestation_quality.get("is_final") is not True
@@ -109,8 +141,12 @@ def _verify_service1_source_attestation(
         raise LifecycleEvidenceError("source_attestation_metadata_mismatch")
     basis = str(metadata.get("price_basis", "vendor_defined")).lower()
     basis_map = {
-        "bid": "BID", "ask": "ASK", "mid": "MID", "midpoint": "MID",
-        "last": "LAST", "close": "LAST",
+        "bid": "BID",
+        "ask": "ASK",
+        "mid": "MID",
+        "midpoint": "MID",
+        "last": "LAST",
+        "close": "LAST",
     }
     if market_basis.get("price_basis") != basis_map.get(basis, "VENDOR_DEFINED"):
         raise LifecycleEvidenceError("source_attestation_price_basis_mismatch")
@@ -127,7 +163,7 @@ def _verify_service1_source_attestation(
         raise LifecycleEvidenceError("source_attestation_signature_malformed")
     try:
         public_key_bytes = base64.b64decode(encoded_key, validate=True)
-        signature = base64.b64decode(signature_value[len("ed25519="):], validate=True)
+        signature = base64.b64decode(signature_value[len("ed25519=") :], validate=True)
         public_key = Ed25519PublicKey.from_public_bytes(public_key_bytes)
         signed_projection = {key: value for key, value in attestation.items() if key != "signature"}
         public_key.verify(signature, _service1_canonical_json(signed_projection))
@@ -160,7 +196,10 @@ def verify_lifecycle_event(
         raise LifecycleEvidenceError("event_type_mismatch")
     if envelope.get("schema_version") != EXPECTED_SCHEMA:
         raise LifecycleEvidenceError("schema_version_mismatch")
-    if envelope.get("schema_id") != EXPECTED_SCHEMA_ID or envelope.get("dataschema") != EXPECTED_SCHEMA_ID:
+    if (
+        envelope.get("schema_id") != EXPECTED_SCHEMA_ID
+        or envelope.get("dataschema") != EXPECTED_SCHEMA_ID
+    ):
         raise LifecycleEvidenceError("schema_id_mismatch")
     data = envelope.get("data")
     if not isinstance(data, dict):
@@ -185,8 +224,12 @@ def verify_lifecycle_event(
     if not isinstance(integrity, dict):
         raise LifecycleEvidenceError("integrity_missing")
     expected_fields = {
-        "canonicalization", "payload_sha256", "signature_algorithm",
-        "key_id", "signature", "signed_at",
+        "canonicalization",
+        "payload_sha256",
+        "signature_algorithm",
+        "key_id",
+        "signature",
+        "signed_at",
     }
     if set(integrity) != expected_fields:
         raise LifecycleEvidenceError("integrity_fields_invalid")
@@ -221,9 +264,7 @@ def verify_lifecycle_event(
     ):
         raise LifecycleEvidenceError("payload_digest_mismatch")
     try:
-        Ed25519PublicKey.from_public_bytes(public_raw).verify(
-            signature, bytes.fromhex(digest)
-        )
+        Ed25519PublicKey.from_public_bytes(public_raw).verify(signature, bytes.fromhex(digest))
     except (InvalidSignature, ValueError) as exc:
         raise LifecycleEvidenceError("signature_verification_failed") from exc
 
@@ -234,7 +275,8 @@ def verify_lifecycle_event(
         or len(instrument["canonical_id"]) != 6
         or not instrument["canonical_id"].isalpha()
         or not instrument["canonical_id"].isupper()
-        or instrument["canonical_id"] != instrument.get("base_currency", "") + instrument.get("quote_currency", "")
+        or instrument["canonical_id"]
+        != instrument.get("base_currency", "") + instrument.get("quote_currency", "")
     ):
         raise LifecycleEvidenceError("instrument_identity_invalid")
     if not isinstance(data.get("timeframe"), str) or not data["timeframe"]:
@@ -270,7 +312,10 @@ def verify_lifecycle_event(
         raise LifecycleEvidenceError("availability_time_in_future")
     quality = data.get("quality")
     if not isinstance(quality, dict) or quality.get("quality_status") not in {
-        "PASS", "DEGRADED", "FAIL", "UNKNOWN"
+        "PASS",
+        "DEGRADED",
+        "FAIL",
+        "UNKNOWN",
     }:
         raise LifecycleEvidenceError("quality_metadata_invalid")
     # The current Service 9 input API accepts caller-supplied candles. Its
@@ -343,7 +388,9 @@ class LifecycleEvidenceInbox:
                 )
             """)
 
-    def persist_verified(self, topic: str, envelope: dict[str, Any], verified: dict[str, Any]) -> str:
+    def persist_verified(
+        self, topic: str, envelope: dict[str, Any], verified: dict[str, Any]
+    ) -> str:
         encoded = json.dumps(envelope, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
         now = datetime.now(UTC).isoformat()
         with self._connect() as connection:
@@ -360,18 +407,28 @@ class LifecycleEvidenceInbox:
                     (verified["event_id"], verified["payload_sha256"], encoded, now),
                 )
                 return "CONFLICT"
-            connection.execute("""
+            connection.execute(
+                """
                 INSERT INTO lifecycle_evidence_inbox(
                     event_id,topic,envelope_json,payload_sha256,key_id,available_at,
                     instrument,timeframe,signature_verified,source_verified,received_at
                 ) VALUES(?,?,?,?,?,?,?,?,?,?,?)
-            """, (
-                verified["event_id"], topic, encoded, verified["payload_sha256"],
-                verified["key_id"], verified["available_at"], verified["instrument"],
-                verified["timeframe"], 1, int(verified["source_verified"]), now,
-            ))
+            """,
+                (
+                    verified["event_id"],
+                    topic,
+                    encoded,
+                    verified["payload_sha256"],
+                    verified["key_id"],
+                    verified["available_at"],
+                    verified["instrument"],
+                    verified["timeframe"],
+                    1,
+                    int(verified["source_verified"]),
+                    now,
+                ),
+            )
             return "STORED"
-
 
     def persist_rejected(
         self, delivery_id: str, event_id: str | None, envelope: dict[str, Any], reason: str
@@ -384,8 +441,13 @@ class LifecycleEvidenceInbox:
             )
 
     def point_in_time_contexts(
-        self, *, instrument: str, timeframe: str, source_dataset_id: str,
-        price_basis: str, cutoffs: list[datetime],
+        self,
+        *,
+        instrument: str,
+        timeframe: str,
+        source_dataset_id: str,
+        price_basis: str,
+        cutoffs: list[datetime],
     ) -> list[dict[str, float] | None]:
         """Build features using producer availability and durable inbox receipt cutoffs."""
         if not cutoffs:
@@ -432,24 +494,38 @@ class LifecycleEvidenceInbox:
                 contexts.append(None)
                 continue
             lifecycle = latest.get("lifecycle", {})
-            contexts.append({
-                "liquidity_sweep_bullish": float(lifecycle.get("direction") == "BULLISH"),
-                "liquidity_sweep_bearish": float(lifecycle.get("direction") == "BEARISH"),
-                "liquidity_displacement_confirmed": float(lifecycle.get("displacement_confirmed_at") is not None),
-                "liquidity_midpoint_reached": float(lifecycle.get("midpoint_first_reached_at") is not None),
-                "liquidity_midpoint_consolidation": float(lifecycle.get("consolidation_candidate_at") is not None),
-                "liquidity_invalidated": float(lifecycle.get("invalidated_at") is not None),
-            })
+            contexts.append(
+                {
+                    "liquidity_sweep_bullish": float(lifecycle.get("direction") == "BULLISH"),
+                    "liquidity_sweep_bearish": float(lifecycle.get("direction") == "BEARISH"),
+                    "liquidity_displacement_confirmed": float(
+                        lifecycle.get("displacement_confirmed_at") is not None
+                    ),
+                    "liquidity_midpoint_reached": float(
+                        lifecycle.get("midpoint_first_reached_at") is not None
+                    ),
+                    "liquidity_midpoint_consolidation": float(
+                        lifecycle.get("consolidation_candidate_at") is not None
+                    ),
+                    "liquidity_invalidated": float(lifecycle.get("invalidated_at") is not None),
+                }
+            )
         return contexts
 
     def status(self) -> dict[str, int]:
         with self._connect() as connection:
-            accepted_row = connection.execute("SELECT COUNT(*) AS n FROM lifecycle_evidence_inbox").fetchone()
+            accepted_row = connection.execute(
+                "SELECT COUNT(*) AS n FROM lifecycle_evidence_inbox"
+            ).fetchone()
             source_row = connection.execute(
                 "SELECT COUNT(*) AS n FROM lifecycle_evidence_inbox WHERE source_verified=1"
             ).fetchone()
-            conflict_row = connection.execute("SELECT COUNT(*) AS n FROM lifecycle_evidence_conflicts").fetchone()
-            rejected_row = connection.execute("SELECT COUNT(*) AS n FROM lifecycle_evidence_quarantine").fetchone()
+            conflict_row = connection.execute(
+                "SELECT COUNT(*) AS n FROM lifecycle_evidence_conflicts"
+            ).fetchone()
+            rejected_row = connection.execute(
+                "SELECT COUNT(*) AS n FROM lifecycle_evidence_quarantine"
+            ).fetchone()
             accepted = int(accepted_row["n"]) if accepted_row else 0
             source_verified = int(source_row["n"]) if source_row else 0
             conflicts = int(conflict_row["n"]) if conflict_row else 0
@@ -475,10 +551,16 @@ class LifecycleEvidenceConsumer:
     def _token(self) -> str:
         now = int(time.time())
         subject = "fx-historical-market-analysis-service"
-        body = json.dumps({
-            "sub": subject, "role": "consumer", "iat": now,
-            "exp": now + 300, "jti": str(uuid.uuid4()),
-        }, separators=(",", ":")).encode("utf-8")
+        body = json.dumps(
+            {
+                "sub": subject,
+                "role": "consumer",
+                "iat": now,
+                "exp": now + 300,
+                "jti": str(uuid.uuid4()),
+            },
+            separators=(",", ":"),
+        ).encode("utf-8")
         secret = (self.settings.lifecycle_event_bus_consumer_secret or "").encode("utf-8")
         signature = hmac.new(secret, body, hashlib.sha256).digest()
         return _b64url_encode(body) + "." + _b64url_encode(signature)
@@ -591,8 +673,13 @@ class LifecycleEvidenceConsumer:
         response.raise_for_status()
 
     def point_in_time_contexts(
-        self, *, instrument: str, timeframe: str, source_dataset_id: str,
-        price_basis: str, cutoffs: list[datetime],
+        self,
+        *,
+        instrument: str,
+        timeframe: str,
+        source_dataset_id: str,
+        price_basis: str,
+        cutoffs: list[datetime],
     ) -> list[dict[str, float] | None]:
         return self.inbox.point_in_time_contexts(
             instrument=instrument,
@@ -614,7 +701,7 @@ class LifecycleEvidenceConsumer:
             "source_attested_events_available": source_attested,
             "reason": (
                 "Source-attested events are available; feature eligibility is determined per replay origin using exact dataset, instrument, timeframe, price basis and producer/inbox availability. This is not a vendor-origin signature."
-                if source_attested else
-                "No source-attested lifecycle events are stored; caller-supplied lifecycle assertions remain excluded from model features."
+                if source_attested
+                else "No source-attested lifecycle events are stored; caller-supplied lifecycle assertions remain excluded from model features."
             ),
         }

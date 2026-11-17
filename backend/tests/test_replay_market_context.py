@@ -218,7 +218,9 @@ def test_invalidated_lifecycle_preserves_prior_transition_features() -> None:
         )
     )
     features = [{"reference_index": 0}]
-    names, has_context = _attach_market_context_features(features, [observation], [candle_available_at])
+    names, has_context = _attach_market_context_features(
+        features, [observation], [candle_available_at]
+    )
 
     assert has_context is False
     assert not any(name.startswith("liquidity_") for name in names)

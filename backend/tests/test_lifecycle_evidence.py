@@ -34,7 +34,9 @@ def signed_envelope(
     public_raw = private_key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
     key_id = "service9-ed25519-test"
     service1_private_key = Ed25519PrivateKey.generate()
-    service1_public_raw = service1_private_key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+    service1_public_raw = service1_private_key.public_key().public_bytes(
+        Encoding.Raw, PublicFormat.Raw
+    )
     service1_key_id = "service1-historical-test"
     source_dataset_sha256 = "b" * 64
     source_dataset_id = f"historical:test-provider:{source_dataset_sha256[:24]}"
@@ -51,22 +53,33 @@ def signed_envelope(
         "timeframe": "1M",
         "dataset_sha256": source_dataset_sha256,
         "quality": {
-            "is_final": True, "valid": True, "coverage_complete": True,
-            "rejected_count": 0, "duplicate_count": 0, "candle_count": 10,
+            "is_final": True,
+            "valid": True,
+            "coverage_complete": True,
+            "rejected_count": 0,
+            "duplicate_count": 0,
+            "candle_count": 10,
         },
         "volume_semantics": "not_supplied",
         "source_metadata": {
-            "provider_id": "test-provider", "service1_timeframe": "M1",
-            "indicator_timeframe": "1M", "price_basis": "midpoint",
+            "provider_id": "test-provider",
+            "service1_timeframe": "M1",
+            "indicator_timeframe": "1M",
+            "price_basis": "midpoint",
             "retrieved_at": now.isoformat().replace("+00:00", "Z"),
-            "coverage": {}, "validation_summary": {}, "candle_sources": [],
-            "volume_kinds": [], "limitations": [],
+            "coverage": {},
+            "validation_summary": {},
+            "candle_sources": [],
+            "volume_kinds": [],
+            "limitations": [],
         },
     }
     source_attestation["signature"] = "ed25519=" + base64.b64encode(
-        service1_private_key.sign(json.dumps(
-            source_attestation, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-        ).encode("utf-8"))
+        service1_private_key.sign(
+            json.dumps(
+                source_attestation, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+            ).encode("utf-8")
+        )
     ).decode("ascii")
     data = {
         "contract_version": "liquidity-lifecycle-evidence/v1",
@@ -128,11 +141,13 @@ def signed_envelope(
             "source_dataset_sha256": source_dataset_sha256,
             "source_provider_id": "test-provider",
             "source_attestation": source_attestation,
-            "lineage": [{
-                "service_id": "fx-liquidity-analysis-service",
-                "artifact_id": "causal-post-sweep-lifecycle",
-                "artifact_version": "1.0.0",
-            }],
+            "lineage": [
+                {
+                    "service_id": "fx-liquidity-analysis-service",
+                    "artifact_id": "causal-post-sweep-lifecycle",
+                    "artifact_version": "1.0.0",
+                }
+            ],
         },
         "correlation": {
             "correlation_id": event_id,
@@ -146,9 +161,7 @@ def signed_envelope(
         "payload_sha256": digest,
         "signature_algorithm": "Ed25519",
         "key_id": key_id,
-        "signature": base64.b64encode(
-            private_key.sign(bytes.fromhex(digest))
-        ).decode("ascii"),
+        "signature": base64.b64encode(private_key.sign(bytes.fromhex(digest))).decode("ascii"),
         "signed_at": now.isoformat().replace("+00:00", "Z"),
     }
     envelope = {
@@ -161,7 +174,9 @@ def signed_envelope(
         "data": data,
     }
     trust = json.dumps({key_id: base64.b64encode(public_raw).decode("ascii")})
-    source_trust = json.dumps({service1_key_id: base64.b64encode(service1_public_raw).decode("ascii")})
+    source_trust = json.dumps(
+        {service1_key_id: base64.b64encode(service1_public_raw).decode("ascii")}
+    )
     return envelope, trust, source_trust
 
 
@@ -182,7 +197,9 @@ def test_rejects_payload_tampering_after_signature() -> None:
     envelope, trust, source_trust = signed_envelope(private_key)
     envelope["data"]["lifecycle"]["state"] = "INVALIDATED"
     with pytest.raises(LifecycleEvidenceError, match="payload_digest_mismatch"):
-        verify_lifecycle_event(envelope, public_keys_json=trust, source_public_keys_json=source_trust)
+        verify_lifecycle_event(
+            envelope, public_keys_json=trust, source_public_keys_json=source_trust
+        )
 
 
 def test_rejects_unknown_signing_key() -> None:
@@ -190,14 +207,18 @@ def test_rejects_unknown_signing_key() -> None:
     envelope, trust, source_trust = signed_envelope(private_key)
     envelope["data"]["integrity"]["key_id"] = "untrusted-key"
     with pytest.raises(LifecycleEvidenceError, match="signing_key_untrusted"):
-        verify_lifecycle_event(envelope, public_keys_json=trust, source_public_keys_json=source_trust)
+        verify_lifecycle_event(
+            envelope, public_keys_json=trust, source_public_keys_json=source_trust
+        )
 
 
 def test_rejects_non_monotonic_event_timestamps_even_with_valid_signature() -> None:
     private_key = Ed25519PrivateKey.generate()
     envelope, trust, source_trust = signed_envelope(private_key, reverse_temporal_order=True)
     with pytest.raises(LifecycleEvidenceError, match="temporal_order_invalid"):
-        verify_lifecycle_event(envelope, public_keys_json=trust, source_public_keys_json=source_trust)
+        verify_lifecycle_event(
+            envelope, public_keys_json=trust, source_public_keys_json=source_trust
+        )
 
 
 def test_durable_inbox_deduplicates_and_records_event_id_conflicts(tmp_path) -> None:
@@ -214,12 +235,14 @@ def test_durable_inbox_deduplicates_and_records_event_id_conflicts(tmp_path) -> 
         private_key, event_id="lifecycle-1", state="INVALIDATED"
     )
     conflicting_verified = verify_lifecycle_event(
-        conflicting, public_keys_json=conflicting_trust,
+        conflicting,
+        public_keys_json=conflicting_trust,
         source_public_keys_json=conflicting_source_trust,
     )
-    assert inbox.persist_verified(
-        "gfx.liquidity.lifecycle.v1", conflicting, conflicting_verified
-    ) == "CONFLICT"
+    assert (
+        inbox.persist_verified("gfx.liquidity.lifecycle.v1", conflicting, conflicting_verified)
+        == "CONFLICT"
+    )
     assert inbox.status() == {
         "signature_verified_events": 1,
         "source_attested_events": 1,
@@ -260,8 +283,8 @@ def test_rejects_invalid_service1_signature_even_when_service9_event_signature_i
     private_key = Ed25519PrivateKey.generate()
     envelope, trust, source_trust = signed_envelope(private_key)
     signature = envelope["data"]["provenance"]["source_attestation"]["signature"]
-    envelope["data"]["provenance"]["source_attestation"]["signature"] = (
-        signature[:-2] + ("AA" if signature[-2:] != "AA" else "BB")
+    envelope["data"]["provenance"]["source_attestation"]["signature"] = signature[:-2] + (
+        "AA" if signature[-2:] != "AA" else "BB"
     )
     data = envelope["data"]
     integrity = data.pop("integrity")
@@ -269,9 +292,7 @@ def test_rejects_invalid_service1_signature_even_when_service9_event_signature_i
     data["integrity"] = {
         **integrity,
         "payload_sha256": digest,
-        "signature": base64.b64encode(
-            private_key.sign(bytes.fromhex(digest))
-        ).decode("ascii"),
+        "signature": base64.b64encode(private_key.sign(bytes.fromhex(digest))).decode("ascii"),
     }
     with pytest.raises(LifecycleEvidenceError, match="source_attestation_signature_invalid"):
         verify_lifecycle_event(

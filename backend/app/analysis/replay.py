@@ -392,8 +392,7 @@ def _attach_market_context_features(
     ]
     has_session_context = any(item.session_context is not None for item in observations)
     has_trusted_lifecycle_context = bool(
-        trusted_lifecycle_contexts
-        and any(item is not None for item in trusted_lifecycle_contexts)
+        trusted_lifecycle_contexts and any(item is not None for item in trusted_lifecycle_contexts)
     )
     context_feature_names = list(session_feature_names)
     if has_trusted_lifecycle_context:
@@ -424,7 +423,8 @@ def _attach_market_context_features(
         if has_trusted_lifecycle_context:
             lifecycle_context = (
                 trusted_lifecycle_contexts[index]
-                if trusted_lifecycle_contexts is not None and index < len(trusted_lifecycle_contexts)
+                if trusted_lifecycle_contexts is not None
+                and index < len(trusted_lifecycle_contexts)
                 else None
             )
             if lifecycle_context is None:
@@ -437,6 +437,7 @@ def _attach_market_context_features(
     # ReplayObservationInput.liquidity_lifecycle is caller-supplied and remains
     # audit-only. Only the server-side inbox query can supply trusted features.
     return context_feature_names, True
+
 
 def run_historical_replay(
     request: HistoricalReplayRequest,

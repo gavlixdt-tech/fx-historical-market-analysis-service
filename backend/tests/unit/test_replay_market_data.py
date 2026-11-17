@@ -389,9 +389,7 @@ async def test_market_data_replay_verifies_service1_historical_attestation(
         fake_run,
     )
     data, public_keys = _attested_data()
-    request = _request().model_copy(
-        update={"source_dataset_id": data.provenance["source_id"]}
-    )
+    request = _request().model_copy(update={"source_dataset_id": data.provenance["source_id"]})
     result = await run_market_data_replay(
         request,
         settings=_settings(public_keys_json=public_keys, attestation_required=True),
@@ -449,9 +447,7 @@ async def test_market_data_replay_attaches_only_matching_source_attested_lifecyc
         fake_run,
     )
     data, public_keys = _attested_data()
-    request = _request().model_copy(
-        update={"source_dataset_id": data.provenance["source_id"]}
-    )
+    request = _request().model_copy(update={"source_dataset_id": data.provenance["source_id"]})
     result = await run_market_data_replay(
         request,
         settings=_settings(public_keys_json=public_keys, attestation_required=True),
@@ -465,9 +461,12 @@ async def test_market_data_replay_attaches_only_matching_source_attested_lifecyc
     assert query["source_dataset_id"] == data.provenance["source_id"]
     assert query["price_basis"] == "MID"
     assert captured["trusted_contexts"][0]["liquidity_sweep_bullish"] == 1.0
-    assert result["reproducibility"]["lifecycle_evidence"][
-        "point_in_time_observations_with_source_attested_events"
-    ] == 1
+    assert (
+        result["reproducibility"]["lifecycle_evidence"][
+            "point_in_time_observations_with_source_attested_events"
+        ]
+        == 1
+    )
 
 
 @pytest.mark.asyncio
