@@ -523,6 +523,7 @@ class LifecycleEvidenceInbox:
             or verified["lifecycle_id"] != row["lifecycle_id"]
             or verified["transition_sequence"] != row["transition_sequence"]
             or verified["transition_sha256"] != row["transition_sha256"]
+            or verified["source_dataset_id"] != row["source_dataset_id"]
             or _epoch_microseconds(_parse_utc(row["available_at"], "stored_available_at"))
             != int(row["available_at_epoch_us"])
             or _epoch_microseconds(_parse_utc(row["received_at"], "stored_received_at"))
@@ -1380,6 +1381,8 @@ class PostgresLifecycleEvidenceInbox:
                 WHERE (i.source_verified=TRUE OR EXISTS (
                     SELECT 1 FROM lifecycle_evidence_source_verifications v
                     WHERE v.event_id=i.event_id
+                      AND v.payload_sha256=i.payload_sha256
+                      AND v.source_dataset_id=i.source_dataset_id
                 )) AND i.instrument=%s AND i.timeframe=%s AND i.source_dataset_id=%s
                   AND i.available_at_epoch_us<=%s AND i.received_at_epoch_us<=%s
                 """,
@@ -1523,7 +1526,10 @@ class PostgresLifecycleEvidenceInbox:
                        transition_sequence,transition_sha256,available_at_epoch_us,received_at_epoch_us
                 FROM lifecycle_evidence_inbox
                 WHERE lifecycle_id=%s AND (source_verified=TRUE OR EXISTS (
-                    SELECT 1 FROM lifecycle_evidence_source_verifications v WHERE v.event_id=lifecycle_evidence_inbox.event_id
+                    SELECT 1 FROM lifecycle_evidence_source_verifications v
+                    WHERE v.event_id=lifecycle_evidence_inbox.event_id
+                      AND v.payload_sha256=lifecycle_evidence_inbox.payload_sha256
+                      AND v.source_dataset_id=lifecycle_evidence_inbox.source_dataset_id
                 ))
                 ORDER BY transition_sequence DESC
                 """,
