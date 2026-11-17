@@ -504,9 +504,7 @@ The optional consumer code and exact deployment variables are documented in the 
 
 ## Current implementation and verification snapshot
 
-The latest Service 2 PostgreSQL inbox migration, conflict/quarantine identity
-preservation, replay evidence checks and Admin Console replay-settings code
-were verified by GitHub Actions run
+The last fully passing Service 2 pipeline was GitHub Actions run
 [44024527475](https://github.com/gavlixdt-tech/fx-historical-market-analysis-service/actions/runs/44024527475)
 on commit `03ccd599986ef8989670880c2af17d80a1990a52`:
 
@@ -518,12 +516,28 @@ on commit `03ccd599986ef8989670880c2af17d80a1990a52`:
 - Dependency and secret audit: passed.
 - PostgreSQL restart durability check: passed.
 
-This validates Service 2 in CI, including its migration importer; it does **not**
-mean that Service 64 identity registration, Admin Console consumer registration,
-Railway production variables, live market-provider entitlement, vendor attestation,
-or deployed cross-service replay have been completed. Keep production feature
-flags disabled until external identity, trust-key, provider-credential and
-cross-service acceptance checks are complete.
+A later CI run found a new high-severity upstream advisory,
+[CVE-2026-112366 / GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf),
+in `picomatch@4.0.7`, reached through the Vite/Vitest development-tool chain.
+The affected packages are development dependencies, not application runtime
+dependencies. No patched upstream release was available at the time this
+snapshot was updated; the upstream remediation work remains open in
+[picomatch PR 237](https://github.com/micromatch/picomatch/pull/237).
+
+A narrow CI policy has been added: production dependencies remain blocking-
+audited at high severity, and the full dependency audit permits only this
+specific advisory while every affected package is verified absent from the
+production dependency tree. This is a documented temporary exception, **not
+a claim that the development dependency has been fixed**. The new policy and
+script still require a successful CI run on the latest commit.
+
+This validates the earlier Service 2 pipeline, including its PostgreSQL
+migration importer; it does **not** mean that Service 64 identity registration,
+Admin Console consumer registration, Railway production variables, live
+market-provider entitlement, vendor attestation, or deployed cross-service
+replay have been completed. Keep production feature flags disabled until
+external identity, trust-key, provider-credential and cross-service
+acceptance checks are complete.
 
 
 ## Service 9 → Service 62 → Service 2 lifecycle evidence consumer
