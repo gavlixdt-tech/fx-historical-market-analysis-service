@@ -333,6 +333,43 @@ def test_point_in_time_inbox_context_excludes_events_until_available_at(tmp_path
     assert contexts[1]["liquidity_displacement_confirmed"] == 1.0
 
 
+def test_separately_verified_source_attestation_is_eligible_for_sqlite_replay(tmp_path) -> None:
+    private_key = Ed25519PrivateKey.generate()
+    envelope, trust, source_trust = signed_envelope(private_key)
+    initially_unattested = verify_lifecycle_event(
+        envelope, public_keys_json=trust, source_public_keys_json="{}"
+    )
+    later_attested = verify_lifecycle_event(
+        envelope, public_keys_json=trust, source_public_keys_json=source_trust
+    )
+    assert initially_unattested["source_verified"] is False
+    assert later_attested["source_verified"] is True
+
+    inbox = LifecycleEvidenceInbox(
+        str(tmp_path / "lifecycle-inbox.sqlite3"),
+        public_keys_json=trust,
+        source_public_keys_json=source_trust,
+    )
+    assert (
+        inbox.persist_verified("gfx.liquidity.lifecycle.v1", envelope, initially_unattested)
+        == "STORED"
+    )
+    assert (
+        inbox.persist_verified("gfx.liquidity.lifecycle.v1", envelope, later_attested)
+        == "DUPLICATE"
+    )
+
+    manifest = inbox.point_in_time_evidence(
+        instrument="EURUSD",
+        timeframe="1m",
+        source_dataset_id=later_attested["source_dataset_id"],
+        price_basis="MID",
+        cutoffs=[datetime.now(UTC) + timedelta(minutes=1)],
+    )
+    assert manifest[0]["evidence_count"] == 1
+    assert manifest[0]["evidence"][0]["event_id"] == later_attested["event_id"]
+
+
 def test_rejects_invalid_service1_signature_even_when_service9_event_signature_is_valid() -> None:
     private_key = Ed25519PrivateKey.generate()
     envelope, trust, source_trust = signed_envelope(private_key)
@@ -692,7 +729,12 @@ def test_postgres_inbox_restart_history_and_point_in_time_evidence() -> None:
         source_public_keys_json=source_trust,
         expected_topic=topic,
     )
-    assert inbox.persist_verified(topic, envelope, verified) == "STORED"
+    initially_unattested = verify_lifecycle_event(
+        envelope, public_keys_json=trust, source_public_keys_json="{}"
+    )
+    assert initially_unattested["source_verified"] is False
+    assert inbox.persist_verified(topic, envelope, initially_unattested) == "STORED"
+    assert inbox.persist_verified(topic, envelope, verified) == "DUPLICATE"
     restarted = PostgresLifecycleEvidenceInbox(
         POSTGRES_DSN,
         public_keys_json=trust,
