@@ -387,7 +387,7 @@ class LifecycleEvidenceInbox:
         self, *, instrument: str, timeframe: str, source_dataset_id: str,
         price_basis: str, cutoffs: list[datetime],
     ) -> list[dict[str, float] | None]:
-        """Build per-observation features from only events available by each origin."""
+        """Build features using producer availability and durable inbox receipt cutoffs."""
         if not cutoffs:
             return []
         max_cutoff = max(cutoffs).astimezone(UTC).isoformat()
