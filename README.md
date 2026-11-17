@@ -658,3 +658,12 @@ pytest backend/tests/test_lifecycle_transition_history.py
 The feature remains research-only. Live provider entitlements, approved
 cross-service contract publication, trust-key provisioning and a deployed
 end-to-end acceptance run remain separate production gates.
+
+
+Replay reads now independently re-verify the stored Service 9 Ed25519
+signature, embedded Service 1 attestation, canonical payload digest, and
+indexed inbox metadata before a lifecycle record can become a feature or
+appear in an evidence manifest. A modified/corrupt SQLite record fails the
+replay closed; the system does not trust the inbox's mutable verification flag
+alone. The consumer loads the same configured public trust bundles at startup,
+so restart does not weaken replay verification.
