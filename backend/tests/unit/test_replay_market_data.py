@@ -388,8 +388,11 @@ async def test_market_data_replay_verifies_service1_historical_attestation(
         fake_run,
     )
     data, public_keys = _attested_data()
+    request = _request().model_copy(
+        update={"source_dataset_id": data.provenance["source_id"]}
+    )
     result = await run_market_data_replay(
-        _request(),
+        request,
         settings=_settings(public_keys_json=public_keys, attestation_required=True),
         upstream=_FakeMarketDataClient(data=data),
         request_id="request-1",
