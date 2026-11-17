@@ -300,3 +300,48 @@ def test_rejects_invalid_service1_signature_even_when_service9_event_signature_i
             public_keys_json=trust,
             source_public_keys_json=source_trust,
         )
+
+
+def test_point_in_time_contexts_use_utc_instants_and_preserve_unsorted_cutoff_order(tmp_path) -> None:
+    private_key = Ed25519PrivateKey.generate()
+    envelope, trust, source_trust = signed_envelope(private_key)
+    verified = verify_lifecycle_event(
+        envelope, public_keys_json=trust, source_public_keys_json=source_trust
+    )
+    inbox = LifecycleEvidenceInbox(str(tmp_path / "lifecycle-inbox.sqlite3"))
+    inbox.persist_verified("gfx.liquidity.lifecycle.v1", envelope, verified)
+
+    # Simulate the exact instant represented by a producer's trailing-Z value
+    # and a consumer receipt serialized with the equivalent +00:00 suffix.
+    available_at = datetime.fromisoformat(
+        envelope["data"]["temporal"]["available_at"].replace("Z", "+00:00")
+    )
+    with inbox._connect() as connection:
+        connection.execute(
+            "UPDATE lifecycle_evidence_inbox SET received_at=? WHERE event_id=?",
+            (available_at.isoformat(), verified["event_id"]),
+        )
+
+    contexts = inbox.point_in_time_contexts(
+        instrument="EURUSD",
+        timeframe="1m",
+        source_dataset_id=verified["source_dataset_id"],
+        price_basis="MID",
+        # Deliberately reverse chronological order; output must match this order.
+        cutoffs=[available_at, available_at - timedelta(microseconds=1)],
+    )
+    assert contexts[0] is not None
+    assert contexts[0]["liquidity_sweep_bearish"] == 1.0
+    assert contexts[1] is None
+
+
+def test_point_in_time_contexts_reject_naive_cutoffs(tmp_path) -> None:
+    inbox = LifecycleEvidenceInbox(str(tmp_path / "lifecycle-inbox.sqlite3"))
+    with pytest.raises(ValueError, match="timezone-aware"):
+        inbox.point_in_time_contexts(
+            instrument="EURUSD",
+            timeframe="1m",
+            source_dataset_id="historical:test-provider:abc",
+            price_basis="MID",
+            cutoffs=[datetime(2026, 1, 1)],
+        )
