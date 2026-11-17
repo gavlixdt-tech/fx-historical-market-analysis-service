@@ -83,7 +83,7 @@ def signed_envelope(
         service1_private_key.sign(
             json.dumps(
                 source_attestation, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-            ).encode("utf-8")
+            ).encode()
         )
     ).decode("ascii")
     sweep_occurred_at = source_at.isoformat().replace("+00:00", "Z")
@@ -95,7 +95,7 @@ def signed_envelope(
         (2, state, displacement_occurred_at),
     ):
         transition_id = hashlib.sha256(
-            f"{event_id}|{sequence}|{transition_state}|{occurred_at}".encode("utf-8")
+            f"{event_id}|{sequence}|{transition_state}|{occurred_at}".encode()
         ).hexdigest()
         transition_projection = {
             "lifecycle_id": event_id,
@@ -572,7 +572,7 @@ def test_inbox_rejects_divergent_history_prefix_even_when_each_event_is_signed(t
     ).isoformat().replace("+00:00", "Z")
     first_item["occurred_at"] = changed_time
     first_item["transition_id"] = hashlib.sha256(
-        f"{lifecycle['lifecycle_id']}|1|{first_item['state']}|{changed_time}".encode("utf-8")
+        f"{lifecycle['lifecycle_id']}|1|{first_item['state']}|{changed_time}".encode()
     ).hexdigest()
     first_projection = {
         key: first_item[key]
