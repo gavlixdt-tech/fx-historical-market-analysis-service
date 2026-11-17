@@ -2099,6 +2099,66 @@ class PostgresLifecycleEvidenceInbox:
             "persistence_backend": "postgresql",
         }
 
+    def assert_sqlite_cutover_complete(self, sqlite_path: str) -> None:
+        """Fail startup if any legacy SQLite evidence rows were not imported."""
+        path = Path(sqlite_path).expanduser().resolve()
+        if not path.is_file():
+            return
+        table_names = (
+            "lifecycle_evidence_inbox",
+            "lifecycle_evidence_source_verifications",
+            "lifecycle_evidence_conflicts",
+            "lifecycle_evidence_quarantine",
+        )
+        try:
+            with sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True) as source:
+                tables = {
+                    row[0]
+                    for row in source.execute(
+                        "SELECT name FROM sqlite_master WHERE type='table'"
+                    ).fetchall()
+                }
+                counts = {
+                    table: (
+                        int(source.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
+                        if table in tables
+                        else 0
+                    )
+                    for table in table_names
+                }
+        except sqlite3.Error as exc:
+            raise RuntimeError(
+                "legacy SQLite lifecycle inbox exists but cannot be verified; refusing PostgreSQL cutover"
+            ) from exc
+        if not any(counts.values()):
+            return
+        with self._connect() as connection:
+            imported = connection.execute(
+                """
+                SELECT inbox_count,verification_count,conflict_count,quarantine_count
+                FROM lifecycle_evidence_imports
+                WHERE source_path=%s ORDER BY imported_at DESC LIMIT 1
+                """,
+                (str(path),),
+            ).fetchone()
+        expected = (
+            int(imported["inbox_count"]),
+            int(imported["verification_count"]),
+            int(imported["conflict_count"]),
+            int(imported["quarantine_count"]),
+        ) if imported is not None else None
+        actual = (
+            counts["lifecycle_evidence_inbox"],
+            counts["lifecycle_evidence_source_verifications"],
+            counts["lifecycle_evidence_conflicts"],
+            counts["lifecycle_evidence_quarantine"],
+        )
+        if expected != actual:
+            raise RuntimeError(
+                "legacy SQLite lifecycle evidence is not fully imported into PostgreSQL; "
+                "stop Service 2 and run migrate_lifecycle_inbox_sqlite_to_postgres.py"
+            )
+
     def health(self) -> dict[str, Any]:
         try:
             with self._connect() as connection:
