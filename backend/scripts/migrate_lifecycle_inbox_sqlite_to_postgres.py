@@ -18,6 +18,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import psycopg
+import rfc8785
 from psycopg.rows import dict_row
 
 BACKEND = Path(__file__).resolve().parents[1]
@@ -56,6 +57,12 @@ def snapshot_sqlite(path: Path) -> tuple[str, str]:
         target = sqlite3.connect(snapshot_path)
         try:
             source.backup(target)
+            integrity = target.execute("PRAGMA integrity_check").fetchone()
+            if integrity is None or integrity[0] != "ok":
+                raise RuntimeError("SQLite snapshot failed PRAGMA integrity_check")
+        except Exception:
+            Path(snapshot_path).unlink(missing_ok=True)
+            raise
         finally:
             target.close()
     finally:
@@ -71,6 +78,9 @@ def migrate(sqlite_path: Path, dsn: str) -> dict[str, int | str]:
     try:
         source = sqlite3.connect(snapshot_path)
         source.row_factory = sqlite3.Row
+        integrity = source.execute("PRAGMA integrity_check").fetchone()
+        if integrity is None or integrity[0] != "ok":
+            raise RuntimeError("SQLite source snapshot failed PRAGMA integrity_check")
         inbox_rows = rows(source, "lifecycle_evidence_inbox")
         verification_rows = rows(source, "lifecycle_evidence_source_verifications")
         conflict_rows = rows(source, "lifecycle_evidence_conflicts")
@@ -101,19 +111,43 @@ def migrate(sqlite_path: Path, dsn: str) -> dict[str, int | str]:
                 raw = dict(row)
                 envelope_text = raw["envelope_json"]
                 envelope = json.loads(envelope_text)
-                data = envelope.get("data", {}) if isinstance(envelope, dict) else {}
-                provenance = data.get("provenance", {}) if isinstance(data, dict) else {}
-                available = raw.get("available_at_epoch_us")
-                received = raw.get("received_at_epoch_us")
-                available = int(available) if available is not None else epoch_us(raw["available_at"])
-                received = int(received) if received is not None else epoch_us(raw["received_at"])
+                if not isinstance(envelope, dict) or not isinstance(envelope.get("data"), dict):
+                    raise RuntimeError(f"Invalid lifecycle envelope in SQLite row {raw['event_id']}")
+                data = envelope["data"]
+                provenance = data.get("provenance", {})
+                if not isinstance(provenance, dict):
+                    raise RuntimeError(f"Invalid lifecycle provenance in SQLite row {raw['event_id']}")
+                integrity_block = data.get("integrity", {})
+                if not isinstance(integrity_block, dict):
+                    raise RuntimeError(f"Missing lifecycle integrity block in SQLite row {raw['event_id']}")
+                signed_projection = {key: value for key, value in data.items() if key != "integrity"}
+                calculated_digest = hashlib.sha256(rfc8785.dumps(signed_projection)).hexdigest()
+                if (
+                    calculated_digest != raw["payload_sha256"]
+                    or integrity_block.get("payload_sha256") != raw["payload_sha256"]
+                ):
+                    raise RuntimeError(f"SQLite lifecycle payload digest mismatch for {raw['event_id']}")
+                source_dataset_id = provenance.get("source_dataset_id")
+                stored_source_dataset_id = raw.get("source_dataset_id")
+                if stored_source_dataset_id is not None and stored_source_dataset_id != source_dataset_id:
+                    raise RuntimeError(f"SQLite source dataset index mismatch for {raw['event_id']}")
+                available_calculated = epoch_us(raw["available_at"])
+                received_calculated = epoch_us(raw["received_at"])
+                available_stored = raw.get("available_at_epoch_us")
+                received_stored = raw.get("received_at_epoch_us")
+                if available_stored is not None and int(available_stored) != available_calculated:
+                    raise RuntimeError(f"SQLite available_at index mismatch for {raw['event_id']}")
+                if received_stored is not None and int(received_stored) != received_calculated:
+                    raise RuntimeError(f"SQLite received_at index mismatch for {raw['event_id']}")
+                available = available_calculated
+                received = received_calculated
                 values = (
                     raw["event_id"], raw["topic"], envelope_text, raw["payload_sha256"],
                     raw["key_id"], raw["available_at"], raw["instrument"], raw["timeframe"],
                     bool(raw["signature_verified"]), bool(raw["source_verified"]),
                     raw["received_at"], available, received, raw.get("lifecycle_id"),
                     raw.get("transition_sequence"), raw.get("transition_sha256"),
-                    provenance.get("source_dataset_id"),
+                    source_dataset_id,
                 )
                 target.execute("""
                     INSERT INTO lifecycle_evidence_inbox(
@@ -132,8 +166,17 @@ def migrate(sqlite_path: Path, dsn: str) -> dict[str, int | str]:
                     raise RuntimeError(f"PostgreSQL event conflict while importing {raw['event_id']}")
                 imported["inbox"] += 1
 
+            inbox_by_id = {dict(row)["event_id"]: dict(row) for row in inbox_rows}
             for row in verification_rows:
                 raw = dict(row)
+                parent = inbox_by_id.get(raw["event_id"])
+                if (
+                    parent is None
+                    or parent["payload_sha256"] != raw["payload_sha256"]
+                    or json.loads(parent["envelope_json"]).get("data", {}).get("provenance", {}).get("source_dataset_id")
+                    != raw["source_dataset_id"]
+                ):
+                    raise RuntimeError(f"SQLite source-verification ledger is inconsistent for {raw['event_id']}")
                 target.execute("""
                     INSERT INTO lifecycle_evidence_source_verifications(
                         event_id,source_dataset_id,payload_sha256,verified_at
