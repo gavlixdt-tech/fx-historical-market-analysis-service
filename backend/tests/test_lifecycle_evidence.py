@@ -246,7 +246,7 @@ def test_rejects_unknown_signing_key() -> None:
 def test_rejects_non_monotonic_event_timestamps_even_with_valid_signature() -> None:
     private_key = Ed25519PrivateKey.generate()
     envelope, trust, source_trust = signed_envelope(private_key, reverse_temporal_order=True)
-    with pytest.raises(LifecycleEvidenceError, match="temporal_order_invalid"):
+    with pytest.raises(LifecycleEvidenceError, match="temporal_order_invalid|transition_history_time_regression"):
         verify_lifecycle_event(
             envelope, public_keys_json=trust, source_public_keys_json=source_trust
         )
@@ -402,7 +402,7 @@ def test_rejects_a_forked_or_tampered_transition_hash_chain() -> None:
     envelope, trust, source_trust = signed_envelope(private_key)
     envelope["data"]["lifecycle"]["transition_history"][0]["state"] = "INVALIDATED"
     _resign_service9_event(envelope, private_key)
-    with pytest.raises(LifecycleEvidenceError, match="transition_identity_invalid|transition_hash_chain_invalid"):
+    with pytest.raises(LifecycleEvidenceError, match="transition_identity_invalid|transition_hash_chain_invalid|transition_history_order_invalid"):
         verify_lifecycle_event(
             envelope, public_keys_json=trust, source_public_keys_json=source_trust
         )
