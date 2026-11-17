@@ -4,9 +4,12 @@ import base64
 import hashlib
 import json
 import os
+import subprocess
+import sys
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import psycopg
 import pytest
@@ -806,3 +809,78 @@ def test_postgres_inbox_evidence_and_quarantine_are_append_only() -> None:
     inbox.persist_rejected(delivery_id, None, {"invalid": True}, "signature_invalid")
     inbox.persist_rejected(delivery_id, None, {"invalid": False}, "duplicate_delivery")
     assert inbox.status()["quarantined_deliveries"] >= 1
+
+
+@pytest.mark.skipif(
+    not POSTGRES_DSN, reason="TEST_POSTGRES_URL is required for PostgreSQL migration tests"
+)
+def test_sqlite_inbox_cutover_preserves_evidence_conflicts_and_quarantine(tmp_path) -> None:
+    private_key_a = Ed25519PrivateKey.generate()
+    private_key_b = Ed25519PrivateKey.generate()
+    lifecycle_id = f"migration-lifecycle-{uuid.uuid4()}"
+    common_time = datetime.now(UTC).replace(microsecond=0)
+    envelope_a, trust_a, source_trust_a = signed_envelope(
+        private_key_a,
+        event_id="migration-branch-a",
+        lifecycle_id=lifecycle_id,
+        state="DISPLACEMENT_CONFIRMED",
+        now=common_time,
+    )
+    envelope_b, trust_b, source_trust_b = signed_envelope(
+        private_key_b,
+        event_id="migration-branch-b",
+        lifecycle_id=lifecycle_id,
+        state="INVALIDATED",
+        now=common_time,
+    )
+    verified_a = verify_lifecycle_event(
+        envelope_a, public_keys_json=trust_a, source_public_keys_json=source_trust_a
+    )
+    verified_b = verify_lifecycle_event(
+        envelope_b, public_keys_json=trust_b, source_public_keys_json=source_trust_b
+    )
+    sqlite_path = tmp_path / "lifecycle-inbox.sqlite3"
+    source = LifecycleEvidenceInbox(
+        str(sqlite_path),
+        public_keys_json=trust_a,
+        source_public_keys_json=source_trust_a,
+    )
+    assert source.persist_verified("gfx.liquidity.lifecycle.v1", envelope_a, verified_a) == "STORED"
+    assert source.persist_verified("gfx.liquidity.lifecycle.v1", envelope_b, verified_b) == "CONFLICT"
+    source.persist_rejected("migration-delivery-1", verified_b["event_id"], envelope_b, "invalid_for_replay")
+
+    script = Path(__file__).resolve().parents[1] / "scripts" / "migrate_lifecycle_inbox_sqlite_to_postgres.py"
+    command = [
+        sys.executable,
+        str(script),
+        "--sqlite-path",
+        str(sqlite_path),
+        "--database-url",
+        POSTGRES_DSN,
+    ]
+    first = subprocess.run(command, check=True, capture_output=True, text=True)
+    second = subprocess.run(command, check=True, capture_output=True, text=True)
+    assert json.loads(first.stdout)["status"] == "imported"
+    assert json.loads(second.stdout)["status"] == "already_imported"
+
+    migrated = PostgresLifecycleEvidenceInbox(
+        POSTGRES_DSN,
+        public_keys_json=trust_a,
+        source_public_keys_json=source_trust_a,
+    )
+    status = migrated.status()
+    assert status["source_attested_events"] >= 1
+    assert status["conflicts"] >= 1
+    assert status["quarantined_events"] >= 1
+    history = migrated.lifecycle_history(verified_a["lifecycle_id"])
+    assert history is not None
+    assert history["transition_head"]["transition_sequence"] == verified_a["transition_sequence"]
+    manifests = migrated.point_in_time_evidence(
+        instrument=verified_a["instrument"],
+        timeframe=verified_a["timeframe"],
+        source_dataset_id=verified_a["source_dataset_id"],
+        price_basis="MID",
+        cutoffs=[datetime.now(UTC) + timedelta(minutes=1)],
+    )
+    assert manifests[0]["evidence_count"] == 1
+    assert manifests[0]["evidence"][0]["event_id"] == verified_a["event_id"]
