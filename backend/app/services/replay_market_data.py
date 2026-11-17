@@ -298,6 +298,39 @@ async def run_market_data_replay(
             "evidence_count": manifest["evidence_count"],
             "evidence_set_sha256": manifest["evidence_set_sha256"],
         })
+    manifests_by_reference: dict[str, dict[str, Any]] = {}
+    for index, manifest in enumerate(trusted_lifecycle_evidence_manifests or []):
+        reference = observations[index].timestamp.astimezone(UTC).isoformat()
+        manifests_by_reference[reference] = manifest
+    for prediction in result.get("predictions", []):
+        if not isinstance(prediction, dict):
+            continue
+        reference_value = prediction.get("reference_timestamp")
+        manifest = manifests_by_reference.get(str(reference_value))
+        if manifest is None and isinstance(reference_value, str):
+            try:
+                normalized_reference = datetime.fromisoformat(
+                    reference_value.replace("Z", "+00:00")
+                ).astimezone(UTC).isoformat()
+                manifest = manifests_by_reference.get(normalized_reference)
+            except ValueError:
+                manifest = None
+        prediction["lifecycle_evidence"] = (
+            {
+                "status": "verified_source_attested" if manifest["evidence_count"] else "no_verified_evidence",
+                "prediction_origin": manifest["prediction_origin"],
+                "event_ids": [item["event_id"] for item in manifest["evidence"]],
+                "evidence_count": manifest["evidence_count"],
+                "evidence_set_sha256": manifest["evidence_set_sha256"],
+            }
+            if manifest is not None
+            else {
+                "status": "not_available",
+                "event_ids": [],
+                "evidence_count": 0,
+                "evidence_set_sha256": hashlib.sha256(b"[]").hexdigest(),
+            }
+        )
     result["reproducibility"]["lifecycle_evidence"] = {
         "consumer_enabled": lifecycle_consumer is not None,
         "evidence_registry": list(evidence_registry.values()),
