@@ -995,6 +995,14 @@ def test_sqlite_inbox_cutover_preserves_evidence_conflicts_and_quarantine(tmp_pa
         )
     )
     try:
+        pre_migration = PostgresLifecycleEvidenceInbox(
+            isolated_dsn,
+            public_keys_json=trust_a,
+            source_public_keys_json=source_trust_a,
+        )
+        with pytest.raises(RuntimeError, match="not fully imported"):
+            pre_migration.assert_sqlite_cutover_complete(str(sqlite_path))
+
         migration_module = runpy.run_path(str(script))
         migrate = migration_module["migrate"]
         with ThreadPoolExecutor(max_workers=2) as pool:
@@ -1014,6 +1022,7 @@ def test_sqlite_inbox_cutover_preserves_evidence_conflicts_and_quarantine(tmp_pa
             public_keys_json=trust_a,
             source_public_keys_json=source_trust_a,
         )
+        migrated.assert_sqlite_cutover_complete(str(sqlite_path))
         status = migrated.status()
         assert status["source_attested_events"] >= 1
         assert status["conflicts"] >= 2
@@ -1038,6 +1047,21 @@ def test_sqlite_inbox_cutover_preserves_evidence_conflicts_and_quarantine(tmp_pa
         )
         assert manifests[0]["evidence_count"] == 1
         assert manifests[0]["evidence"][0]["event_id"] == verified_a["event_id"]
+
+        extra_envelope, extra_trust, extra_source_trust = signed_envelope(
+            private_key_a, event_id=f"migration-extra-{uuid.uuid4()}"
+        )
+        extra_verified = verify_lifecycle_event(
+            extra_envelope,
+            public_keys_json=extra_trust,
+            source_public_keys_json=extra_source_trust,
+        )
+        assert (
+            source.persist_verified("gfx.liquidity.lifecycle.v1", extra_envelope, extra_verified)
+            == "STORED"
+        )
+        with pytest.raises(RuntimeError, match="not fully imported"):
+            migrated.assert_sqlite_cutover_complete(str(sqlite_path))
     finally:
         with psycopg.connect(POSTGRES_DSN) as connection:
             connection.execute(
