@@ -537,15 +537,7 @@ quarantined and acknowledged so one poison event cannot block the partition.
 A repeated event with the same ID and digest is deduplicated; the same ID with
 a different digest is retained in a conflict ledger.
 
-**Important source-trust boundary:** the current Service 9 analysis API
-accepts caller-supplied candles. Its signature proves Service 9 emitted the
-classification, not that the original vendor prices are authentic. The
-current consumer therefore records events as signature-verified but
-source-unverified, reports zero source-attested events, and keeps them
-out of forecast features. Do not interpret a successful consume/ack as
-forecast eligibility. A later contract version must carry independently
-verifiable Service 1 dataset/candle attestation before any event can be
-promoted to source-attested feature input.
+**Important source-trust boundary:** Service 9 requires and verifies a Service 1 Ed25519 signature over the exact complete candle dataset, then signs its derived lifecycle event. Service 2 independently verifies both signatures. This is a Service 1 dataset attestation, not a vendor-origin digital signature. Only events with both signatures verified are stored as source-attested; replay additionally requires exact source dataset, instrument, timeframe and price-basis matches, plus both producer availability and Service 2 inbox receipt no later than each prediction origin.
 
 ### Railway configuration
 
