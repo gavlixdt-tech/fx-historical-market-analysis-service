@@ -316,11 +316,18 @@ def verify_lifecycle_event(
     }
     for expected_sequence, item in enumerate(history, start=1):
         if not isinstance(item, dict) or set(item) != {
-            "lifecycle_id", "transition_id", "sequence", "state",
-            "occurred_at", "previous_transition_sha256", "transition_sha256",
+            "lifecycle_id",
+            "transition_id",
+            "sequence",
+            "state",
+            "occurred_at",
+            "previous_transition_sha256",
+            "transition_sha256",
         }:
             raise LifecycleEvidenceError("transition_history_entry_invalid")
-        current_state_rank = transition_state_ranks.get(item.get("state"), -1) if isinstance(item, dict) else -1
+        current_state_rank = (
+            transition_state_ranks.get(item.get("state"), -1) if isinstance(item, dict) else -1
+        )
         progression_skips_required_state = (
             previous_state_rank >= 0
             and current_state_rank != 4
@@ -374,7 +381,8 @@ def verify_lifecycle_event(
     if (
         lifecycle.get("transition_sequence") != final_transition["sequence"]
         or lifecycle.get("transition_sha256") != final_transition["transition_sha256"]
-        or lifecycle.get("previous_transition_sha256") != final_transition["previous_transition_sha256"]
+        or lifecycle.get("previous_transition_sha256")
+        != final_transition["previous_transition_sha256"]
         or lifecycle.get("transition_id") != final_transition["transition_id"]
         or data.get("event_id") != final_transition["transition_id"]
         or lifecycle.get("state") != aggregate_state_by_transition.get(final_transition["state"])
@@ -423,7 +431,10 @@ def verify_lifecycle_event(
         "sweep_confirmation_time": {"SWEEP_CONFIRMED", "SWEEP_CONFIRMED_AWAITING_DISPLACEMENT"},
         "displacement_confirmed_at": {"DISPLACEMENT_CONFIRMED"},
         "midpoint_first_reached_at": {"MIDPOINT_REACHED"},
-        "consolidation_candidate_at": {"CONSOLIDATION_CANDIDATE", "MIDPOINT_CONSOLIDATION_CANDIDATE"},
+        "consolidation_candidate_at": {
+            "CONSOLIDATION_CANDIDATE",
+            "MIDPOINT_CONSOLIDATION_CANDIDATE",
+        },
         "invalidated_at": {"INVALIDATED"},
     }
     for field_name, states in required_transition_fields.items():
@@ -435,7 +446,6 @@ def verify_lifecycle_event(
             for item in history
         ):
             raise LifecycleEvidenceError("lifecycle_milestone_missing_from_transition_history")
-
 
     if signed_at < produced_at or signed_at > available_at:
         raise LifecycleEvidenceError("signature_time_invalid")
@@ -557,9 +567,8 @@ class LifecycleEvidenceInbox:
                 )
             """)
             columns = {
-                row["name"] for row in connection.execute(
-                    "PRAGMA table_info(lifecycle_evidence_inbox)"
-                )
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(lifecycle_evidence_inbox)")
             }
             if "available_at_epoch_us" not in columns:
                 connection.execute(
@@ -661,7 +670,6 @@ class LifecycleEvidenceInbox:
                 BEGIN SELECT RAISE(ABORT, 'lifecycle inbox evidence is immutable'); END
             """)
 
-
     def persist_verified(
         self, topic: str, envelope: dict[str, Any], verified: dict[str, Any]
     ) -> str:
@@ -674,17 +682,18 @@ class LifecycleEvidenceInbox:
                 (verified["event_id"],),
             ).fetchone()
             if existing is not None:
-                if (
-                    existing["topic"] == topic
-                    and hmac.compare_digest(existing["payload_sha256"], verified["payload_sha256"])
+                if existing["topic"] == topic and hmac.compare_digest(
+                    existing["payload_sha256"], verified["payload_sha256"]
                 ):
                     if verified["source_verified"]:
                         connection.execute(
                             "INSERT OR IGNORE INTO lifecycle_evidence_source_verifications("
                             "event_id,source_dataset_id,payload_sha256,verified_at) VALUES(?,?,?,?)",
                             (
-                                verified["event_id"], verified["source_dataset_id"],
-                                verified["payload_sha256"], now,
+                                verified["event_id"],
+                                verified["source_dataset_id"],
+                                verified["payload_sha256"],
+                                now,
                             ),
                         )
                     return "DUPLICATE"
@@ -693,8 +702,8 @@ class LifecycleEvidenceInbox:
                     (verified["event_id"], verified["payload_sha256"], encoded, now),
                 )
                 return "CONFLICT"
-            incoming_history = envelope.get("data", {}).get("lifecycle", {}).get(
-                "transition_history", []
+            incoming_history = (
+                envelope.get("data", {}).get("lifecycle", {}).get("transition_history", [])
             )
             prior_rows = connection.execute(
                 "SELECT event_id,envelope_json FROM lifecycle_evidence_inbox "
@@ -703,8 +712,10 @@ class LifecycleEvidenceInbox:
             ).fetchall()
             for prior in prior_rows:
                 prior_envelope = json.loads(prior["envelope_json"])
-                prior_history = prior_envelope.get("data", {}).get("lifecycle", {}).get(
-                    "transition_history", []
+                prior_history = (
+                    prior_envelope.get("data", {})
+                    .get("lifecycle", {})
+                    .get("transition_history", [])
                 )
                 common_length = min(len(prior_history), len(incoming_history))
                 if any(
@@ -740,12 +751,21 @@ class LifecycleEvidenceInbox:
                 ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
                 (
-                    verified["event_id"], topic, encoded, verified["payload_sha256"],
-                    verified["key_id"], verified["available_at"], verified["instrument"],
-                    verified["timeframe"], 1, int(verified["source_verified"]), now,
+                    verified["event_id"],
+                    topic,
+                    encoded,
+                    verified["payload_sha256"],
+                    verified["key_id"],
+                    verified["available_at"],
+                    verified["instrument"],
+                    verified["timeframe"],
+                    1,
+                    int(verified["source_verified"]),
+                    now,
                     _epoch_microseconds(_parse_utc(verified["available_at"], "available_at")),
                     _epoch_microseconds(datetime.fromisoformat(now)),
-                    verified["lifecycle_id"], verified["transition_sequence"],
+                    verified["lifecycle_id"],
+                    verified["transition_sequence"],
                     verified["transition_sha256"],
                 ),
             )
@@ -786,9 +806,7 @@ class LifecycleEvidenceInbox:
                 raise ValueError("point-in-time replay cutoffs must be timezone-aware")
             indexed_cutoffs.append((index, cutoff.astimezone(UTC)))
 
-        max_cutoff_us = max(
-            _epoch_microseconds(value) for _, value in indexed_cutoffs
-        )
+        max_cutoff_us = max(_epoch_microseconds(value) for _, value in indexed_cutoffs)
         with self._connect() as connection:
             rows = connection.execute(
                 """
@@ -828,11 +846,16 @@ class LifecycleEvidenceInbox:
             observed_at = _parse_utc(temporal.get("observed_at"), "observed_at")
             effective_at = max(producer_available_at, inbox_received_at)
             if _epoch_microseconds(effective_at) <= max_cutoff_us:
-                events.append((
-                    effective_at, str(data.get("event_id", "")),
-                    str(lifecycle.get("lifecycle_id", "")),
-                    int(lifecycle.get("transition_sequence", 0)), observed_at, data,
-                ))
+                events.append(
+                    (
+                        effective_at,
+                        str(data.get("event_id", "")),
+                        str(lifecycle.get("lifecycle_id", "")),
+                        int(lifecycle.get("transition_sequence", 0)),
+                        observed_at,
+                        data,
+                    )
+                )
 
         # Delivery order is not lifecycle order. A late lower-sequence event
         # must never roll a lifecycle snapshot backwards.
@@ -919,17 +942,19 @@ class LifecycleEvidenceInbox:
                 continue
             producer_at = _parse_utc(temporal.get("available_at"), "available_at")
             received_at = _parse_utc(row["received_at"], "received_at")
-            events.append({
-                "event_id": row["event_id"],
-                "payload_sha256": row["payload_sha256"],
-                "lifecycle_id": lifecycle.get("lifecycle_id"),
-                "transition_sequence": int(lifecycle.get("transition_sequence", 0)),
-                "transition_sha256": lifecycle.get("transition_sha256"),
-                "observed_at": _parse_utc(temporal.get("observed_at"), "observed_at"),
-                "producer_available_at": producer_at,
-                "consumer_received_at": received_at,
-                "effective_available_at": max(producer_at, received_at),
-            })
+            events.append(
+                {
+                    "event_id": row["event_id"],
+                    "payload_sha256": row["payload_sha256"],
+                    "lifecycle_id": lifecycle.get("lifecycle_id"),
+                    "transition_sequence": int(lifecycle.get("transition_sequence", 0)),
+                    "transition_sha256": lifecycle.get("transition_sha256"),
+                    "observed_at": _parse_utc(temporal.get("observed_at"), "observed_at"),
+                    "producer_available_at": producer_at,
+                    "consumer_received_at": received_at,
+                    "effective_available_at": max(producer_at, received_at),
+                }
+            )
         events.sort(key=lambda item: (item["effective_available_at"], item["event_id"]))
         ordered = sorted(indexed, key=lambda item: (item[1], item[0]))
         output: list[dict[str, Any] | None] = [None] * len(cutoffs)
@@ -940,7 +965,10 @@ class LifecycleEvidenceInbox:
                 item = events[cursor]
                 lifecycle_id = str(item["lifecycle_id"])
                 previous = by_lifecycle.get(lifecycle_id)
-                if previous is None or item["transition_sequence"] > previous["transition_sequence"]:
+                if (
+                    previous is None
+                    or item["transition_sequence"] > previous["transition_sequence"]
+                ):
                     by_lifecycle[lifecycle_id] = item
                 cursor += 1
             manifest = sorted(
@@ -959,9 +987,7 @@ class LifecycleEvidenceInbox:
                 }
                 for item in manifest
             ]
-            manifest_digest = hashlib.sha256(
-                rfc8785.dumps(canonical_manifest)
-            ).hexdigest()
+            manifest_digest = hashlib.sha256(rfc8785.dumps(canonical_manifest)).hexdigest()
             output[original_index] = {
                 "prediction_origin": origin.isoformat(),
                 "instrument": instrument,
@@ -972,16 +998,21 @@ class LifecycleEvidenceInbox:
                 "evidence": canonical_manifest,
                 "evidence_set_sha256": manifest_digest,
             }
-        return [item if item is not None else {
-            "prediction_origin": cutoff.astimezone(UTC).isoformat(),
-            "instrument": instrument,
-            "timeframe": timeframe,
-            "source_dataset_id": source_dataset_id,
-            "price_basis": price_basis,
-            "evidence_count": 0,
-            "evidence": [],
-            "evidence_set_sha256": hashlib.sha256(rfc8785.dumps([])).hexdigest(),
-        } for item, cutoff in zip(output, cutoffs, strict=True)]
+        return [
+            item
+            if item is not None
+            else {
+                "prediction_origin": cutoff.astimezone(UTC).isoformat(),
+                "instrument": instrument,
+                "timeframe": timeframe,
+                "source_dataset_id": source_dataset_id,
+                "price_basis": price_basis,
+                "evidence_count": 0,
+                "evidence": [],
+                "evidence_set_sha256": hashlib.sha256(rfc8785.dumps([])).hexdigest(),
+            }
+            for item, cutoff in zip(output, cutoffs, strict=True)
+        ]
 
     def lifecycle_history(self, lifecycle_id: str) -> dict[str, Any] | None:
         """Reconstruct the signed transition chain for one lifecycle aggregate."""
@@ -1014,18 +1045,21 @@ class LifecycleEvidenceInbox:
             stored_history = stored_envelope["data"]["lifecycle"]["transition_history"]
             if len(stored_history) > len(history) or any(
                 stored_history[index].get("transition_id") != history[index].get("transition_id")
-                or stored_history[index].get("transition_sha256") != history[index].get("transition_sha256")
+                or stored_history[index].get("transition_sha256")
+                != history[index].get("transition_sha256")
                 for index in range(len(stored_history))
             ):
                 raise LifecycleEvidenceError("stored_lifecycle_history_fork_detected")
-            stored_events.append({
-                "event_id": row["event_id"],
-                "payload_sha256": row["payload_sha256"],
-                "transition_sequence": row["transition_sequence"],
-                "transition_sha256": row["transition_sha256"],
-                "producer_available_at": row["available_at"],
-                "consumer_received_at": row["received_at"],
-            })
+            stored_events.append(
+                {
+                    "event_id": row["event_id"],
+                    "payload_sha256": row["payload_sha256"],
+                    "transition_sequence": row["transition_sequence"],
+                    "transition_sha256": row["transition_sha256"],
+                    "producer_available_at": row["available_at"],
+                    "consumer_received_at": row["received_at"],
+                }
+            )
         return {
             "lifecycle_id": lifecycle_id,
             "head_event_id": latest_row["event_id"],
@@ -1072,7 +1106,6 @@ class LifecycleEvidenceInbox:
             "persisted_signatures_reverified_on_replay": True,
             "replay_fails_closed_on_integrity_error": True,
         }
-
 
 
 class PostgresLifecycleEvidenceInbox:
@@ -1228,8 +1261,12 @@ class PostgresLifecycleEvidenceInbox:
             """)
 
     def _record_conflict(
-        self, connection: psycopg.Connection[dict[str, Any]], event_id: str,
-        payload_sha256: str, encoded: str, now: str,
+        self,
+        connection: psycopg.Connection[dict[str, Any]],
+        event_id: str,
+        payload_sha256: str,
+        encoded: str,
+        now: str,
     ) -> None:
         connection.execute(
             """
@@ -1246,12 +1283,8 @@ class PostgresLifecycleEvidenceInbox:
         lifecycle_id = verified["lifecycle_id"]
         with self._connect() as connection:
             # Serialize all history/fork/sequence decisions for this aggregate.
-            connection.execute(
-                "SELECT pg_advisory_xact_lock(hashtext(%s))", (lifecycle_id,)
-            )
-            database_clock = connection.execute(
-                "SELECT clock_timestamp() AS now"
-            ).fetchone()
+            connection.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (lifecycle_id,))
+            database_clock = connection.execute("SELECT clock_timestamp() AS now").fetchone()
             if database_clock is None:
                 raise RuntimeError("PostgreSQL clock query returned no row")
             now_dt = database_clock["now"].astimezone(UTC)
@@ -1264,9 +1297,8 @@ class PostgresLifecycleEvidenceInbox:
                 (verified["event_id"],),
             ).fetchone()
             if existing is not None:
-                if (
-                    existing["topic"] == topic
-                    and hmac.compare_digest(existing["payload_sha256"], verified["payload_sha256"])
+                if existing["topic"] == topic and hmac.compare_digest(
+                    existing["payload_sha256"], verified["payload_sha256"]
                 ):
                     if verified["source_verified"]:
                         connection.execute(
@@ -1277,8 +1309,10 @@ class PostgresLifecycleEvidenceInbox:
                             ON CONFLICT(event_id) DO NOTHING
                             """,
                             (
-                                verified["event_id"], verified["source_dataset_id"],
-                                verified["payload_sha256"], now,
+                                verified["event_id"],
+                                verified["source_dataset_id"],
+                                verified["payload_sha256"],
+                                now,
                             ),
                         )
                     return "DUPLICATE"
@@ -1287,8 +1321,8 @@ class PostgresLifecycleEvidenceInbox:
                 )
                 return "CONFLICT"
 
-            incoming_history = envelope.get("data", {}).get("lifecycle", {}).get(
-                "transition_history", []
+            incoming_history = (
+                envelope.get("data", {}).get("lifecycle", {}).get("transition_history", [])
             )
             prior_rows = connection.execute(
                 """
@@ -1299,13 +1333,17 @@ class PostgresLifecycleEvidenceInbox:
             ).fetchall()
             for prior in prior_rows:
                 prior_envelope = json.loads(prior["envelope_json"])
-                prior_history = prior_envelope.get("data", {}).get("lifecycle", {}).get(
-                    "transition_history", []
+                prior_history = (
+                    prior_envelope.get("data", {})
+                    .get("lifecycle", {})
+                    .get("transition_history", [])
                 )
                 common_length = min(len(prior_history), len(incoming_history))
                 if any(
-                    prior_history[index].get("transition_id") != incoming_history[index].get("transition_id")
-                    or prior_history[index].get("transition_sha256") != incoming_history[index].get("transition_sha256")
+                    prior_history[index].get("transition_id")
+                    != incoming_history[index].get("transition_id")
+                    or prior_history[index].get("transition_sha256")
+                    != incoming_history[index].get("transition_sha256")
                     for index in range(common_length)
                 ):
                     self._record_conflict(
@@ -1337,12 +1375,23 @@ class PostgresLifecycleEvidenceInbox:
                 ON CONFLICT DO NOTHING RETURNING event_id
                 """,
                 (
-                    verified["event_id"], topic, encoded, verified["payload_sha256"],
-                    verified["key_id"], verified["available_at"], verified["instrument"],
-                    verified["timeframe"], True, bool(verified["source_verified"]), now,
+                    verified["event_id"],
+                    topic,
+                    encoded,
+                    verified["payload_sha256"],
+                    verified["key_id"],
+                    verified["available_at"],
+                    verified["instrument"],
+                    verified["timeframe"],
+                    True,
+                    bool(verified["source_verified"]),
+                    now,
                     _epoch_microseconds(_parse_utc(verified["available_at"], "available_at")),
-                    _epoch_microseconds(now_dt), lifecycle_id, verified["transition_sequence"],
-                    verified["transition_sha256"], verified["source_dataset_id"],
+                    _epoch_microseconds(now_dt),
+                    lifecycle_id,
+                    verified["transition_sequence"],
+                    verified["transition_sha256"],
+                    verified["source_dataset_id"],
                 ),
             ).fetchone()
             if inserted is None:
@@ -1357,9 +1406,7 @@ class PostgresLifecycleEvidenceInbox:
     ) -> None:
         encoded = json.dumps(envelope, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
         with self._connect() as connection:
-            database_clock = connection.execute(
-                "SELECT clock_timestamp() AS now"
-            ).fetchone()
+            database_clock = connection.execute("SELECT clock_timestamp() AS now").fetchone()
             if database_clock is None:
                 raise RuntimeError("PostgreSQL clock query returned no row")
             received_at = database_clock["now"].astimezone(UTC).isoformat()
@@ -1395,8 +1442,13 @@ class PostgresLifecycleEvidenceInbox:
             ).fetchall()
 
     def point_in_time_contexts(
-        self, *, instrument: str, timeframe: str, source_dataset_id: str,
-        price_basis: str, cutoffs: list[datetime],
+        self,
+        *,
+        instrument: str,
+        timeframe: str,
+        source_dataset_id: str,
+        price_basis: str,
+        cutoffs: list[datetime],
     ) -> list[dict[str, float] | None]:
         if not cutoffs:
             return []
@@ -1411,7 +1463,11 @@ class PostgresLifecycleEvidenceInbox:
         for row in rows:
             envelope = self._verify_persisted_row(row)
             data = envelope.get("data", {})
-            market_basis, temporal, lifecycle = data.get("market_basis"), data.get("temporal"), data.get("lifecycle")
+            market_basis, temporal, lifecycle = (
+                data.get("market_basis"),
+                data.get("temporal"),
+                data.get("lifecycle"),
+            )
             if not isinstance(market_basis, dict) or market_basis.get("price_basis") != price_basis:
                 continue
             if not isinstance(temporal, dict) or not isinstance(lifecycle, dict):
@@ -1420,12 +1476,16 @@ class PostgresLifecycleEvidenceInbox:
             received_at = _parse_utc(row["received_at"], "inbox_received_at")
             effective_at = max(producer_at, received_at)
             if _epoch_microseconds(effective_at) <= max_us:
-                events.append((
-                    effective_at, str(data.get("event_id", "")),
-                    str(lifecycle.get("lifecycle_id", "")),
-                    int(lifecycle.get("transition_sequence", 0)),
-                    _parse_utc(temporal.get("observed_at"), "observed_at"), data,
-                ))
+                events.append(
+                    (
+                        effective_at,
+                        str(data.get("event_id", "")),
+                        str(lifecycle.get("lifecycle_id", "")),
+                        int(lifecycle.get("transition_sequence", 0)),
+                        _parse_utc(temporal.get("observed_at"), "observed_at"),
+                        data,
+                    )
+                )
         events.sort(key=lambda item: (item[0], item[1]))
         output: list[dict[str, float] | None] = [None] * len(cutoffs)
         latest_by_lifecycle: dict[str, tuple[int, datetime, dict[str, Any]]] = {}
@@ -1448,16 +1508,27 @@ class PostgresLifecycleEvidenceInbox:
             output[original_index] = {
                 "liquidity_sweep_bullish": float(lifecycle.get("direction") == "BULLISH"),
                 "liquidity_sweep_bearish": float(lifecycle.get("direction") == "BEARISH"),
-                "liquidity_displacement_confirmed": float(lifecycle.get("displacement_confirmed_at") is not None),
-                "liquidity_midpoint_reached": float(lifecycle.get("midpoint_first_reached_at") is not None),
-                "liquidity_midpoint_consolidation": float(lifecycle.get("consolidation_candidate_at") is not None),
+                "liquidity_displacement_confirmed": float(
+                    lifecycle.get("displacement_confirmed_at") is not None
+                ),
+                "liquidity_midpoint_reached": float(
+                    lifecycle.get("midpoint_first_reached_at") is not None
+                ),
+                "liquidity_midpoint_consolidation": float(
+                    lifecycle.get("consolidation_candidate_at") is not None
+                ),
                 "liquidity_invalidated": float(lifecycle.get("invalidated_at") is not None),
             }
         return output
 
     def point_in_time_evidence(
-        self, *, instrument: str, timeframe: str, source_dataset_id: str,
-        price_basis: str, cutoffs: list[datetime],
+        self,
+        *,
+        instrument: str,
+        timeframe: str,
+        source_dataset_id: str,
+        price_basis: str,
+        cutoffs: list[datetime],
     ) -> list[dict[str, Any]]:
         indexed = []
         for index, cutoff in enumerate(cutoffs):
@@ -1477,15 +1548,19 @@ class PostgresLifecycleEvidenceInbox:
                 continue
             producer_at = _parse_utc(temporal.get("available_at"), "available_at")
             received_at = _parse_utc(row["received_at"], "received_at")
-            events.append({
-                "event_id": row["event_id"], "payload_sha256": row["payload_sha256"],
-                "lifecycle_id": lifecycle.get("lifecycle_id"),
-                "transition_sequence": int(lifecycle.get("transition_sequence", 0)),
-                "transition_sha256": lifecycle.get("transition_sha256"),
-                "observed_at": _parse_utc(temporal.get("observed_at"), "observed_at"),
-                "producer_available_at": producer_at, "consumer_received_at": received_at,
-                "effective_available_at": max(producer_at, received_at),
-            })
+            events.append(
+                {
+                    "event_id": row["event_id"],
+                    "payload_sha256": row["payload_sha256"],
+                    "lifecycle_id": lifecycle.get("lifecycle_id"),
+                    "transition_sequence": int(lifecycle.get("transition_sequence", 0)),
+                    "transition_sha256": lifecycle.get("transition_sha256"),
+                    "observed_at": _parse_utc(temporal.get("observed_at"), "observed_at"),
+                    "producer_available_at": producer_at,
+                    "consumer_received_at": received_at,
+                    "effective_available_at": max(producer_at, received_at),
+                }
+            )
         events.sort(key=lambda item: (item["effective_available_at"], item["event_id"]))
         output: list[dict[str, Any] | None] = [None] * len(cutoffs)
         by_lifecycle: dict[str, dict[str, Any]] = {}
@@ -1495,30 +1570,54 @@ class PostgresLifecycleEvidenceInbox:
                 item = events[cursor]
                 key = str(item["lifecycle_id"])
                 previous = by_lifecycle.get(key)
-                if previous is None or item["transition_sequence"] > previous["transition_sequence"]:
+                if (
+                    previous is None
+                    or item["transition_sequence"] > previous["transition_sequence"]
+                ):
                     by_lifecycle[key] = item
                 cursor += 1
-            manifest = sorted(by_lifecycle.values(), key=lambda item: (item["observed_at"], item["lifecycle_id"]))
-            canonical_manifest = [{
-                "event_id": item["event_id"], "payload_sha256": item["payload_sha256"],
-                "lifecycle_id": item["lifecycle_id"], "transition_sequence": item["transition_sequence"],
-                "transition_sha256": item["transition_sha256"],
-                "producer_available_at": item["producer_available_at"].isoformat(),
-                "consumer_received_at": item["consumer_received_at"].isoformat(),
-            } for item in manifest]
+            manifest = sorted(
+                by_lifecycle.values(), key=lambda item: (item["observed_at"], item["lifecycle_id"])
+            )
+            canonical_manifest = [
+                {
+                    "event_id": item["event_id"],
+                    "payload_sha256": item["payload_sha256"],
+                    "lifecycle_id": item["lifecycle_id"],
+                    "transition_sequence": item["transition_sequence"],
+                    "transition_sha256": item["transition_sha256"],
+                    "producer_available_at": item["producer_available_at"].isoformat(),
+                    "consumer_received_at": item["consumer_received_at"].isoformat(),
+                }
+                for item in manifest
+            ]
             output[original_index] = {
-                "prediction_origin": origin.isoformat(), "instrument": instrument,
-                "timeframe": timeframe, "source_dataset_id": source_dataset_id,
-                "price_basis": price_basis, "evidence_count": len(canonical_manifest),
+                "prediction_origin": origin.isoformat(),
+                "instrument": instrument,
+                "timeframe": timeframe,
+                "source_dataset_id": source_dataset_id,
+                "price_basis": price_basis,
+                "evidence_count": len(canonical_manifest),
                 "evidence": canonical_manifest,
-                "evidence_set_sha256": hashlib.sha256(rfc8785.dumps(canonical_manifest)).hexdigest(),
+                "evidence_set_sha256": hashlib.sha256(
+                    rfc8785.dumps(canonical_manifest)
+                ).hexdigest(),
             }
-        return [item if item is not None else {
-            "prediction_origin": cutoff.astimezone(UTC).isoformat(),
-            "instrument": instrument, "timeframe": timeframe, "source_dataset_id": source_dataset_id,
-            "price_basis": price_basis, "evidence_count": 0, "evidence": [],
-            "evidence_set_sha256": hashlib.sha256(rfc8785.dumps([])).hexdigest(),
-        } for item, cutoff in zip(output, cutoffs, strict=True)]
+        return [
+            item
+            if item is not None
+            else {
+                "prediction_origin": cutoff.astimezone(UTC).isoformat(),
+                "instrument": instrument,
+                "timeframe": timeframe,
+                "source_dataset_id": source_dataset_id,
+                "price_basis": price_basis,
+                "evidence_count": 0,
+                "evidence": [],
+                "evidence_set_sha256": hashlib.sha256(rfc8785.dumps([])).hexdigest(),
+            }
+            for item, cutoff in zip(output, cutoffs, strict=True)
+        ]
 
     def lifecycle_history(self, lifecycle_id: str) -> dict[str, Any] | None:
         if not lifecycle_id or len(lifecycle_id) > 200:
@@ -1551,29 +1650,37 @@ class PostgresLifecycleEvidenceInbox:
             stored_history = stored["data"]["lifecycle"]["transition_history"]
             if len(stored_history) > len(history) or any(
                 stored_history[index].get("transition_id") != history[index].get("transition_id")
-                or stored_history[index].get("transition_sha256") != history[index].get("transition_sha256")
+                or stored_history[index].get("transition_sha256")
+                != history[index].get("transition_sha256")
                 for index in range(len(stored_history))
             ):
                 raise LifecycleEvidenceError("stored_lifecycle_history_fork_detected")
-            stored_events.append({
-                "event_id": row["event_id"], "payload_sha256": row["payload_sha256"],
-                "transition_sequence": row["transition_sequence"],
-                "transition_sha256": row["transition_sha256"],
-                "producer_available_at": row["available_at"],
-                "consumer_received_at": row["received_at"],
-            })
+            stored_events.append(
+                {
+                    "event_id": row["event_id"],
+                    "payload_sha256": row["payload_sha256"],
+                    "transition_sequence": row["transition_sequence"],
+                    "transition_sha256": row["transition_sha256"],
+                    "producer_available_at": row["available_at"],
+                    "consumer_received_at": row["received_at"],
+                }
+            )
         return {
-            "lifecycle_id": lifecycle_id, "head_event_id": latest_row["event_id"],
+            "lifecycle_id": lifecycle_id,
+            "head_event_id": latest_row["event_id"],
             "head_sequence": latest_row["transition_sequence"],
             "head_transition_sha256": latest_row["transition_sha256"],
             "reconstructed_transition_history": history,
             "individually_received_transition_events": stored_events,
-            "history_complete_in_signed_head": True, "signature_reverified": True,
+            "history_complete_in_signed_head": True,
+            "signature_reverified": True,
         }
 
     def status(self) -> dict[str, Any]:
         with self._connect() as connection:
-            accepted = connection.execute("SELECT COUNT(*) AS n FROM lifecycle_evidence_inbox").fetchone() or {"n": 0}
+            accepted = connection.execute(
+                "SELECT COUNT(*) AS n FROM lifecycle_evidence_inbox"
+            ).fetchone() or {"n": 0}
             source = connection.execute(
                 """
                 SELECT COUNT(*) AS n FROM lifecycle_evidence_inbox i
@@ -1585,8 +1692,12 @@ class PostgresLifecycleEvidenceInbox:
                 )
                 """
             ).fetchone() or {"n": 0}
-            conflicts = connection.execute("SELECT COUNT(*) AS n FROM lifecycle_evidence_conflicts").fetchone() or {"n": 0}
-            rejected = connection.execute("SELECT COUNT(*) AS n FROM lifecycle_evidence_quarantine").fetchone() or {"n": 0}
+            conflicts = connection.execute(
+                "SELECT COUNT(*) AS n FROM lifecycle_evidence_conflicts"
+            ).fetchone() or {"n": 0}
+            rejected = connection.execute(
+                "SELECT COUNT(*) AS n FROM lifecycle_evidence_quarantine"
+            ).fetchone() or {"n": 0}
             history = connection.execute(
                 """
                 SELECT COUNT(DISTINCT lifecycle_id) AS lifecycles,
@@ -1618,7 +1729,12 @@ class PostgresLifecycleEvidenceInbox:
                 connection.execute("SELECT 1").fetchone()
             return {"configured": True, "connected": True, "backend": "postgresql"}
         except Exception as exc:
-            return {"configured": True, "connected": False, "backend": "postgresql", "detail": type(exc).__name__}
+            return {
+                "configured": True,
+                "connected": False,
+                "backend": "postgresql",
+                "detail": type(exc).__name__,
+            }
 
 
 class LifecycleEvidenceConsumer:
@@ -1626,7 +1742,9 @@ class LifecycleEvidenceConsumer:
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
-        inbox_type = PostgresLifecycleEvidenceInbox if settings.database_url else LifecycleEvidenceInbox
+        inbox_type = (
+            PostgresLifecycleEvidenceInbox if settings.database_url else LifecycleEvidenceInbox
+        )
         inbox_location = settings.database_url or settings.lifecycle_event_inbox_db_path
         self.inbox = inbox_type(
             inbox_location,
