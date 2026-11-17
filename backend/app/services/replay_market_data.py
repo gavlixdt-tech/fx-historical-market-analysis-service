@@ -12,6 +12,7 @@ from starlette.concurrency import run_in_threadpool
 
 from backend.app.analysis.replay import run_historical_replay
 from backend.app.clients.historical_attestation import verify_historical_dataset_attestation
+from backend.app.clients.lifecycle_evidence import LifecycleEvidenceConsumer
 from backend.app.clients.market_data import MarketDataClient
 from backend.app.clients.operational_settings import (
     ReplayOperationalParameters,
@@ -41,6 +42,7 @@ async def run_market_data_replay(
     settings: Settings,
     upstream: MarketDataClient,
     request_id: str,
+    lifecycle_consumer: LifecycleEvidenceConsumer | None = None,
 ) -> dict[str, Any]:
     if not upstream.is_configured:
         raise DependencyUnavailableError(
@@ -100,6 +102,9 @@ async def run_market_data_replay(
         validation_summary=data.validation_summary.model_dump(mode="json"),
         limitations=data.limitations,
     )
+    attested_source_id = data.provenance.get("source_id") if isinstance(data.provenance, dict) else None
+    if attestation_status == "verified" and payload.source_dataset_id != attested_source_id:
+        raise ValidationError("source_dataset_id must match the independently attested Service 1 dataset ID.")
     if not data.coverage.complete:
         raise ValidationError(
             "Market-data coverage is incomplete; replay requires a complete validated interval."
@@ -223,7 +228,38 @@ async def run_market_data_replay(
         random_seed=operational_parameters.random_seed,
         final_holdout_start=payload.final_holdout_start,
     )
-    result = await run_in_threadpool(run_historical_replay, replay_request)
+    trusted_lifecycle_contexts = None
+    if lifecycle_consumer is not None and attestation_status == "verified" and isinstance(attested_source_id, str):
+        price_basis_map = {
+            "bid": "BID", "ask": "ASK", "mid": "MID", "midpoint": "MID",
+            "last": "LAST", "close": "LAST",
+        }
+        lifecycle_price_basis = price_basis_map.get(str(data.price_basis.value).lower(), "VENDOR_DEFINED")
+        trusted_lifecycle_contexts = lifecycle_consumer.point_in_time_contexts(
+            instrument=data.canonical_instrument,
+            timeframe=payload.timeframe,
+            source_dataset_id=attested_source_id,
+            price_basis=lifecycle_price_basis,
+            cutoffs=[item.available_at for item in observations],
+        )
+    result = await run_in_threadpool(
+        run_historical_replay, replay_request, trusted_lifecycle_contexts
+    )
+    result["reproducibility"]["lifecycle_evidence"] = {
+        "consumer_enabled": lifecycle_consumer is not None,
+        "source_dataset_id": attested_source_id,
+        "point_in_time_observations_with_source_attested_events": (
+            sum(item is not None for item in trusted_lifecycle_contexts)
+            if trusted_lifecycle_contexts is not None else 0
+        ),
+        "availability_policy": "event.available_at <= observation.available_at",
+        "identity_policy": "exact instrument, timeframe, price basis and Service 1 source_dataset_id match",
+        "unverified_caller_supplied_lifecycle_context": "audit_only_not_used_as_model_feature",
+    }
+    if trusted_lifecycle_contexts is None or not any(item is not None for item in trusted_lifecycle_contexts):
+        result["warnings"].append(
+            "No source-attested lifecycle evidence was available by the replay origins; lifecycle model features were not attached."
+        )
     result["reproducibility"]["operational_settings"] = {
         "source": settings_source,
         "scope_id": resolved_settings.scope_id if resolved_settings is not None else None,
