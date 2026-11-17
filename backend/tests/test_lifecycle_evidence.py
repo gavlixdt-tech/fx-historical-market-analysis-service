@@ -23,7 +23,7 @@ def signed_envelope(
     event_id: str = "lifecycle-1",
     state: str = "DISPLACEMENT_CONFIRMED",
     reverse_temporal_order: bool = False,
- ) -> tuple[dict, str, str]:
+) -> tuple[dict, str, str]:
     now = datetime.now(UTC).replace(microsecond=0)
     source_at = now - timedelta(minutes=4)
     observed_at = now - timedelta(minutes=2)
@@ -92,6 +92,11 @@ def signed_envelope(
             "algorithm": "causal-post-sweep-lifecycle",
             "algorithm_version": "1.0.0",
             "classification_reasons": ["observed close confirmed displacement"],
+            "sweep_confirmation_time": observed_at.isoformat().replace("+00:00", "Z"),
+            "displacement_confirmed_at": observed_at.isoformat().replace("+00:00", "Z"),
+            "midpoint_first_reached_at": None,
+            "consolidation_candidate_at": None,
+            "invalidated_at": None,
         },
         "temporal": {
             "source_candle_at": source_at.isoformat().replace("+00:00", "Z"),
@@ -150,6 +155,8 @@ def signed_envelope(
         "type": "com.gavlix.market.liquidity.lifecycle.v1",
         "producer_id": "fx-liquidity-analysis-service",
         "schema_version": "liquidity-lifecycle-evidence/v1",
+        "schema_id": "https://contracts.gavlix.com/schemas/liquidity-lifecycle-evidence/v1/event.schema.json",
+        "dataschema": "https://contracts.gavlix.com/schemas/liquidity-lifecycle-evidence/v1/event.schema.json",
         "data": data,
     }
     trust = json.dumps({key_id: base64.b64encode(public_raw).decode("ascii")})
@@ -171,7 +178,7 @@ def test_verifies_service9_ed25519_signature_and_temporal_contract() -> None:
 
 def test_rejects_payload_tampering_after_signature() -> None:
     private_key = Ed25519PrivateKey.generate()
-    envelope, trust = signed_envelope(private_key)
+    envelope, trust, source_trust = signed_envelope(private_key)
     envelope["data"]["lifecycle"]["state"] = "INVALIDATED"
     with pytest.raises(LifecycleEvidenceError, match="payload_digest_mismatch"):
         verify_lifecycle_event(envelope, public_keys_json=trust, source_public_keys_json=source_trust)
