@@ -526,7 +526,7 @@ class LifecycleEvidenceInbox:
             or _epoch_microseconds(_parse_utc(row["received_at"], "stored_received_at"))
             != int(row["received_at_epoch_us"])
             or not bool(row["signature_verified"])
-            or not bool(row["source_verified"])
+            or not bool(verified["source_verified"])
         ):
             raise LifecycleEvidenceError("persisted_evidence_integrity_mismatch")
         return envelope
@@ -612,6 +612,14 @@ class LifecycleEvidenceInbox:
                 "ON lifecycle_evidence_inbox(instrument,timeframe,available_at_epoch_us,received_at_epoch_us)"
             )
             connection.execute("""
+                CREATE TABLE IF NOT EXISTS lifecycle_evidence_source_verifications (
+                    event_id TEXT PRIMARY KEY,
+                    source_dataset_id TEXT NOT NULL,
+                    payload_sha256 TEXT NOT NULL,
+                    verified_at TEXT NOT NULL
+                )
+            """)
+            connection.execute("""
                 CREATE TABLE IF NOT EXISTS lifecycle_evidence_conflicts (
                     conflict_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     event_id TEXT NOT NULL,
@@ -628,6 +636,16 @@ class LifecycleEvidenceInbox:
                     rejection_reason TEXT NOT NULL,
                     received_at TEXT NOT NULL
                 )
+            """)
+            connection.execute("""
+                CREATE TRIGGER IF NOT EXISTS trg_source_verification_no_update
+                BEFORE UPDATE ON lifecycle_evidence_source_verifications
+                BEGIN SELECT RAISE(ABORT, 'source verification attestations are immutable'); END
+            """)
+            connection.execute("""
+                CREATE TRIGGER IF NOT EXISTS trg_source_verification_no_delete
+                BEFORE DELETE ON lifecycle_evidence_source_verifications
+                BEGIN SELECT RAISE(ABORT, 'source verification attestations are immutable'); END
             """)
             connection.execute("""
                 CREATE TRIGGER IF NOT EXISTS trg_lifecycle_inbox_no_update
@@ -657,6 +675,15 @@ class LifecycleEvidenceInbox:
                     existing["topic"] == topic
                     and hmac.compare_digest(existing["payload_sha256"], verified["payload_sha256"])
                 ):
+                    if verified["source_verified"]:
+                        connection.execute(
+                            "INSERT OR IGNORE INTO lifecycle_evidence_source_verifications("
+                            "event_id,source_dataset_id,payload_sha256,verified_at) VALUES(?,?,?,?)",
+                            (
+                                verified["event_id"], verified["source_dataset_id"],
+                                verified["payload_sha256"], now,
+                            ),
+                        )
                     return "DUPLICATE"
                 connection.execute(
                     "INSERT INTO lifecycle_evidence_conflicts(event_id,payload_sha256,envelope_json,received_at) VALUES(?,?,?,?)",
@@ -668,7 +695,7 @@ class LifecycleEvidenceInbox:
             )
             prior_rows = connection.execute(
                 "SELECT event_id,envelope_json FROM lifecycle_evidence_inbox "
-                "WHERE lifecycle_id=? AND source_verified=1",
+                "WHERE lifecycle_id=?",
                 (verified["lifecycle_id"],),
             ).fetchall()
             for prior in prior_rows:
@@ -766,7 +793,10 @@ class LifecycleEvidenceInbox:
                        instrument,timeframe,signature_verified,source_verified,lifecycle_id,
                        transition_sequence,transition_sha256,available_at_epoch_us,received_at_epoch_us
                 FROM lifecycle_evidence_inbox
-                WHERE source_verified=1 AND instrument=? AND timeframe=?
+                WHERE (source_verified=1 OR EXISTS (
+                    SELECT 1 FROM lifecycle_evidence_source_verifications v
+                    WHERE v.event_id=lifecycle_evidence_inbox.event_id
+                )) AND instrument=? AND timeframe=?
                   AND json_extract(envelope_json, '$.data.provenance.source_dataset_id')=?
                   AND available_at_epoch_us<=?
                   AND received_at_epoch_us<=?
@@ -866,7 +896,10 @@ class LifecycleEvidenceInbox:
                        instrument,timeframe,signature_verified,source_verified,lifecycle_id,
                        transition_sequence,transition_sha256,available_at_epoch_us,received_at_epoch_us
                 FROM lifecycle_evidence_inbox
-                WHERE source_verified=1 AND instrument=? AND timeframe=?
+                WHERE (source_verified=1 OR EXISTS (
+                    SELECT 1 FROM lifecycle_evidence_source_verifications v
+                    WHERE v.event_id=lifecycle_evidence_inbox.event_id
+                )) AND instrument=? AND timeframe=?
                   AND json_extract(envelope_json, '$.data.provenance.source_dataset_id')=?
                   AND available_at_epoch_us<=? AND received_at_epoch_us<=?
                 """,
@@ -958,7 +991,10 @@ class LifecycleEvidenceInbox:
                        instrument,timeframe,signature_verified,source_verified,lifecycle_id,
                        transition_sequence,transition_sha256,available_at_epoch_us,received_at_epoch_us
                 FROM lifecycle_evidence_inbox
-                WHERE lifecycle_id=? AND source_verified=1
+                WHERE lifecycle_id=? AND (source_verified=1 OR EXISTS (
+                    SELECT 1 FROM lifecycle_evidence_source_verifications v
+                    WHERE v.event_id=lifecycle_evidence_inbox.event_id
+                ))
                 ORDER BY transition_sequence DESC
                 """,
                 (lifecycle_id,),
