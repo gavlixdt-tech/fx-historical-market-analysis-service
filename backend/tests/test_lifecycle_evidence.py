@@ -4,8 +4,7 @@ import base64
 import hashlib
 import json
 import os
-import subprocess
-import sys
+import runpy
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
@@ -859,18 +858,12 @@ def test_sqlite_inbox_cutover_preserves_evidence_conflicts_and_quarantine(tmp_pa
     )
 
     script = Path(__file__).resolve().parents[1] / "scripts" / "migrate_lifecycle_inbox_sqlite_to_postgres.py"
-    command = [
-        sys.executable,
-        str(script),
-        "--sqlite-path",
-        str(sqlite_path),
-        "--database-url",
-        POSTGRES_DSN,
-    ]
-    first = subprocess.run(command, check=True, capture_output=True, text=True)
-    second = subprocess.run(command, check=True, capture_output=True, text=True)
-    assert json.loads(first.stdout)["status"] == "imported"
-    assert json.loads(second.stdout)["status"] == "already_imported"
+    migration_module = runpy.run_path(str(script))
+    migrate = migration_module["migrate"]
+    first = migrate(sqlite_path, POSTGRES_DSN)
+    second = migrate(sqlite_path, POSTGRES_DSN)
+    assert first["status"] == "imported"
+    assert second["status"] == "already_imported"
 
     migrated = PostgresLifecycleEvidenceInbox(
         POSTGRES_DSN,
