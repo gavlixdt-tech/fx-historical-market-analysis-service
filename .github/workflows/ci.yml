@@ -71,8 +71,8 @@ jobs:
           path: backend-lint.log
           if-no-files-found: ignore
 
-      - name: Lint (ruff format diagnostic)
-        run: ruff format --diff app tests > backend-format.log 2>&1 || { cat backend-format.log; exit 1; }
+      - name: Lint (ruff format --check)
+        run: ruff format --check app tests
 
       - name: Upload backend format diagnostics
         if: always()
