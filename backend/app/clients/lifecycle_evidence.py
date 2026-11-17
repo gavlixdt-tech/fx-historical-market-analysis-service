@@ -629,11 +629,17 @@ class LifecycleEvidenceConsumer:
         )
 
     def status(self) -> dict[str, Any]:
+        inbox_status = self.inbox.status()
+        source_attested = inbox_status["source_attested_events"] > 0
         return {
             "enabled": self.settings.lifecycle_event_bus_enabled,
             "topic": self.settings.lifecycle_event_bus_topic,
             "consumer_group": self.settings.lifecycle_event_consumer_group,
-            "inbox": self.inbox.status(),
-            "forecast_eligible": False,
-            "reason": "Current producer events have verified Service 9 signatures but lack independent vendor/source attestation.",
+            "inbox": inbox_status,
+            "forecast_eligible": source_attested,
+            "reason": (
+                "Service 1 dataset and Service 9 lifecycle signatures verify; replay still requires exact dataset, instrument, timeframe, price basis and actual availability matches. This is not a vendor-origin signature."
+                if source_attested else
+                "No source-attested lifecycle events are stored; caller-supplied lifecycle assertions remain excluded from model features."
+            ),
         }
