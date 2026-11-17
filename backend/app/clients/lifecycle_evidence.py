@@ -52,9 +52,7 @@ def _verify_service1_source_attestation(data: dict[str, Any], source_public_keys
     instrument = data.get("instrument")
     market_basis = data.get("market_basis")
     quality = data.get("quality")
-    if not all(
-        isinstance(item, dict) for item in (provenance, instrument, market_basis, quality)
-    ):
+    if not all(isinstance(item, dict) for item in (provenance, instrument, market_basis, quality)):
         raise LifecycleEvidenceError("source_attestation_context_invalid")
     if not isinstance(provenance, dict) or not isinstance(instrument, dict):
         raise LifecycleEvidenceError("source_attestation_context_invalid")
