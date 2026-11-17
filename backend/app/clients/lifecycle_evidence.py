@@ -20,6 +20,7 @@ import psycopg
 import rfc8785
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+from psycopg.conninfo import conninfo_to_dict
 from psycopg.rows import dict_row
 
 from backend.app.core.config import Settings
@@ -1210,8 +1211,14 @@ class PostgresLifecycleEvidenceInbox:
         clock_skew_seconds: int = 60,
         expected_topic: str | None = None,
     ) -> None:
-        if not dsn or not dsn.startswith(("postgres://", "postgresql://")):
-            raise ValueError("DATABASE_URL must be a PostgreSQL connection URL")
+        try:
+            connection_options = conninfo_to_dict(dsn) if dsn else {}
+        except psycopg.ProgrammingError as exc:
+            raise ValueError("DATABASE_URL must be a valid PostgreSQL connection string") from exc
+        if not connection_options or not (
+            connection_options.get("dbname") or connection_options.get("service")
+        ):
+            raise ValueError("DATABASE_URL must identify a PostgreSQL database")
         self.dsn = dsn
         self.public_keys_json = public_keys_json
         self.source_public_keys_json = source_public_keys_json
