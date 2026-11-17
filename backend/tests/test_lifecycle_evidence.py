@@ -11,9 +11,9 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import psycopg
+import pytest
 from psycopg import sql
 from psycopg.conninfo import make_conninfo
-import pytest
 import rfc8785
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
