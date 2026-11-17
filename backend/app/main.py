@@ -23,6 +23,7 @@ from starlette.responses import Response
 
 from backend.app.api.v1.router import router as api_v1_router
 from backend.app.clients.market_data import MarketDataClient
+from backend.app.clients.lifecycle_evidence import LifecycleEvidenceConsumer
 from backend.app.core.config import Settings, get_settings
 from backend.app.core.errors import (
     AppError,
@@ -71,6 +72,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         upstream_client=app.state.upstream_client,
     )
 
+    app.state.lifecycle_evidence_consumer = None
+    if settings.lifecycle_event_bus_enabled:
+        consumer = LifecycleEvidenceConsumer(settings)
+        app.state.lifecycle_evidence_consumer = consumer
+        await consumer.start()
+
     init_observability(settings, app)
     SERVICE_UP.set(1)
     logger.info("application_started")
@@ -79,6 +86,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
     finally:
         SERVICE_UP.set(0)
+        consumer = getattr(app.state, "lifecycle_evidence_consumer", None)
+        if consumer is not None:
+            await consumer.stop()
         await app.state.upstream_client.aclose()
         logger.info("application_shutting_down")
         logger.info("application_shutdown_complete")
