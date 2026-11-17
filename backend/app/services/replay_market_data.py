@@ -233,6 +233,7 @@ async def run_market_data_replay(
         final_holdout_start=payload.final_holdout_start,
     )
     trusted_lifecycle_contexts = None
+    trusted_lifecycle_evidence_manifests = None
     if (
         lifecycle_consumer is not None
         and attestation_status == "verified"
@@ -271,14 +272,38 @@ async def run_market_data_replay(
             price_basis=lifecycle_price_basis,
             cutoffs=[item.available_at for item in observations],
         )
+        trusted_lifecycle_evidence_manifests = lifecycle_consumer.point_in_time_evidence(
+            instrument=lifecycle_instrument,
+            timeframe=lifecycle_timeframe,
+            source_dataset_id=attested_source_id,
+            price_basis=lifecycle_price_basis,
+            cutoffs=[item.available_at for item in observations],
+        )
     if trusted_lifecycle_contexts is None:
         result = await run_in_threadpool(run_historical_replay, replay_request)
     else:
         result = await run_in_threadpool(
             run_historical_replay, replay_request, trusted_lifecycle_contexts
         )
+    evidence_registry: dict[str, dict[str, Any]] = {}
+    origin_evidence_refs: list[dict[str, Any]] = []
+    for index, manifest in enumerate(trusted_lifecycle_evidence_manifests or []):
+        evidence_items = manifest.get("evidence", [])
+        for item in evidence_items:
+            evidence_registry.setdefault(item["event_id"], item)
+        origin_evidence_refs.append({
+            "observation_index": index,
+            "prediction_origin": manifest["prediction_origin"],
+            "event_ids": [item["event_id"] for item in evidence_items],
+            "evidence_count": manifest["evidence_count"],
+            "evidence_set_sha256": manifest["evidence_set_sha256"],
+        })
     result["reproducibility"]["lifecycle_evidence"] = {
         "consumer_enabled": lifecycle_consumer is not None,
+        "evidence_registry": list(evidence_registry.values()),
+        "prediction_origin_evidence": origin_evidence_refs,
+        "manifest_algorithm": "RFC8785_SHA256",
+        "manifest_semantics": "each observation origin references only verified lifecycle transitions whose producer availability and durable consumer receipt are both no later than that origin",
         "source_dataset_id": attested_source_id,
         "point_in_time_observations_with_source_attested_events": (
             sum(item is not None for item in trusted_lifecycle_contexts)
