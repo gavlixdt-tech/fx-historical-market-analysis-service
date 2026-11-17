@@ -586,7 +586,8 @@ Before switching a deployed Service 2 instance from SQLite to PostgreSQL:
    source-verification records, conflict history and quarantine records in one
    PostgreSQL transaction, reconciles every indexed metadata field against
    existing PostgreSQL rows, preserves event IDs and receipt times, and records
-   the source fingerprint so an identical snapshot is not imported twice.
+   a PostgreSQL advisory lock serializes concurrent importers, and the source
+   fingerprint prevents an identical snapshot from being imported twice.
 5. Restart Service 2 with `DATABASE_URL` set. Verify the inbox status, selected
    lifecycle history and point-in-time evidence manifests before re-enabling
    normal consumer traffic.
