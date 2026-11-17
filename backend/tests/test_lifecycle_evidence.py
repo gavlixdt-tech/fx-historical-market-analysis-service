@@ -862,6 +862,13 @@ def test_sqlite_inbox_cutover_preserves_evidence_conflicts_and_quarantine(tmp_pa
     source.persist_rejected(
         "migration-delivery-1", verified_b["event_id"], envelope_a, "conflicting_quarantine_payload"
     )
+    with source._connect() as source_db:
+        source_conflict_ids = [
+            row["conflict_id"]
+            for row in source_db.execute(
+                "SELECT conflict_id FROM lifecycle_evidence_conflicts ORDER BY conflict_id"
+            )
+        ]
 
     script = (
         Path(__file__).resolve().parents[1]
@@ -900,6 +907,14 @@ def test_sqlite_inbox_cutover_preserves_evidence_conflicts_and_quarantine(tmp_pa
         assert status["source_attested_events"] >= 1
         assert status["conflicts"] >= 2
         assert status["quarantined_deliveries"] >= 1
+        with migrated._connect() as migrated_db:
+            migrated_conflict_ids = [
+                row["conflict_id"]
+                for row in migrated_db.execute(
+                    "SELECT conflict_id FROM lifecycle_evidence_conflicts ORDER BY conflict_id"
+                )
+            ]
+        assert migrated_conflict_ids == source_conflict_ids
         history = migrated.lifecycle_history(verified_a["lifecycle_id"])
         assert history is not None
         assert history["head_sequence"] == verified_a["transition_sequence"]
