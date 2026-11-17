@@ -352,9 +352,7 @@ def test_separately_verified_source_attestation_is_eligible_for_sqlite_replay(tm
         source_public_keys_json="{}",
     )
     assert (
-        initial_inbox.persist_verified(
-            "gfx.liquidity.lifecycle.v1", envelope, initially_unattested
-        )
+        initial_inbox.persist_verified("gfx.liquidity.lifecycle.v1", envelope, initially_unattested)
         == "STORED"
     )
     # A process restart with an updated source trust bundle promotes the
