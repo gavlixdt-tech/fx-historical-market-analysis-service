@@ -1,0 +1,54 @@
+name: Temporary lifecycle formatting pass
+on:
+  push:
+    branches: [master]
+    paths:
+      - "backend/app/analysis/replay.py"
+      - "backend/app/clients/lifecycle_evidence.py"
+      - "backend/app/core/config.py"
+      - "backend/app/services/replay_market_data.py"
+      - "backend/tests/test_lifecycle_evidence.py"
+      - "backend/tests/test_replay_market_context.py"
+      - "backend/tests/unit/test_replay_market_data.py"
+permissions:
+  contents: write
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install pinned formatter
+        run: python -m pip install ruff==0.8.6
+      - name: Format lifecycle integration files
+        run: |
+          ruff format \
+            backend/app/analysis/replay.py \
+            backend/app/clients/lifecycle_evidence.py \
+            backend/app/core/config.py \
+            backend/app/services/replay_market_data.py \
+            backend/tests/test_lifecycle_evidence.py \
+            backend/tests/test_replay_market_context.py \
+            backend/tests/unit/test_replay_market_data.py
+      - name: Commit formatted files directly to master
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            backend/app/analysis/replay.py \
+            backend/app/clients/lifecycle_evidence.py \
+            backend/app/core/config.py \
+            backend/app/services/replay_market_data.py \
+            backend/tests/test_lifecycle_evidence.py \
+            backend/tests/test_replay_market_context.py \
+            backend/tests/unit/test_replay_market_data.py
+          if git diff --cached --quiet; then
+            echo "Files already formatted."
+            exit 0
+          fi
+          git commit -m "Format lifecycle evidence replay integration"
+          git push origin HEAD:master
