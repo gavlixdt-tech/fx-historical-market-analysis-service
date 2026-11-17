@@ -421,8 +421,18 @@ def verify_lifecycle_event(
 class LifecycleEvidenceInbox:
     """Durable inbox with immutable event records and explicit quarantine."""
 
-    def __init__(self, path: str) -> None:
+    def __init__(
+        self,
+        path: str,
+        *,
+        public_keys_json: str = "{}",
+        source_public_keys_json: str = "{}",
+        clock_skew_seconds: int = 60,
+    ) -> None:
         self.path = path
+        self.public_keys_json = public_keys_json
+        self.source_public_keys_json = source_public_keys_json
+        self.clock_skew_seconds = clock_skew_seconds
         if path != ":memory:":
             Path(path).parent.mkdir(parents=True, exist_ok=True)
         self._initialize()
@@ -434,6 +444,32 @@ class LifecycleEvidenceInbox:
         connection.execute("PRAGMA journal_mode=WAL")
         connection.execute("PRAGMA synchronous=FULL")
         return connection
+
+    def _verify_persisted_row(self, row: sqlite3.Row) -> dict[str, Any]:
+        """Reverify signed bytes and indexed metadata on every replay read."""
+        try:
+            envelope = json.loads(row["envelope_json"])
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise LifecycleEvidenceError("persisted_envelope_corrupt") from exc
+        verified = verify_lifecycle_event(
+            envelope,
+            public_keys_json=self.public_keys_json,
+            source_public_keys_json=self.source_public_keys_json,
+            clock_skew_seconds=self.clock_skew_seconds,
+        )
+        if (
+            verified["event_id"] != row["event_id"]
+            or not hmac.compare_digest(verified["payload_sha256"], row["payload_sha256"])
+            or verified["instrument"] != row["instrument"]
+            or verified["timeframe"] != row["timeframe"]
+            or verified["lifecycle_id"] != row["lifecycle_id"]
+            or verified["transition_sequence"] != row["transition_sequence"]
+            or verified["transition_sha256"] != row["transition_sha256"]
+            or not bool(row["signature_verified"])
+            or not bool(row["source_verified"])
+        ):
+            raise LifecycleEvidenceError("persisted_evidence_integrity_mismatch")
+        return envelope
 
     def _initialize(self) -> None:
         with self._connect() as connection:
@@ -626,7 +662,9 @@ class LifecycleEvidenceInbox:
         with self._connect() as connection:
             rows = connection.execute(
                 """
-                SELECT envelope_json,available_at,received_at
+                SELECT event_id,envelope_json,payload_sha256,key_id,available_at,received_at,
+                       instrument,timeframe,signature_verified,source_verified,lifecycle_id,
+                       transition_sequence,transition_sha256
                 FROM lifecycle_evidence_inbox
                 WHERE source_verified=1 AND instrument=? AND timeframe=?
                   AND json_extract(envelope_json, '$.data.provenance.source_dataset_id')=?
@@ -638,7 +676,7 @@ class LifecycleEvidenceInbox:
 
         events: list[tuple[datetime, str, str, int, datetime, dict[str, Any]]] = []
         for row in rows:
-            envelope = json.loads(row["envelope_json"])
+            envelope = self._verify_persisted_row(row)
             data = envelope.get("data") if isinstance(envelope, dict) else None
             if not isinstance(data, dict):
                 continue
@@ -724,8 +762,9 @@ class LifecycleEvidenceInbox:
         with self._connect() as connection:
             rows = connection.execute(
                 """
-                SELECT event_id,envelope_json,payload_sha256,available_at,received_at,
-                       available_at_epoch_us,received_at_epoch_us
+                SELECT event_id,envelope_json,payload_sha256,key_id,available_at,received_at,
+                       instrument,timeframe,signature_verified,source_verified,lifecycle_id,
+                       transition_sequence,transition_sha256,available_at_epoch_us,received_at_epoch_us
                 FROM lifecycle_evidence_inbox
                 WHERE source_verified=1 AND instrument=? AND timeframe=?
                   AND json_extract(envelope_json, '$.data.provenance.source_dataset_id')=?
@@ -735,7 +774,7 @@ class LifecycleEvidenceInbox:
             ).fetchall()
         events: list[dict[str, Any]] = []
         for row in rows:
-            envelope = json.loads(row["envelope_json"])
+            envelope = self._verify_persisted_row(row)
             data = envelope.get("data", {})
             lifecycle = data.get("lifecycle", {})
             temporal = data.get("temporal", {})
@@ -839,7 +878,12 @@ class LifecycleEvidenceConsumer:
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
-        self.inbox = LifecycleEvidenceInbox(settings.lifecycle_event_inbox_db_path)
+        self.inbox = LifecycleEvidenceInbox(
+            settings.lifecycle_event_inbox_db_path,
+            public_keys_json=settings.lifecycle_event_public_keys_json,
+            source_public_keys_json=settings.upstream_historical_attestation_public_keys_json,
+            clock_skew_seconds=settings.lifecycle_event_clock_skew_seconds,
+        )
         self._client: httpx.AsyncClient | None = None
         self._task: asyncio.Task[None] | None = None
         self._stop = asyncio.Event()
