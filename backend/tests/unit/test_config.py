@@ -295,6 +295,25 @@ def test_lifecycle_event_consumer_accepts_complete_private_service_configuration
     assert settings.lifecycle_event_consumer_group == "gfx-service2-lifecycle-evidence"
 
 
+def test_production_lifecycle_consumer_requires_postgresql_database_url() -> None:
+    with pytest.raises(PydanticValidationError, match="requires DATABASE_URL"):
+        Settings(
+            environment="production",
+            require_auth=True,
+            api_key="a" * 40,
+            lifecycle_event_bus_enabled=True,
+            lifecycle_event_bus_url="https://event-bus.example",
+            lifecycle_event_bus_consumer_secret="c" * 40,
+            lifecycle_event_public_keys_json=TRUSTED_HISTORICAL_KEYS_JSON,
+            upstream_historical_attestation_public_keys_json=TRUSTED_HISTORICAL_KEYS_JSON,
+        )
+
+
+def test_database_url_rejects_non_postgresql_schemes() -> None:
+    with pytest.raises(PydanticValidationError, match="PostgreSQL connection URL"):
+        Settings(database_url="https://not-a-database.example")
+
+
 def test_lifecycle_event_public_key_bundle_requires_raw_ed25519_keys() -> None:
     with pytest.raises(PydanticValidationError, match="decode to 32 bytes"):
         Settings(
