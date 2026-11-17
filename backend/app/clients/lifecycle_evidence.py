@@ -1008,7 +1008,7 @@ class LifecycleEvidenceInbox:
         envelope = self._verify_persisted_row(latest_row)
         data = envelope["data"]
         history = data["lifecycle"]["transition_history"]
-        stored_events = []
+        stored_events: list[dict[str, Any]] = []
         for row in reversed(rows):
             stored_envelope = self._verify_persisted_row(row)
             stored_history = stored_envelope["data"]["lifecycle"]["transition_history"]
@@ -1400,14 +1400,14 @@ class PostgresLifecycleEvidenceInbox:
     ) -> list[dict[str, float] | None]:
         if not cutoffs:
             return []
-        indexed = []
+        indexed: list[tuple[int, datetime]] = []
         for index, cutoff in enumerate(cutoffs):
             if cutoff.tzinfo is None or cutoff.utcoffset() is None:
                 raise ValueError("point-in-time replay cutoffs must be timezone-aware")
             indexed.append((index, cutoff.astimezone(UTC)))
         max_us = max(_epoch_microseconds(value) for _, value in indexed)
         rows = self._eligible_rows(instrument, timeframe, source_dataset_id, max_us)
-        events = []
+        events: list[tuple[datetime, str, str, int, datetime, dict[str, Any]]] = []
         for row in rows:
             envelope = self._verify_persisted_row(row)
             data = envelope.get("data", {})
@@ -1468,7 +1468,7 @@ class PostgresLifecycleEvidenceInbox:
             return []
         max_us = max(_epoch_microseconds(value) for _, value in indexed)
         rows = self._eligible_rows(instrument, timeframe, source_dataset_id, max_us)
-        events = []
+        events: list[dict[str, Any]] = []
         for row in rows:
             envelope = self._verify_persisted_row(row)
             data = envelope.get("data", {})
