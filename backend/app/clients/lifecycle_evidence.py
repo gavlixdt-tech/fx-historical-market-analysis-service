@@ -631,11 +631,14 @@ class LifecycleEvidenceInbox:
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             existing = connection.execute(
-                "SELECT payload_sha256 FROM lifecycle_evidence_inbox WHERE event_id=?",
+                "SELECT topic,payload_sha256 FROM lifecycle_evidence_inbox WHERE event_id=?",
                 (verified["event_id"],),
             ).fetchone()
             if existing is not None:
-                if hmac.compare_digest(existing["payload_sha256"], verified["payload_sha256"]):
+                if (
+                    existing["topic"] == topic
+                    and hmac.compare_digest(existing["payload_sha256"], verified["payload_sha256"])
+                ):
                     return "DUPLICATE"
                 connection.execute(
                     "INSERT INTO lifecycle_evidence_conflicts(event_id,payload_sha256,envelope_json,received_at) VALUES(?,?,?,?)",
