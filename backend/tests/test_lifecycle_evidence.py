@@ -871,10 +871,10 @@ def test_sqlite_inbox_cutover_preserves_evidence_conflicts_and_quarantine(tmp_pa
     status = migrated.status()
     assert status["source_attested_events"] >= 1
     assert status["conflicts"] >= 1
-    assert status["quarantined_events"] >= 1
+    assert status["quarantined_deliveries"] >= 1
     history = migrated.lifecycle_history(verified_a["lifecycle_id"])
     assert history is not None
-    assert history["transition_head"]["transition_sequence"] == verified_a["transition_sequence"]
+    assert history["head_sequence"] == verified_a["transition_sequence"]
     manifests = migrated.point_in_time_evidence(
         instrument=verified_a["instrument"],
         timeframe=verified_a["timeframe"],
