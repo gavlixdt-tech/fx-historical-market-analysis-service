@@ -326,6 +326,27 @@ def test_durable_inbox_deduplicates_and_records_event_id_conflicts(tmp_path) -> 
     assert status["highest_transition_sequence"] == 2
 
 
+def test_inbox_rejects_unsigned_cloud_event_envelope_mutation(tmp_path) -> None:
+    private_key = Ed25519PrivateKey.generate()
+    envelope, trust, source_trust = signed_envelope(private_key)
+    verified = verify_lifecycle_event(
+        envelope, public_keys_json=trust, source_public_keys_json=source_trust
+    )
+    inbox = LifecycleEvidenceInbox(str(tmp_path / "lifecycle-inbox.sqlite3"))
+    assert inbox.persist_verified("gfx.liquidity.lifecycle.v1", envelope, verified) == "STORED"
+
+    changed_envelope = {**envelope, "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"}
+    changed_verified = verify_lifecycle_event(
+        changed_envelope, public_keys_json=trust, source_public_keys_json=source_trust
+    )
+    assert changed_verified["payload_sha256"] == verified["payload_sha256"]
+    assert (
+        inbox.persist_verified("gfx.liquidity.lifecycle.v1", changed_envelope, changed_verified)
+        == "CONFLICT"
+    )
+    assert inbox.status()["conflicts"] == 1
+
+
 def test_quarantine_is_durable_and_delivery_id_collisions_are_audited(tmp_path) -> None:
     inbox = LifecycleEvidenceInbox(str(tmp_path / "lifecycle-inbox.sqlite3"))
     inbox.persist_rejected("delivery-1", "bad-event", {"id": "bad-event"}, "signature_invalid")
@@ -834,6 +855,34 @@ def test_postgres_inbox_restart_history_and_point_in_time_evidence() -> None:
 @pytest.mark.skipif(
     not POSTGRES_DSN, reason="TEST_POSTGRES_URL is required for PostgreSQL integration tests"
 )
+def test_postgres_inbox_rejects_unsigned_cloud_event_envelope_mutation() -> None:
+    private_key = Ed25519PrivateKey.generate()
+    envelope, trust, source_trust = signed_envelope(private_key)
+    verified = verify_lifecycle_event(
+        envelope, public_keys_json=trust, source_public_keys_json=source_trust
+    )
+    inbox = PostgresLifecycleEvidenceInbox(
+        POSTGRES_DSN, public_keys_json=trust, source_public_keys_json=source_trust
+    )
+    assert inbox.persist_verified("gfx.liquidity.lifecycle.v1", envelope, verified) == "STORED"
+
+    changed_envelope = {
+        **envelope,
+        "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+    }
+    changed_verified = verify_lifecycle_event(
+        changed_envelope, public_keys_json=trust, source_public_keys_json=source_trust
+    )
+    assert changed_verified["payload_sha256"] == verified["payload_sha256"]
+    assert (
+        inbox.persist_verified(
+            "gfx.liquidity.lifecycle.v1", changed_envelope, changed_verified
+        )
+        == "CONFLICT"
+    )
+    assert inbox.status()["conflicts"] == 1
+
+
 def test_postgres_inbox_serializes_concurrent_history_forks() -> None:
     lifecycle_id = f"postgres-fork-{uuid.uuid4()}"
     key_a, key_b = Ed25519PrivateKey.generate(), Ed25519PrivateKey.generate()
