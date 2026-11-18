@@ -108,6 +108,23 @@ def migrate(sqlite_path: Path, dsn: str) -> dict[str, int | str]:
                     quarantine_count BIGINT NOT NULL
                 )
             """)
+            target.execute("""
+                CREATE OR REPLACE FUNCTION protect_lifecycle_evidence_import_ledger()
+                RETURNS trigger LANGUAGE plpgsql AS $
+                BEGIN
+                    RAISE EXCEPTION 'lifecycle evidence import ledger is append-only';
+                END;
+                $
+            """)
+            target.execute(
+                "DROP TRIGGER IF EXISTS trg_lifecycle_evidence_imports_append_only "
+                "ON lifecycle_evidence_imports"
+            )
+            target.execute("""
+                CREATE TRIGGER trg_lifecycle_evidence_imports_append_only
+                BEFORE UPDATE OR DELETE ON lifecycle_evidence_imports
+                FOR EACH ROW EXECUTE FUNCTION protect_lifecycle_evidence_import_ledger()
+            """)
             already = target.execute(
                 "SELECT 1 FROM lifecycle_evidence_imports WHERE source_fingerprint=%s",
                 (fingerprint,),
