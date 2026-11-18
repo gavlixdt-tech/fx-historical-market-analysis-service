@@ -72,7 +72,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Lint (ruff format --check)
-        run: ruff format --diff app tests
+        run: ruff format --check app tests
 
       - name: Type check (mypy)
         run: mypy app
