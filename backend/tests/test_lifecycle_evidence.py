@@ -374,9 +374,7 @@ def test_sqlite_inbox_conflict_and_quarantine_ledgers_are_append_only(tmp_path) 
     )
     assert inbox.persist_verified("gfx.liquidity.lifecycle.v1", envelope, verified) == "STORED"
     inbox.persist_rejected("delivery-immutable", "bad-event", {"id": "bad-event"}, "invalid")
-    inbox.persist_rejected(
-        "delivery-immutable", "other-event", {"id": "other-event"}, "different"
-    )
+    inbox.persist_rejected("delivery-immutable", "other-event", {"id": "other-event"}, "different")
 
     mutations = (
         (
