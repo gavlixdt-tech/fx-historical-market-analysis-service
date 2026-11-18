@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import runpy
+import sqlite3
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
@@ -358,6 +359,47 @@ def test_quarantine_is_durable_and_delivery_id_collisions_are_audited(tmp_path) 
     status = inbox.status()
     assert status["quarantined_deliveries"] == 1
     assert status["conflicts"] == 1
+
+
+def test_sqlite_inbox_conflict_and_quarantine_ledgers_are_append_only(tmp_path) -> None:
+    private_key = Ed25519PrivateKey.generate()
+    envelope, trust, source_trust = signed_envelope(private_key)
+    verified = verify_lifecycle_event(
+        envelope, public_keys_json=trust, source_public_keys_json=source_trust
+    )
+    inbox = LifecycleEvidenceInbox(
+        str(tmp_path / "lifecycle-inbox.sqlite3"),
+        public_keys_json=trust,
+        source_public_keys_json=source_trust,
+    )
+    assert inbox.persist_verified("gfx.liquidity.lifecycle.v1", envelope, verified) == "STORED"
+    inbox.persist_rejected("delivery-immutable", "bad-event", {"id": "bad-event"}, "invalid")
+    inbox.persist_rejected(
+        "delivery-immutable", "other-event", {"id": "other-event"}, "different"
+    )
+
+    mutations = (
+        (
+            "UPDATE lifecycle_evidence_inbox SET topic='tampered' WHERE event_id=?",
+            (verified["event_id"],),
+        ),
+        (
+            "UPDATE lifecycle_evidence_source_verifications SET verified_at='tampered' WHERE event_id=?",
+            (verified["event_id"],),
+        ),
+        (
+            "UPDATE lifecycle_evidence_conflicts SET payload_sha256='tampered' WHERE event_id=?",
+            ("quarantine:delivery-immutable",),
+        ),
+        (
+            "UPDATE lifecycle_evidence_quarantine SET rejection_reason='tampered' WHERE delivery_id=?",
+            ("delivery-immutable",),
+        ),
+    )
+    for statement, parameters in mutations:
+        with pytest.raises(sqlite3.IntegrityError, match="immutable"):
+            with inbox._connect() as connection:
+                connection.execute(statement, parameters)
 
 
 def test_point_in_time_inbox_context_excludes_events_until_available_at(tmp_path) -> None:
