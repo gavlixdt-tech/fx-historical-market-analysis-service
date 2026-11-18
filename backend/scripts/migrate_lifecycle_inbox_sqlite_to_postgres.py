@@ -113,6 +113,7 @@ def migrate(sqlite_path: Path, dsn: str) -> dict[str, int | str]:
                 RETURNS trigger LANGUAGE plpgsql AS $body$
                 BEGIN
                     RAISE EXCEPTION 'lifecycle evidence import ledger is append-only';
+                    RETURN NULL;
                 END;
                 $body$
             """)
