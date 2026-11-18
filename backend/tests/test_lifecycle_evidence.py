@@ -335,7 +335,10 @@ def test_inbox_rejects_unsigned_cloud_event_envelope_mutation(tmp_path) -> None:
     inbox = LifecycleEvidenceInbox(str(tmp_path / "lifecycle-inbox.sqlite3"))
     assert inbox.persist_verified("gfx.liquidity.lifecycle.v1", envelope, verified) == "STORED"
 
-    changed_envelope = {**envelope, "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"}
+    changed_envelope = {
+        **envelope,
+        "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+    }
     changed_verified = verify_lifecycle_event(
         changed_envelope, public_keys_json=trust, source_public_keys_json=source_trust
     )
@@ -862,9 +865,14 @@ def test_postgres_inbox_rejects_unsigned_cloud_event_envelope_mutation() -> None
         envelope, public_keys_json=trust, source_public_keys_json=source_trust
     )
     inbox = PostgresLifecycleEvidenceInbox(
-        POSTGRES_DSN, public_keys_json=trust, source_public_keys_json=source_trust
+        POSTGRES_DSN,
+        public_keys_json=trust,
+        source_public_keys_json=source_trust,
     )
-    assert inbox.persist_verified("gfx.liquidity.lifecycle.v1", envelope, verified) == "STORED"
+    assert (
+        inbox.persist_verified("gfx.liquidity.lifecycle.v1", envelope, verified)
+        == "STORED"
+    )
 
     changed_envelope = {
         **envelope,
