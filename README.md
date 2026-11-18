@@ -505,8 +505,10 @@ The optional consumer code and exact deployment variables are documented in the 
 ## Current implementation and verification snapshot
 
 The latest fully passing Service 2 pipeline is GitHub Actions run
-[44383058992](https://github.com/gavlixdt-tech/fx-historical-market-analysis-service/actions/runs/44383058992)
-on commit `e3a01c44e16e1bab6ce78c30e45a2ae07a103a0c`:
+[44388591503](https://github.com/gavlixdt-tech/fx-historical-market-analysis-service/actions/runs/44388591503)
+on commit `108005a856a994945f414f20064e20d4e92a46a1`. This run includes
+PostgreSQL `TRUNCATE` rejection checks for the inbox, source-verification,
+conflict, quarantine and import ledgers:
 
 - Ruff lint and strict format check: passed.
 - Mypy: passed.
