@@ -1125,6 +1125,15 @@ def test_sqlite_inbox_cutover_preserves_evidence_conflicts_and_quarantine(tmp_pa
             source_public_keys_json=source_trust_a,
         )
         migrated.assert_sqlite_cutover_complete(str(sqlite_path))
+        with source._connect() as source_db:
+            source_db.execute("DROP TRIGGER trg_lifecycle_quarantine_no_update")
+            source_db.execute(
+                "UPDATE lifecycle_evidence_quarantine SET rejection_reason='post_cutover_tamper' "
+                "WHERE delivery_id=?",
+                ("migration-delivery-1",),
+            )
+        with pytest.raises(RuntimeError, match="changed"):
+            migrated.assert_sqlite_cutover_complete(str(sqlite_path))
         status = migrated.status()
         assert status["source_attested_events"] >= 1
         assert status["conflicts"] >= 2
