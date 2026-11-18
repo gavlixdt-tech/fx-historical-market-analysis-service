@@ -1006,12 +1006,23 @@ def test_postgres_inbox_evidence_and_quarantine_are_append_only() -> None:
                 "SET source_dataset_id='tampered' WHERE event_id=%s",
                 (verified["event_id"],),
             )
+    for table in (
+        "lifecycle_evidence_inbox",
+        "lifecycle_evidence_source_verifications",
+    ):
+        with pytest.raises(psycopg.Error, match="append-only"):
+            with psycopg.connect(POSTGRES_DSN) as db:
+                db.execute(f"TRUNCATE {table}")
     delivery_id = f"rejected-{uuid.uuid4()}"
     inbox.persist_rejected(delivery_id, None, {"invalid": True}, "signature_invalid")
     inbox.persist_rejected(delivery_id, None, {"invalid": False}, "duplicate_delivery")
     status = inbox.status()
     assert status["quarantined_deliveries"] >= 1
     assert status["conflicts"] >= 2
+    for table in ("lifecycle_evidence_conflicts", "lifecycle_evidence_quarantine"):
+        with pytest.raises(psycopg.Error, match="append-only"):
+            with psycopg.connect(POSTGRES_DSN) as db:
+                db.execute(f"TRUNCATE {table}")
 
 
 @pytest.mark.skipif(
@@ -1114,6 +1125,9 @@ def test_sqlite_inbox_cutover_preserves_evidence_conflicts_and_quarantine(tmp_pa
         with pytest.raises(psycopg.Error, match="import ledger is append-only"):
             with psycopg.connect(isolated_dsn) as target:
                 target.execute("UPDATE lifecycle_evidence_imports SET inbox_count=inbox_count+1")
+        with pytest.raises(psycopg.Error, match="import ledger is append-only"):
+            with psycopg.connect(isolated_dsn) as target:
+                target.execute("TRUNCATE lifecycle_evidence_imports")
 
         migrated = PostgresLifecycleEvidenceInbox(
             isolated_dsn,
