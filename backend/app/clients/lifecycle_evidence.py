@@ -1528,6 +1528,12 @@ class PostgresLifecycleEvidenceInbox:
                     f"CREATE TRIGGER {trigger} BEFORE UPDATE OR DELETE ON {table} "
                     "FOR EACH ROW EXECUTE FUNCTION reject_lifecycle_evidence_mutation()"
                 )
+                truncate_trigger = f"{trigger}_truncate"
+                connection.execute(f"DROP TRIGGER IF EXISTS {truncate_trigger} ON {table}")
+                connection.execute(
+                    f"CREATE TRIGGER {truncate_trigger} BEFORE TRUNCATE ON {table} "
+                    "FOR EACH STATEMENT EXECUTE FUNCTION reject_lifecycle_evidence_mutation()"
+                )
             connection.execute("""
                 CREATE TABLE IF NOT EXISTS lifecycle_evidence_schema_migrations (
                     version INTEGER PRIMARY KEY,
