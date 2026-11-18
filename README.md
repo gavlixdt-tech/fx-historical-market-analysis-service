@@ -758,8 +758,9 @@ transition IDs and hashes stable as the lifecycle advances.
 
 When `DATABASE_URL` is configured, Service 2 uses PostgreSQL with transaction-
 scoped advisory locks per lifecycle aggregate, unique lifecycle-sequence
-constraints, append-only evidence/conflict/quarantine tables, and indexed
-integer UTC epoch-microsecond cutoffs. Concurrent consumers serialize history
+constraints, append-only evidence/conflict/quarantine tables with database
+triggers rejecting `UPDATE`, `DELETE` and `TRUNCATE`, and indexed integer UTC
+epoch-microsecond cutoffs. The SQLite import ledger also rejects bulk truncation. Concurrent consumers serialize history
 fork checks for the same lifecycle while independent lifecycle aggregates can
 be ingested concurrently. The SQLite fallback remains single-active-process
 only. All three services now provide PostgreSQL persistence adapters. The complete
