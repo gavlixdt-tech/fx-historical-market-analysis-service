@@ -1113,9 +1113,7 @@ def test_sqlite_inbox_cutover_preserves_evidence_conflicts_and_quarantine(tmp_pa
         ]
         with pytest.raises(psycopg.Error, match="import ledger is append-only"):
             with psycopg.connect(isolated_dsn) as target:
-                target.execute(
-                    "UPDATE lifecycle_evidence_imports SET inbox_count=inbox_count+1"
-                )
+                target.execute("UPDATE lifecycle_evidence_imports SET inbox_count=inbox_count+1")
 
         migrated = PostgresLifecycleEvidenceInbox(
             isolated_dsn,
