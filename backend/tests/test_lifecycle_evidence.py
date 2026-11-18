@@ -1006,13 +1006,14 @@ def test_postgres_inbox_evidence_and_quarantine_are_append_only() -> None:
                 "SET source_dataset_id='tampered' WHERE event_id=%s",
                 (verified["event_id"],),
             )
-    for table in (
-        "lifecycle_evidence_inbox",
-        "lifecycle_evidence_source_verifications",
-    ):
+    truncate_statements = (
+        "TRUNCATE lifecycle_evidence_source_verifications",
+        "TRUNCATE lifecycle_evidence_inbox CASCADE",
+    )
+    for statement in truncate_statements:
         with pytest.raises(psycopg.Error, match="append-only"):
             with psycopg.connect(POSTGRES_DSN) as db:
-                db.execute(f"TRUNCATE {table}")
+                db.execute(statement)
     delivery_id = f"rejected-{uuid.uuid4()}"
     inbox.persist_rejected(delivery_id, None, {"invalid": True}, "signature_invalid")
     inbox.persist_rejected(delivery_id, None, {"invalid": False}, "duplicate_delivery")
