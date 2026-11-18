@@ -505,12 +505,12 @@ The optional consumer code and exact deployment variables are documented in the 
 ## Current implementation and verification snapshot
 
 The latest fully passing Service 2 pipeline is GitHub Actions run
-[44169084773](https://github.com/gavlixdt-tech/fx-historical-market-analysis-service/actions/runs/44169084773)
-on commit `bc3bdeefe737e70981c3a529c46f87819ae7e829`:
+[44382622251](https://github.com/gavlixdt-tech/fx-historical-market-analysis-service/actions/runs/44382622251)
+on commit `0e2fbfb5d3c0e8018b27ba50f2cb5c6a2ab42bd3`:
 
 - Ruff lint and strict format check: passed.
 - Mypy: passed.
-- Backend tests, including PostgreSQL integration and SQLite cutover: **247 passed, 2 skipped, 1 warning**.
+- Backend tests, including PostgreSQL integration, SQLite cutover, exact CloudEvent envelope identity, append-only quarantine/conflict ledgers and full-source snapshot cutover guards: **250 passed, 2 skipped, 1 warning**.
 - Frontend type check, unit tests and production build: passed.
 - Backend and frontend container builds: passed.
 - Production npm dependency audit: passed; full audit passed under the documented temporary development-only picomatch advisory exception.
