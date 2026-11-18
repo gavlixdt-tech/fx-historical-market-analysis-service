@@ -609,8 +609,8 @@ Before switching a deployed Service 2 instance from SQLite to PostgreSQL:
    sequence after explicit ID imports, and serializes concurrent importers with
    a PostgreSQL advisory lock. Any invalid row, metadata mismatch or conflicting
    existing record aborts the entire transaction; no partial import or source
-   fingerprint is committed. The fingerprint prevents repeating an identical
-   successful import.
+   fingerprint is committed. The import ledger is database-enforced append-only,
+   and the fingerprint prevents repeating an identical successful import.
 5. Restart Service 2 with `DATABASE_URL` and `LIFECYCLE_EVENT_INBOX_DB_PATH`
    pointing to the old volume. Startup verifies that all four legacy evidence
    tables were imported before the consumer starts. Verify inbox status, selected
