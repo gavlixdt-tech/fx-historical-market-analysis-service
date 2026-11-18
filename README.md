@@ -552,8 +552,10 @@ canonical payload digest, Ed25519 signature, instrument identity, provenance
 shape and monotonic event timestamps. It persists accepted events before
 acknowledging the Event Bus delivery. Invalid signatures are durably
 quarantined and acknowledged so one poison event cannot block the partition.
-A repeated event with the same ID and digest is deduplicated; the same ID with
-a different digest is retained in a conflict ledger. Reuse of a quarantined
+A repeated event is deduplicated only when its topic, signed payload digest,
+and complete canonical CloudEvent envelope are identical; changed unsigned
+extension metadata under the same event ID is retained in the conflict ledger.
+Reuse of a quarantined
 delivery ID with different content or rejection metadata is also recorded as
 an immutable conflict instead of being silently discarded.
 
