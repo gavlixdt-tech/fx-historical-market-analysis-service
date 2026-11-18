@@ -1583,9 +1583,7 @@ class PostgresLifecycleEvidenceInbox:
                 if (
                     existing["topic"] == topic
                     and existing["envelope_json"] == encoded
-                    and hmac.compare_digest(
-                        existing["payload_sha256"], verified["payload_sha256"]
-                    )
+                    and hmac.compare_digest(existing["payload_sha256"], verified["payload_sha256"])
                 ):
                     if verified["source_verified"]:
                         connection.execute(
