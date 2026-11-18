@@ -911,10 +911,7 @@ def test_postgres_inbox_rejects_unsigned_cloud_event_envelope_mutation() -> None
         public_keys_json=trust,
         source_public_keys_json=source_trust,
     )
-    assert (
-        inbox.persist_verified("gfx.liquidity.lifecycle.v1", envelope, verified)
-        == "STORED"
-    )
+    assert inbox.persist_verified("gfx.liquidity.lifecycle.v1", envelope, verified) == "STORED"
 
     changed_envelope = {
         **envelope,
@@ -925,9 +922,7 @@ def test_postgres_inbox_rejects_unsigned_cloud_event_envelope_mutation() -> None
     )
     assert changed_verified["payload_sha256"] == verified["payload_sha256"]
     assert (
-        inbox.persist_verified(
-            "gfx.liquidity.lifecycle.v1", changed_envelope, changed_verified
-        )
+        inbox.persist_verified("gfx.liquidity.lifecycle.v1", changed_envelope, changed_verified)
         == "CONFLICT"
     )
     assert inbox.status()["conflicts"] == 1
