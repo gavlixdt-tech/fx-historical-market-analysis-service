@@ -110,11 +110,11 @@ def migrate(sqlite_path: Path, dsn: str) -> dict[str, int | str]:
             """)
             target.execute("""
                 CREATE OR REPLACE FUNCTION protect_lifecycle_evidence_import_ledger()
-                RETURNS trigger LANGUAGE plpgsql AS $
+                RETURNS trigger LANGUAGE plpgsql AS $body$
                 BEGIN
                     RAISE EXCEPTION 'lifecycle evidence import ledger is append-only';
                 END;
-                $
+                $body$
             """)
             target.execute(
                 "DROP TRIGGER IF EXISTS trg_lifecycle_evidence_imports_append_only "
