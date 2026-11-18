@@ -9,6 +9,7 @@ import hmac
 import json
 import logging
 import sqlite3
+import tempfile
 import time
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -32,6 +33,28 @@ EXPECTED_SCHEMA = "liquidity-lifecycle-evidence/v1"
 EXPECTED_SCHEMA_ID = (
     "https://contracts.gavlix.com/schemas/liquidity-lifecycle-evidence/v1/event.schema.json"
 )
+
+
+def _sqlite_snapshot_fingerprint(path: Path) -> str:
+    """Hash a WAL-consistent SQLite backup using the same method as the importer."""
+    source = sqlite3.connect(f"file:{path.resolve()}?mode=ro", uri=True)
+    snapshot_path: str | None = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".sqlite3", delete=False) as temporary:
+            snapshot_path = temporary.name
+        target = sqlite3.connect(snapshot_path)
+        try:
+            source.backup(target)
+            integrity = target.execute("PRAGMA integrity_check").fetchone()
+            if integrity is None or integrity[0] != "ok":
+                raise RuntimeError("legacy SQLite snapshot failed integrity_check")
+        finally:
+            target.close()
+        return hashlib.sha256(Path(snapshot_path).read_bytes()).hexdigest()
+    finally:
+        source.close()
+        if snapshot_path is not None:
+            Path(snapshot_path).unlink(missing_ok=True)
 
 
 class LifecycleEvidenceError(ValueError):
@@ -2138,6 +2161,7 @@ class PostgresLifecycleEvidenceInbox:
             ) from exc
         if not any(counts.values()):
             return
+        source_fingerprint = _sqlite_snapshot_fingerprint(path)
         with self._connect() as connection:
             ledger = connection.execute(
                 "SELECT to_regclass(%s) AS table_name",
@@ -2146,7 +2170,7 @@ class PostgresLifecycleEvidenceInbox:
             imported = (
                 connection.execute(
                     """
-                    SELECT inbox_count,verification_count,conflict_count,quarantine_count
+                    SELECT source_fingerprint,inbox_count,verification_count,conflict_count,quarantine_count
                     FROM lifecycle_evidence_imports
                     WHERE source_path=%s ORDER BY imported_at DESC LIMIT 1
                     """,
@@ -2171,9 +2195,13 @@ class PostgresLifecycleEvidenceInbox:
             counts["lifecycle_evidence_conflicts"],
             counts["lifecycle_evidence_quarantine"],
         )
-        if expected != actual:
+        if (
+            expected != actual
+            or imported is None
+            or imported["source_fingerprint"] != source_fingerprint
+        ):
             raise RuntimeError(
-                "legacy SQLite lifecycle evidence is not fully imported into PostgreSQL; "
+                "legacy SQLite lifecycle evidence changed or is not fully imported into PostgreSQL; "
                 "stop Service 2 and run migrate_lifecycle_inbox_sqlite_to_postgres.py"
             )
 
