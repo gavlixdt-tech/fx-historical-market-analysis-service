@@ -737,6 +737,26 @@ class LifecycleEvidenceInbox:
                 BEFORE DELETE ON lifecycle_evidence_inbox
                 BEGIN SELECT RAISE(ABORT, 'lifecycle inbox evidence is immutable'); END
             """)
+            connection.execute("""
+                CREATE TRIGGER IF NOT EXISTS trg_lifecycle_conflict_no_update
+                BEFORE UPDATE ON lifecycle_evidence_conflicts
+                BEGIN SELECT RAISE(ABORT, 'lifecycle conflict evidence is immutable'); END
+            """)
+            connection.execute("""
+                CREATE TRIGGER IF NOT EXISTS trg_lifecycle_conflict_no_delete
+                BEFORE DELETE ON lifecycle_evidence_conflicts
+                BEGIN SELECT RAISE(ABORT, 'lifecycle conflict evidence is immutable'); END
+            """)
+            connection.execute("""
+                CREATE TRIGGER IF NOT EXISTS trg_lifecycle_quarantine_no_update
+                BEFORE UPDATE ON lifecycle_evidence_quarantine
+                BEGIN SELECT RAISE(ABORT, 'lifecycle quarantine evidence is immutable'); END
+            """)
+            connection.execute("""
+                CREATE TRIGGER IF NOT EXISTS trg_lifecycle_quarantine_no_delete
+                BEFORE DELETE ON lifecycle_evidence_quarantine
+                BEGIN SELECT RAISE(ABORT, 'lifecycle quarantine evidence is immutable'); END
+            """)
 
     def persist_verified(
         self, topic: str, envelope: dict[str, Any], verified: dict[str, Any]
