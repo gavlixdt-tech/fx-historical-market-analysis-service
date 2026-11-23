@@ -24,6 +24,45 @@ Private research system. Research / simulation mode only.
 
 ---
 
+## Causal market-structure analysis
+
+The versioned API now exposes `POST /api/v1/analysis/market-structure`.
+It accepts a chronologically ordered OHLC history and returns timestamped,
+causally-confirmed structural observations including swing highs/lows,
+breaks of structure (BOS), changes of character (CHoCH), buy-/sell-side
+liquidity sweeps, volatility-scaled equal-high/low pools, displacement,
+three-candle fair-value gaps, engulfing/rejection candle anatomy, order-block
+*proxies*, and volatility/range context.
+
+Example request:
+
+```json
+{
+  "instrument": "EUR/USD",
+  "timeframe": "H1",
+  "observations": [
+    {"timestamp":"2026-01-01T00:00:00Z","open":1.1,"high":1.102,"low":1.099,"close":1.101}
+  ],
+  "config": {"pivot_left":3,"pivot_right":3,"atr_window":14}
+}
+```
+
+The request above is illustrative only; at least 20 chronologically ordered
+observations are required. The endpoint is bounded to 5,000 observations per
+request. Long histories must be paginated/replayed in chronological windows
+with sufficient overlap; do not concatenate duplicate candles or let future
+bars enter a past decision. Confirmed pivots are timestamped when confirmation
+becomes available, not when the pivot first formed. This avoids look-ahead
+bias in replay.
+
+This endpoint is an OHLC structure extractor, not a trained forecasting model,
+not an order-book reconstruction, and not a trade authorization service.
+OHLC cannot reveal actual dealer inventory, participant identity, or complete
+bid/ask depth. Order blocks are explicitly labelled proxies. Event strength
+is a bounded heuristic score, not a probability of profit. Forecasting must
+combine these features with independently validated models, calibrated
+uncertainty, transaction costs and risk authorization.
+
 ## Relationship to `fx-market-data-service`
 
 This service is a **separate, independently deployable repository**. It is not
