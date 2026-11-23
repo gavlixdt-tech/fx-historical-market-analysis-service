@@ -188,10 +188,10 @@ def analyze_market_structure(
         tolerance = current_atr * cfg.equal_level_atr_tolerance
         prior_highs = [price for idx, price in swing_highs if idx < i][-8:]
         prior_lows = [price for idx, price in swing_lows if idx < i][-8:]
-        if any(abs(bar.high-level) <= tolerance for level in prior_highs):
+        if any(abs(bar.high-level) <= tolerance for idx, level in swing_highs if idx + cfg.pivot_right <= i):
             emit(i, "equal_highs_liquidity_pool", "bearish", bar.high, 0.5,
                  {"tolerance_atr": cfg.equal_level_atr_tolerance, "matching_levels": sum(abs(bar.high-x)<=tolerance for x in prior_highs)})
-        if any(abs(bar.low-level) <= tolerance for level in prior_lows):
+        if any(abs(bar.low-level) <= tolerance for idx, level in swing_lows if idx + cfg.pivot_right <= i):
             emit(i, "equal_lows_liquidity_pool", "bullish", bar.low, 0.5,
                  {"tolerance_atr": cfg.equal_level_atr_tolerance, "matching_levels": sum(abs(bar.low-x)<=tolerance for x in prior_lows)})
 
@@ -204,6 +204,16 @@ def analyze_market_structure(
             elif (bar.close < bar.open and prior.close > prior.open):
                 emit(i, "bearish_order_block_proxy", "bearish", prior.high, 0.45,
                      {"source_candle_index": i-1, "confirmation": "following_bearish_displacement"})
+
+    # Range compression is scaled by local ATR across symbols.
+    latest_range_state = "unknown"
+    if len(bars) >= cfg.minimum_range_bars and atr[-1] and atr[-1] > 0:
+        window = bars[-cfg.minimum_range_bars:]
+        normalized_range = (max(x.high for x in window) - min(x.low for x in window)) / atr[-1]
+        latest_range_state = "compressed" if normalized_range <= 4.0 else "expanding"
+        if latest_range_state == "compressed":
+            emit(len(bars)-1, "range_consolidation", "neutral", None, 0.5,
+                 {"window_bars": cfg.minimum_range_bars, "range_atr": normalized_range})
 
     # Coarse rolling context; thresholds are distribution-relative and not
     # hard-coded price/pip constants.
@@ -236,6 +246,7 @@ def analyze_market_structure(
         "structure_direction": structure_direction,
         "swing_trend": swing_trend,
         "volatility_state": volatility_state,
+        "range_state": latest_range_state,
         "swing_highs": [{"index": i, "price": p} for i, p in swing_highs],
         "swing_lows": [{"index": i, "price": p} for i, p in swing_lows],
         "events": [asdict(e) for e in events],
