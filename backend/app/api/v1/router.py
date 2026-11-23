@@ -12,6 +12,7 @@ from backend.app.api.v1.routes import (
     analysis,
     forecasting,
     health,
+    market_structure,
     session_liquidity,
     status,
     version,
@@ -22,5 +23,6 @@ router.include_router(health.router, prefix="/health", tags=["health"])
 router.include_router(status.router, prefix="", tags=["status"])
 router.include_router(version.router, prefix="", tags=["version"])
 router.include_router(analysis.router, prefix="", tags=["analysis"])
+router.include_router(market_structure.router, prefix="", tags=["market-structure"])
 router.include_router(forecasting.router, prefix="", tags=["forecasting"])
 router.include_router(session_liquidity.router, prefix="", tags=["market-session-liquidity"])
