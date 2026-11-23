@@ -62,3 +62,26 @@ def test_market_structure_rejects_non_chronological_bars() -> None:
 def test_market_structure_rejects_insufficient_history() -> None:
     with pytest.raises(ValueError, match="insufficient observations"):
         analyze_market_structure(make_bars(10))
+
+
+def test_equal_high_liquidity_pool_uses_only_previously_confirmed_swings() -> None:
+    start = datetime(2024, 1, 1, tzinfo=UTC)
+    bars: list[Observation] = []
+    for i in range(70):
+        high = 1.105 if i in {10, 30, 40, 50} else 1.103
+        bars.append(Observation(
+            timestamp=start + timedelta(hours=i),
+            open=1.101,
+            high=high,
+            low=1.100,
+            close=1.102,
+            volume=None,
+        ))
+
+    result = analyze_market_structure(bars, StructureConfig(pivot_left=2, pivot_right=3))
+    pools = [
+        event for event in result["events"]
+        if event["kind"] == "equal_highs_liquidity_pool" and event["index"] == 40
+    ]
+    assert pools
+    assert pools[0]["evidence"]["matching_levels"] >= 1
