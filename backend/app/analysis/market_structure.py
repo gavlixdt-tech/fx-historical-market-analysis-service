@@ -186,12 +186,25 @@ def analyze_market_structure(
         # Equal highs/lows use a volatility-scaled tolerance, not a fixed pip
         # threshold, so the rule can be applied across instruments.
         tolerance = current_atr * cfg.equal_level_atr_tolerance
-        if any(abs(bar.high-level) <= tolerance for idx, level in swing_highs if idx + cfg.pivot_right <= i):
+        # Only swings whose right-side confirmation bars have closed are
+        # eligible. The current candle is compared with those known levels;
+        # future pivots never enter this event's evidence.
+        prior_highs = [
+            level for pivot_index, level in swing_highs
+            if pivot_index + cfg.pivot_right <= i
+        ]
+        prior_lows = [
+            level for pivot_index, level in swing_lows
+            if pivot_index + cfg.pivot_right <= i
+        ]
+        matching_highs = [level for level in prior_highs if abs(bar.high - level) <= tolerance]
+        matching_lows = [level for level in prior_lows if abs(bar.low - level) <= tolerance]
+        if matching_highs:
             emit(i, "equal_highs_liquidity_pool", "bearish", bar.high, 0.5,
-                 {"tolerance_atr": cfg.equal_level_atr_tolerance, "matching_levels": sum(abs(bar.high-x)<=tolerance for x in prior_highs)})
-        if any(abs(bar.low-level) <= tolerance for idx, level in swing_lows if idx + cfg.pivot_right <= i):
+                 {"tolerance_atr": cfg.equal_level_atr_tolerance, "matching_levels": len(matching_highs)})
+        if matching_lows:
             emit(i, "equal_lows_liquidity_pool", "bullish", bar.low, 0.5,
-                 {"tolerance_atr": cfg.equal_level_atr_tolerance, "matching_levels": sum(abs(bar.low-x)<=tolerance for x in prior_lows)})
+                 {"tolerance_atr": cfg.equal_level_atr_tolerance, "matching_levels": len(matching_lows)})
 
         # Engulfing candles are descriptive evidence, not stand-alone signals.
         if i >= 1:
