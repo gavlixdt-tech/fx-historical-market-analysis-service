@@ -186,14 +186,20 @@ def analyze_market_structure(
         # Equal highs/lows use a volatility-scaled tolerance, not a fixed pip
         # threshold, so the rule can be applied across instruments.
         tolerance = current_atr * cfg.equal_level_atr_tolerance
-        prior_highs = [price for idx, price in swing_highs if idx < i][-8:]
-        prior_lows = [price for idx, price in swing_lows if idx < i][-8:]
         if any(abs(bar.high-level) <= tolerance for idx, level in swing_highs if idx + cfg.pivot_right <= i):
             emit(i, "equal_highs_liquidity_pool", "bearish", bar.high, 0.5,
                  {"tolerance_atr": cfg.equal_level_atr_tolerance, "matching_levels": sum(abs(bar.high-x)<=tolerance for x in prior_highs)})
         if any(abs(bar.low-level) <= tolerance for idx, level in swing_lows if idx + cfg.pivot_right <= i):
             emit(i, "equal_lows_liquidity_pool", "bullish", bar.low, 0.5,
                  {"tolerance_atr": cfg.equal_level_atr_tolerance, "matching_levels": sum(abs(bar.low-x)<=tolerance for x in prior_lows)})
+
+        # Engulfing candles are descriptive evidence, not stand-alone signals.
+        if i >= 1:
+            previous = bars[i - 1]
+            bullish_engulf = (bar.close > bar.open and previous.close < previous.open and bar.open <= previous.close and bar.close >= previous.open)
+            bearish_engulf = (bar.close < bar.open and previous.close > previous.open and bar.open >= previous.close and bar.close <= previous.open)
+            if bullish_engulf or bearish_engulf:
+                emit(i, "bullish_engulfing" if bullish_engulf else "bearish_engulfing", "bullish" if bullish_engulf else "bearish", None, 0.55, {"previous_body_engulfed": True})
 
         # Order-block proxy: last opposite candle before a confirmed displacement.
         if body / current_atr >= cfg.displacement_atr_multiple and i >= 1:
