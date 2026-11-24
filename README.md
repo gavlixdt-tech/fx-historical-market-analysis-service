@@ -55,6 +55,14 @@ bars enter a past decision. Confirmed pivots are timestamped when confirmation
 becomes available, not when the pivot first formed. This avoids look-ahead
 bias in replay.
 
+Input integrity is enforced before structural calculations: OHLC values must be
+finite and positive, observations must be strictly chronological, timestamps
+must include an explicit timezone, and optional volume must be finite and
+non-negative. Missing volume remains valid and is represented as unavailable;
+it is never silently replaced with zero. Invalid observations fail the request
+rather than being silently dropped or repaired. Regression coverage includes
+NaN/infinite/negative volume and timezone-naive timestamps.
+
 This endpoint is an OHLC structure extractor, not a trained forecasting model,
 not an order-book reconstruction, and not a trade authorization service.
 OHLC cannot reveal actual dealer inventory, participant identity, or complete
