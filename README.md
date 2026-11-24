@@ -905,3 +905,17 @@ The checked-in [`.env.example`](./.env.example) is the canonical placeholder tem
 ## External-provider and integration boundary
 
 This service consumes historical market observations from `fx-market-data-service` and verifies the configured Service 1 attestation trust bundle. It does not own market-data vendor credentials. Configure Service 1's private Railway origin, dedicated workload API key and the out-of-band public-key trust bundle in this backend's Railway variables. The browser must call the API Gateway, not this service's Railway URL.
+
+
+## Point-in-time feature identity
+
+Historical feature construction retains the resolved source instrument on every
+non-null feature row. The feature builder accepts an optional `instrument`
+argument for backward compatibility; the service's feature-construction,
+dataset-build and experiment paths pass the instrument resolved from the
+authenticated market-data source. The `timeframe` field remains bound to the
+validated forecasting problem timeframe. This metadata is part of the feature
+row identity and must be preserved by downstream dataset manifests, model
+training and evaluation. It does not by itself establish cross-instrument
+synchronization, causal dependence, or source attestation; those require
+separately aligned observations and verified upstream evidence.
