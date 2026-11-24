@@ -507,6 +507,7 @@ def build_point_in_time_features(
     lookback: int = 20,
     point_in_time_regime_labels: Sequence[str] | None = None,
     regime_point_in_time_verified: bool = False,
+    instrument: str | None = None,
 ) -> list[dict[str, Any] | None]:
     """Build feature rows using only observations available at each reference timestamp."""
     closes = [o.close for o in observations]
@@ -572,7 +573,7 @@ def build_point_in_time_features(
         row["coverage_ratio"] = len(nums) / lookback if lookback > 0 else 0.0
         row["observation_count_to_date"] = i + 1
         # metadata
-        row["instrument"] = None
+        row["instrument"] = instrument
         row["timeframe"] = spec.input_timeframe
         # retrospective outputs are not silently treated as real-time features
         if point_in_time_regime_labels is not None:
