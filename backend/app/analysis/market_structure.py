@@ -85,6 +85,10 @@ def analyze_market_structure(
         vals = (bar.open, bar.high, bar.low, bar.close)
         if not all(isfinite(v) for v in vals) or bar.low <= 0:
             raise ValueError(f"invalid OHLC values at index {i}")
+        if bar.timestamp.tzinfo is None or bar.timestamp.utcoffset() is None:
+            raise ValueError(f"timestamp must be timezone-aware at index {i}")
+        if bar.volume is not None and (not isfinite(bar.volume) or bar.volume < 0):
+            raise ValueError(f"volume must be finite and non-negative at index {i}")
         if i and bars[i].timestamp <= bars[i-1].timestamp:
             raise ValueError("observations must be strictly chronological")
 
