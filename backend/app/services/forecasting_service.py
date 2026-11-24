@@ -125,6 +125,7 @@ class ForecastingService(AnalysisService):
             lookback=request.lookback,
             point_in_time_regime_labels=request.point_in_time_regime_labels,
             regime_point_in_time_verified=request.regime_point_in_time_verified,
+            instrument=instrument,
         )
         feature_specs = [dataclasses.asdict(s) for s in FEATURE_SPECS]
         excluded = sum(1 for r in rows if r is None)
@@ -209,7 +210,7 @@ class ForecastingService(AnalysisService):
             volatility_window=request.problem.volatility_window,
             max_features=request.problem.max_features,
         )
-        rows = build_point_in_time_features(observations, spec, lookback=request.lookback)
+        rows = build_point_in_time_features(observations, spec, lookback=request.lookback, instrument=instrument)
         try:
             labels = generate_labels(observations, spec)
         except ValueError as exc:
@@ -505,7 +506,7 @@ class ForecastingService(AnalysisService):
             max_features=request.problem.max_features,
         )
 
-        rows = build_point_in_time_features(observations, spec, lookback=request.lookback)
+        rows = build_point_in_time_features(observations, spec, lookback=request.lookback, instrument=instrument)
         try:
             labels = generate_labels(observations, spec)
         except ValueError as exc:
