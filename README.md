@@ -817,3 +817,29 @@ pipeline is not yet certified for horizontal scaling until Service 9, Service
 62 and Service 2 are configured against PostgreSQL, all existing SQLite records
 are imported safely, and end-to-end concurrency, restart, conflict and
 point-in-time replay acceptance tests pass.
+
+## CI, GHCR and Railway deployment
+
+The canonical delivery pipeline is separated into `ci.yaml`,
+`ghcr.yaml` and `railway.yaml`. CI is the mandatory test/validation gate.
+After a successful CI run on the default branch, GHCR builds the backend
+image using build context `repository root` and Dockerfile `backend/Dockerfile`,
+publishes immutable `sha-<commit>` and `latest` tags, and attaches
+BuildKit provenance and an SBOM. The Railway workflow triggers the
+preconfigured deploy hook only after successful GHCR publication.
+
+Set GitHub Actions secret `RAILWAY_DEPLOY_HOOK_URL` to this Railway
+service's deploy hook. Configure Railway to pull
+`ghcr.io/gavlixdt-tech/fx-historical-market-analysis-service:latest` or a pinned SHA tag, configure private
+GHCR access if required, and set the port and health check to the code-defined
+container values. The workflow does not create the Railway service or change
+its image source. For browser-facing applications, Vercel is the deployment
+target; browsers call only the public API Gateway versioned routes and never
+direct service Railway origins.
+
+Use the code-backed environment/provider sections above for runtime setup.
+Store all credentials in Railway secrets and keep upstream service traffic on
+private networking. Passing CI and publishing an image do not establish
+external provider availability, business-level acceptance, disaster recovery,
+or production sign-off.
+
