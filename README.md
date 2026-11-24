@@ -429,7 +429,7 @@ npm install
 npm run dev
 ```
 
-Set `VITE_API_BASE_URL` if the backend is not on the same origin.
+The frontend build-time settings are documented in [`frontend/.env.example`](frontend/.env.example). `VITE_API_BASE_URL` selects this service's own backend API base path (default `/api/v1`); `VITE_API_TIMEOUT_MS` sets the browser API client's request timeout in milliseconds (default `8000`). Both are public, non-secret Vite build-time settings: configure them in the Vercel project or local frontend environment, and never place API keys, provider credentials, or other secrets in `VITE_*` variables. Neither value is obtained from an external provider.
 
 ---
 
