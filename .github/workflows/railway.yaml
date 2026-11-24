@@ -1,0 +1,21 @@
+name: Deploy GHCR image to Railway
+on:
+  workflow_run:
+    workflows: ["Publish backend image to GHCR"]
+    types: [completed]
+    branches: [master]
+permissions:
+  contents: read
+jobs:
+  deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'master' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Trigger Railway deployment for the configured GHCR image source
+        env:
+          RAILWAY_DEPLOY_HOOK_URL: ${{ secrets.RAILWAY_DEPLOY_HOOK_URL }}
+        run: |
+          set -euo pipefail
+          test -n "${RAILWAY_DEPLOY_HOOK_URL:-}" || { echo "::error::Set RAILWAY_DEPLOY_HOOK_URL for this Railway service"; exit 1; }
+          curl --fail --silent --show-error --retry 3 --retry-all-errors --request POST "$RAILWAY_DEPLOY_HOOK_URL"
