@@ -73,6 +73,10 @@ def analyze_market_structure(
         raise ValueError("pivot windows and ATR window must be positive")
     if not 0 < cfg.equal_level_atr_tolerance <= 1:
         raise ValueError("equal_level_atr_tolerance must be in (0, 1]")
+    if not isfinite(cfg.displacement_atr_multiple) or cfg.displacement_atr_multiple <= 0:
+        raise ValueError("displacement_atr_multiple must be finite and positive")
+    if cfg.minimum_range_bars < 2:
+        raise ValueError("minimum_range_bars must be at least 2")
     if cfg.maximum_events < 1:
         raise ValueError("maximum_events must be positive")
     if len(bars) < max(cfg.pivot_left + cfg.pivot_right + 2, cfg.atr_window + 1):
