@@ -96,3 +96,26 @@ def test_market_structure_rejects_invalid_displacement_threshold(multiple: float
 def test_market_structure_rejects_invalid_range_window() -> None:
     with pytest.raises(ValueError, match="minimum_range_bars"):
         analyze_market_structure(make_bars(), StructureConfig(minimum_range_bars=1))
+
+
+@pytest.mark.parametrize("volume", [float("nan"), float("inf"), -0.01])
+def test_market_structure_rejects_invalid_volume(volume: float) -> None:
+    bars = make_bars(40)
+    bars[10] = Observation(
+        timestamp=bars[10].timestamp,
+        open=bars[10].open, high=bars[10].high, low=bars[10].low,
+        close=bars[10].close, volume=volume,
+    )
+    with pytest.raises(ValueError, match="volume must be finite and non-negative"):
+        analyze_market_structure(bars)
+
+
+def test_market_structure_rejects_naive_timestamps() -> None:
+    bars = make_bars(40)
+    bars[10] = Observation(
+        timestamp=bars[10].timestamp.replace(tzinfo=None),
+        open=bars[10].open, high=bars[10].high, low=bars[10].low,
+        close=bars[10].close,
+    )
+    with pytest.raises(ValueError, match="timestamp must be timezone-aware"):
+        analyze_market_structure(bars)
