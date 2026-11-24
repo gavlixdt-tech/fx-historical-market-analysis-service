@@ -85,3 +85,14 @@ def test_equal_high_liquidity_pool_uses_only_previously_confirmed_swings() -> No
     ]
     assert pools
     assert pools[0]["evidence"]["matching_levels"] >= 1
+
+
+@pytest.mark.parametrize("multiple", [0.0, -1.0, float("nan"), float("inf")])
+def test_market_structure_rejects_invalid_displacement_threshold(multiple: float) -> None:
+    with pytest.raises(ValueError, match="displacement_atr_multiple"):
+        analyze_market_structure(make_bars(), StructureConfig(displacement_atr_multiple=multiple))
+
+
+def test_market_structure_rejects_invalid_range_window() -> None:
+    with pytest.raises(ValueError, match="minimum_range_bars"):
+        analyze_market_structure(make_bars(), StructureConfig(minimum_range_bars=1))
