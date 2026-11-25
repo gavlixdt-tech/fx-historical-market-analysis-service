@@ -996,3 +996,6 @@ The endpoint reuses the existing Service 1 origin/API key, provider registry, an
 
 
 Production access remains fail-closed until the Service 64 security/access service issues an approved workload identity and outbound grant for this historical provider operation. A configured provider ID and API key alone do not bypass that control. In research-simulation mode, the provider must still be explicitly registered, configured, advertise historical-candle capability, and pass a live connection check.
+
+
+The canonical historical instrument scope is `surveillance-instruments/2`; it includes BTC/USD alongside XAU/USD and the eight USD-major pairs. BTC/USD is retained as a crypto-spot instrument and must use crypto-spot provider provenance rather than being relabelled as fiat FX.
