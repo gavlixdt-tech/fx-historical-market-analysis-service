@@ -7,7 +7,7 @@ import time
 import uuid
 from datetime import UTC
 
-from backend.app.analysis.historical_analogues import retrieve_historical_analogues
+from backend.app.analysis.historical_analogues import FEATURE_SET_VERSION, retrieve_historical_analogues
 from backend.app.analysis.observations import Observation
 from backend.app.analysis.data_quality import validate_historical_payload
 from backend.app.clients.historical_attestation import verify_historical_dataset_attestation
@@ -78,6 +78,12 @@ class HistoricalAnalogueService:
             or not data.coverage.complete
             or data.coverage.rejected_count
             or data.coverage.duplicate_count
+            or data.coverage.returned_count != len(data.candles)
+            or data.coverage.valid_count != len(data.candles)
+            or data.validation_summary.total_received != len(data.candles)
+            or data.validation_summary.valid != len(data.candles)
+            or data.validation_summary.rejected != 0
+            or data.validation_summary.duplicates != 0
             or data.pagination.has_more
         ):
             raise ValidationError(
@@ -206,7 +212,7 @@ class HistoricalAnalogueService:
             top_k=request.top_k,
             minimum_analogue_count=request.minimum_analogue_count,
             similarity_method="robust_mad_scaled_weighted_euclidean",
-            feature_set_version="ohlc-candle-anatomy-v1",
+            feature_set_version=FEATURE_SET_VERSION,
             analogues=analysis["analogues"],
             outcome_comparison=analysis["outcome_comparison"],
             dataset_fingerprint=fingerprint,
