@@ -70,6 +70,7 @@ class HistoricalAnalogueResponseData(BaseModel):
     minimum_analogue_count: int
     similarity_method: str
     feature_set_version: str
+    volume_context: dict[str, Any] = Field(default_factory=dict)
     analogues: list[dict[str, Any]] = Field(default_factory=list)
     outcome_comparison: list[dict[str, Any]] = Field(default_factory=list)
     dataset_fingerprint: str
