@@ -919,3 +919,53 @@ row identity and must be preserved by downstream dataset manifests, model
 training and evaluation. It does not by itself establish cross-instrument
 synchronization, causal dependence, or source attestation; those require
 separately aligned observations and verified upstream evidence.
+
+
+## Historical analogue retrieval and matured outcome comparison
+
+Service 2 exposes a separate provider-backed research endpoint:
+
+`POST /api/v1/analysis/historical-analogues`
+
+Example request:
+
+```json
+{
+  "instrument": "EUR/USD",
+  "timeframe": "M1",
+  "provider_id": "twelve-data",
+  "price_basis": "vendor_defined",
+  "end": "2026-11-25T07:00:00Z",
+  "limit": 5000,
+  "context_lookback": 20,
+  "outcome_horizons": [1, 3, 5, 10, 20],
+  "top_k": 25,
+  "minimum_analogue_count": 10
+}
+```
+
+The request deliberately accepts a provider identifier and source selection, not caller-supplied candle arrays. Service 2 resolves a configured real historical-candle provider through Service 1, checks instrument/provider capability and connection, validates the full candle dataset, and verifies Service 1's purpose-separated Ed25519 dataset attestation against its out-of-band public-key trust bundle when required. Test providers are rejected for this endpoint.
+
+### Similarity methodology
+
+- Query context: the latest `context_lookback` fully closed candles at or before the requested cutoff.
+- Candidate history: same instrument, timeframe, provider, and price basis.
+- Features: cumulative log return, realized volatility, efficiency ratio, normalized candle range, body/range, upper/lower wick ratios, positive-return fraction, recent/full volatility ratio, and maximum drawdown.
+- Distance: weighted Euclidean distance after robust median/MAD scaling across historical candidate windows.
+- Similarity score: `1 / (1 + robust_distance)`. This ranks shape resemblance; it is **not a probability**.
+- Leakage barrier: each candidate's entire maximum outcome horizon must mature strictly before the current query window begins. The top analogue intervals are selected to be non-overlapping.
+- Outcomes: forward close-to-close return, maximum upside excursion, and maximum downside excursion for each requested horizon.
+- Comparison: nearest-neighbour sample statistics are compared with a historical baseline. The baseline intentionally reports that its candidate windows overlap; no p-value or statistical-significance claim is made.
+
+The response includes analogue timestamps, feature vectors, similarity scores, per-horizon matured outcomes, empirical distribution summaries, baseline differences, source-quality findings, dataset fingerprint, attestation status, and explicit limitations.
+
+### Research and safety boundaries
+
+- Only finalized, valid, complete, chronologically unique candles are accepted.
+- A verified Service 1 signature authenticates the configured Service 1 signer and exact dataset projection; it does not prove the upstream vendor digitally signed the prices or independently prove the original publication time.
+- If the signature is missing or the configured trust key is unavailable in non-production, the result is marked partial and descriptive only. Production requires the configured attestation trust bundle.
+- The algorithm uses OHLC candle anatomy only. It does not infer hidden orders, institutional identity, dealer inventory, or global liquidity.
+- Outcome distributions are descriptive historical samples, not calibrated future probabilities or expected returns.
+- `forecast_eligible=false`, `confidence=null`, `prediction_authorized=false`, and `execution_authorized=false` are invariant response fields.
+
+The endpoint reuses the existing Service 1 origin/API key, provider registry, and historical-attestation settings. No new environment variables are introduced.
