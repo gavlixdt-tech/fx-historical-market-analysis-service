@@ -6,7 +6,6 @@ import json
 import time
 import uuid
 from datetime import UTC
-from typing import Any
 
 from backend.app.analysis.historical_analogues import retrieve_historical_analogues
 from backend.app.analysis.observations import Observation
