@@ -7,9 +7,10 @@ from __future__ import annotations
 
 import hashlib
 import math
+from collections.abc import Sequence
 from datetime import UTC
 from statistics import median, pstdev, stdev
-from typing import Any, Sequence
+from typing import Any
 
 from backend.app.analysis.observations import Observation
 
