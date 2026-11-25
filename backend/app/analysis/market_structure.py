@@ -6,9 +6,9 @@ All event detection uses data available at or before the event candle.
 """
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from math import isfinite
-from collections.abc import Sequence
 from statistics import median
 
 from backend.app.analysis.observations import Observation
