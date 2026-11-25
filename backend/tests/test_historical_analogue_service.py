@@ -28,6 +28,12 @@ def _history(now: datetime) -> UpstreamHistoricalCandleData:
         close = previous * math.exp(change)
         open_time = start + timedelta(minutes=index)
         candles.append(UpstreamHistoricalCandle(
+            provider_id="twelve-data",
+            instrument="EUR/USD",
+            base_currency="EUR",
+            quote_currency="USD",
+            timeframe="M1",
+            price_basis="vendor_defined",
             open_time=open_time,
             close_time=open_time + timedelta(minutes=1),
             open=str(previous),
