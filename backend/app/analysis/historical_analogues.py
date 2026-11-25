@@ -6,7 +6,6 @@ forecast, causal explanation, or authorization to trade.
 from __future__ import annotations
 
 import hashlib
-import json
 import math
 from datetime import UTC
 from statistics import median, pstdev, stdev
@@ -144,6 +143,17 @@ def retrieve_historical_analogues(
     """Rank past windows and compare their fully matured future outcomes."""
     if not bars:
         raise ValueError("historical analogue search requires observations")
+    if len(bars) < context_lookback:
+        return {
+            "status": "insufficient_data",
+            "candidate_window_count": 0,
+            "analogue_count": 0,
+            "query_start_index": 0,
+            "query_end_index": len(bars) - 1,
+            "query_features": {},
+            "analogues": [],
+            "outcome_comparison": [],
+        }
     if any(bars[index].timestamp >= bars[index + 1].timestamp for index in range(len(bars) - 1)):
         raise ValueError("historical analogue observations must be strictly chronological")
     if context_lookback < 10 or context_lookback > 100:
