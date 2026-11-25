@@ -76,7 +76,7 @@ def _window_features(bars: Sequence[Observation], start: int, end: int, *, inclu
     if include_volume_features:
         volumes = [float(bar.volume) for bar in window if bar.volume is not None]
         positive_volumes = [value for value in volumes if value > 0]
-        volume_baseline = median(positive_volumes)
+        volume_baseline = median(positive_volumes) if positive_volumes else 1.0
         relative_volumes = [value / volume_baseline for value in volumes]
         log_relative_volumes = [math.log1p(value) for value in relative_volumes]
         volume_mean = sum(volumes) / len(volumes)
