@@ -172,6 +172,28 @@ def retrieve_historical_analogues(
     """Rank past windows and compare their fully matured future outcomes."""
     if not bars:
         raise ValueError("historical analogue search requires observations")
+    volume_kinds = {bar.volume_kind for bar in bars}
+    volume_values_complete = all(
+        bar.volume is not None and math.isfinite(float(bar.volume)) and float(bar.volume) >= 0
+        for bar in bars
+    )
+    volume_semantics = next(iter(volume_kinds)) if len(volume_kinds) == 1 else None
+    include_volume_features = (
+        volume_values_complete
+        and volume_semantics in _SUPPORTED_VOLUME_KINDS
+        and any(float(bar.volume or 0.0) > 0 for bar in bars)
+    )
+    volume_context = {
+        "status": "AVAILABLE_SOURCE_SPECIFIC" if include_volume_features else "WITHHELD",
+        "volume_semantics": volume_semantics,
+        "observation_count": len(bars),
+        "complete_volume_observation_count": sum(bar.volume is not None for bar in bars),
+        "interpretation": (
+            "Volume features are source/provider-specific participation proxies, not consolidated global FX volume, aggressor delta, or evidence of participant identity."
+            if include_volume_features else
+            "Volume-derived similarity features are withheld because the full history lacks complete, consistently typed, supported volume semantics."
+        ),
+    }
     if len(bars) < context_lookback:
         return {
             "status": "insufficient_data",
