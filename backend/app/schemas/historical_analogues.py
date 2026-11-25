@@ -37,6 +37,8 @@ class HistoricalAnalogueRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_window(self) -> HistoricalAnalogueRequest:
+        if self.price_basis == PriceBasis.UNKNOWN:
+            raise ValueError("historical analogue search requires an explicit price basis")
         if self.start is not None and self.start >= self.end:
             raise ValueError("start must precede end")
         if self.end > datetime.now(UTC) + timedelta(minutes=5):
