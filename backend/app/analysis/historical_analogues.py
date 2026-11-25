@@ -202,6 +202,8 @@ def retrieve_historical_analogues(
             "query_start_index": 0,
             "query_end_index": len(bars) - 1,
             "query_features": {},
+            "feature_set_version": FEATURE_SET_VERSION,
+            "volume_context": volume_context,
             "analogues": [],
             "outcome_comparison": [],
         }
@@ -224,13 +226,22 @@ def retrieve_historical_analogues(
             "analogue_count": 0,
             "query_start_index": query_start,
             "query_end_index": query_end,
-            "query_features": _window_features(bars, query_start, query_end),
+            "query_features": _window_features(
+                bars, query_start, query_end, include_volume_features=include_volume_features
+            ),
+            "feature_set_version": FEATURE_SET_VERSION,
+            "volume_context": volume_context,
             "analogues": [],
             "outcome_comparison": [],
         }
 
-    query_features = _window_features(bars, query_start, query_end)
+    query_features = _window_features(
+        bars, query_start, query_end, include_volume_features=include_volume_features
+    )
     feature_names = list(query_features)
+    feature_weights = _FEATURE_WEIGHTS + (
+        _VOLUME_FEATURE_WEIGHTS if include_volume_features else ()
+    )
     query_vector = [query_features[name] for name in feature_names]
     candidates: list[dict[str, Any]] = []
     feature_vectors: list[list[float]] = []
@@ -238,7 +249,9 @@ def retrieve_historical_analogues(
 
     for start in range(last_candidate_start + 1):
         end = start + context_lookback - 1
-        features = _window_features(bars, start, end)
+        features = _window_features(
+            bars, start, end, include_volume_features=include_volume_features
+        )
         vector = [features[name] for name in feature_names]
         candidates.append({"start": start, "end": end, "features": features})
         feature_vectors.append(vector)
@@ -247,7 +260,7 @@ def retrieve_historical_analogues(
 
     scales = _robust_scales(feature_vectors + [query_vector])
     for candidate, vector in zip(candidates, feature_vectors, strict=True):
-        distance = _distance(query_vector, vector, scales)
+        distance = _distance(query_vector, vector, scales, feature_weights)
         candidate["distance"] = distance
         candidate["similarity_score"] = 1.0 / (1.0 + distance)
 
@@ -323,6 +336,8 @@ def retrieve_historical_analogues(
         "query_start_index": query_start,
         "query_end_index": query_end,
         "query_features": query_features,
+        "feature_set_version": FEATURE_SET_VERSION,
+        "volume_context": volume_context,
         "analogues": analogues,
         "outcome_comparison": comparison,
     }
