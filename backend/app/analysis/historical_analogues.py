@@ -14,8 +14,10 @@ from typing import Any, Sequence
 from backend.app.analysis.observations import Observation
 
 
-FEATURE_SET_VERSION = "ohlc-candle-anatomy-v1"
+FEATURE_SET_VERSION = "ohlc-candle-anatomy-volume-aware-v2"
 _FEATURE_WEIGHTS = (1.2, 1.5, 1.0, 1.2, 0.8, 0.8, 0.8, 1.0, 1.2, 1.0)
+_VOLUME_FEATURE_WEIGHTS = (1.0, 0.8, 0.8, 1.0)
+_SUPPORTED_VOLUME_KINDS = frozenset({"exchange_traded", "broker_tick", "venue_reported"})
 
 
 def _returns(closes: Sequence[float]) -> list[float]:
@@ -37,7 +39,7 @@ def _max_drawdown(closes: Sequence[float]) -> float:
     return maximum
 
 
-def _window_features(bars: Sequence[Observation], start: int, end: int) -> dict[str, float]:
+def _window_features(bars: Sequence[Observation], start: int, end: int, *, include_volume_features: bool = False) -> dict[str, float]:
     window = bars[start : end + 1]
     closes = [bar.close for bar in window]
     returns = _returns(closes)
@@ -59,7 +61,7 @@ def _window_features(bars: Sequence[Observation], start: int, end: int) -> dict[
     recent_returns = returns[-min(5, len(returns)) :]
     recent_volatility = stdev(recent_returns) if len(recent_returns) > 1 else 0.0
     volatility_ratio = recent_volatility / volatility if volatility > 1e-12 else 0.0
-    return {
+    features = {
         "cumulative_log_return": cumulative,
         "realized_volatility": volatility,
         "efficiency_ratio": abs(cumulative) / absolute_move if absolute_move > 1e-12 else 0.0,
@@ -71,6 +73,33 @@ def _window_features(bars: Sequence[Observation], start: int, end: int) -> dict[
         "recent_to_full_volatility_ratio": volatility_ratio,
         "maximum_drawdown": _max_drawdown(closes),
     }
+    if include_volume_features:
+        volumes = [float(bar.volume) for bar in window if bar.volume is not None]
+        positive_volumes = [value for value in volumes if value > 0]
+        volume_baseline = median(positive_volumes)
+        relative_volumes = [value / volume_baseline for value in volumes]
+        log_relative_volumes = [math.log1p(value) for value in relative_volumes]
+        volume_mean = sum(volumes) / len(volumes)
+        volume_cv = pstdev(volumes) / volume_mean if len(volumes) > 1 and volume_mean > 1e-12 else 0.0
+        paired_returns = returns[-len(relative_volumes[1:]):] if len(relative_volumes) > 1 else []
+        paired_log_volume = log_relative_volumes[1:]
+        if len(paired_returns) > 1 and len(paired_returns) == len(paired_log_volume):
+            mean_return = sum(paired_returns) / len(paired_returns)
+            mean_volume = sum(paired_log_volume) / len(paired_log_volume)
+            covariance = sum((value - mean_return) * (activity - mean_volume) for value, activity in zip(paired_returns, paired_log_volume, strict=True))
+            return_variance = sum((value - mean_return) ** 2 for value in paired_returns)
+            volume_variance = sum((value - mean_volume) ** 2 for value in paired_log_volume)
+            volume_return_correlation = covariance / math.sqrt(return_variance * volume_variance) if return_variance > 1e-24 and volume_variance > 1e-24 else 0.0
+        else:
+            volume_return_correlation = 0.0
+        positive_activity = [abs(change) / activity for change, activity in zip(returns, relative_volumes[1:], strict=True) if activity > 0]
+        features.update({
+            "mean_log_relative_volume": sum(log_relative_volumes) / len(log_relative_volumes),
+            "volume_coefficient_of_variation": volume_cv,
+            "volume_signed_return_correlation": volume_return_correlation,
+            "absolute_return_per_relative_volume": sum(positive_activity) / len(positive_activity) if positive_activity else 0.0,
+        })
+    return features
 
 
 def _robust_scales(vectors: list[list[float]]) -> list[float]:
@@ -85,12 +114,12 @@ def _robust_scales(vectors: list[list[float]]) -> list[float]:
     return scales
 
 
-def _distance(left: list[float], right: list[float], scales: list[float]) -> float:
+def _distance(left: list[float], right: list[float], scales: list[float], weights: tuple[float, ...]) -> float:
     weighted = [
         weight * ((a - b) / scale) ** 2
-        for a, b, scale, weight in zip(left, right, scales, _FEATURE_WEIGHTS, strict=True)
+        for a, b, scale, weight in zip(left, right, scales, weights, strict=True)
     ]
-    return math.sqrt(sum(weighted) / sum(_FEATURE_WEIGHTS))
+    return math.sqrt(sum(weighted) / sum(weights))
 
 
 def _quantile(values: list[float], probability: float) -> float | None:
