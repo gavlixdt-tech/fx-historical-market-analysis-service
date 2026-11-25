@@ -7,9 +7,9 @@ import time
 import uuid
 from datetime import UTC
 
+from backend.app.analysis.data_quality import validate_historical_payload
 from backend.app.analysis.historical_analogues import FEATURE_SET_VERSION, retrieve_historical_analogues
 from backend.app.analysis.observations import Observation
-from backend.app.analysis.data_quality import validate_historical_payload
 from backend.app.clients.historical_attestation import verify_historical_dataset_attestation
 from backend.app.clients.market_data import MarketDataClient
 from backend.app.core.config import Settings
