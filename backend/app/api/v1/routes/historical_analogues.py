@@ -8,8 +8,8 @@ from backend.app.schemas.historical_analogues import (
     HistoricalAnalogueRequest,
     HistoricalAnalogueResponseData,
 )
-from backend.app.services.historical_analogue_service import HistoricalAnalogueService
 from backend.app.services.health_service import build_meta
+from backend.app.services.historical_analogue_service import HistoricalAnalogueService
 
 router = APIRouter()
 
