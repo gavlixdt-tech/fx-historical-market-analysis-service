@@ -29,6 +29,88 @@ def _bars(count: int) -> list[Observation]:
     return values
 
 
+def test_volume_features_are_used_only_with_complete_supported_source_semantics() -> None:
+    source_bars = _bars(500)
+    bars = [
+        Observation(
+            timestamp=bar.timestamp,
+            open=bar.open,
+            high=bar.high,
+            low=bar.low,
+            close=bar.close,
+            volume=1000.0 + 250.0 * (1.0 + math.sin(index / 4.0)),
+            volume_kind="broker_tick",
+        )
+        for index, bar in enumerate(source_bars)
+    ]
+    result = retrieve_historical_analogues(
+        bars,
+        instrument="EUR/USD",
+        timeframe="M1",
+        context_lookback=20,
+        outcome_horizons=[1, 3, 5, 10, 20],
+        top_k=10,
+        minimum_analogue_count=5,
+    )
+    assert result["status"] == "completed"
+    assert result["volume_context"]["status"] == "AVAILABLE_SOURCE_SPECIFIC"
+    assert result["volume_context"]["volume_semantics"] == "broker_tick"
+    assert "mean_log_relative_volume" in result["query_features"]
+    assert "volume_signed_return_correlation" in result["query_features"]
+    assert result["feature_set_version"] == "ohlc-candle-anatomy-volume-aware-v2"
+
+
+def test_unknown_or_incomplete_volume_is_never_used_as_traded_volume() -> None:
+    source_bars = _bars(500)
+    unknown = [
+        Observation(
+            timestamp=bar.timestamp,
+            open=bar.open,
+            high=bar.high,
+            low=bar.low,
+            close=bar.close,
+            volume=1000.0 + index,
+            volume_kind="unknown",
+        )
+        for index, bar in enumerate(source_bars)
+    ]
+    result = retrieve_historical_analogues(
+        unknown,
+        instrument="EUR/USD",
+        timeframe="M1",
+        context_lookback=20,
+        outcome_horizons=[1, 3, 5, 10, 20],
+        top_k=10,
+        minimum_analogue_count=5,
+    )
+    assert result["volume_context"]["status"] == "WITHHELD"
+    assert "mean_log_relative_volume" not in result["query_features"]
+
+    incomplete = [
+        Observation(
+            timestamp=bar.timestamp,
+            open=bar.open,
+            high=bar.high,
+            low=bar.low,
+            close=bar.close,
+            volume=(1000.0 + index) if index != 250 else None,
+            volume_kind="exchange_traded",
+        )
+        for index, bar in enumerate(source_bars)
+    ]
+    incomplete_result = retrieve_historical_analogues(
+        incomplete,
+        instrument="EUR/USD",
+        timeframe="M1",
+        context_lookback=20,
+        outcome_horizons=[1, 3, 5, 10, 20],
+        top_k=10,
+        minimum_analogue_count=5,
+    )
+    assert incomplete_result["volume_context"]["status"] == "WITHHELD"
+    assert "mean_log_relative_volume" not in incomplete_result["query_features"]
+
+
 def test_historical_analogues_exclude_query_and_future_outcome_overlap() -> None:
     bars = _bars(500)
     result = retrieve_historical_analogues(
