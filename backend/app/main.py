@@ -44,6 +44,7 @@ from backend.app.observability.metrics import SERVICE_UP, metrics_response
 from backend.app.observability.tracing import init_observability
 from backend.app.services.forecasting_service import ForecastingService as AnalysisService
 from backend.app.services.health_service import HealthService
+from backend.app.services.historical_analogue_service import HistoricalAnalogueService
 
 logger = logging.getLogger("fx-historical-market-analysis-service")
 
@@ -68,6 +69,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         upstream_client=app.state.upstream_client,
     )
     app.state.analysis_service = AnalysisService(
+        settings=settings,
+        upstream_client=app.state.upstream_client,
+    )
+    app.state.historical_analogue_service = HistoricalAnalogueService(
         settings=settings,
         upstream_client=app.state.upstream_client,
     )
