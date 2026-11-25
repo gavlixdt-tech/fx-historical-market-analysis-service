@@ -318,7 +318,10 @@ def retrieve_historical_analogues(
             selected_outcomes[horizon].append(values["forward_return"])
         start_time = bars[start].timestamp.astimezone(UTC).isoformat()
         end_time = bars[end].timestamp.astimezone(UTC).isoformat()
-        analogue_key = f"{instrument}|{timeframe}|{start_time}|{end_time}"
+        analogue_key = (
+            f"{instrument}|{timeframe}|{FEATURE_SET_VERSION}|{volume_semantics}|"
+            f"{start_time}|{end_time}"
+        )
         analogues.append({
             "rank": rank,
             "analogue_id": hashlib.sha256(analogue_key.encode()).hexdigest(),
