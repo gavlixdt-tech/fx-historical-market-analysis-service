@@ -128,6 +128,7 @@ class HistoricalAnalogueService:
                 low=float(candle.low),
                 close=float(candle.close),
                 volume=float(candle.volume) if candle.volume is not None else None,
+                volume_kind=candle.volume_kind,
             ))
         if any(observations[index].timestamp >= observations[index + 1].timestamp for index in range(len(observations) - 1)):
             raise ValidationError("Historical analogue candles must have unique chronological close times.")
@@ -154,6 +155,7 @@ class HistoricalAnalogueService:
                     "low": item.low,
                     "close": item.close,
                     "volume": item.volume,
+                    "volume_kind": item.volume_kind,
                 }
                 for item in observations
             ],
@@ -179,6 +181,10 @@ class HistoricalAnalogueService:
             )
         if analysis["status"] != "completed":
             warnings.append("The retrieved history does not contain the minimum number of independent matured analogues.")
+        if analysis.get("volume_context", {}).get("status") == "WITHHELD":
+            warnings.append(
+                "Historical analogue similarity excludes volume features because the complete dataset does not expose supported, consistent volume semantics."
+            )
         status = (
             "completed"
             if analysis["status"] == "completed" and integrity_status == "verified"
@@ -192,6 +198,7 @@ class HistoricalAnalogueService:
             "Top analogues are selected as non-overlapping windows; the baseline distribution includes overlapping candidate windows and is descriptive only.",
             "Historical vendor availability remains assumed from candle close; a verified Service 1 signature authenticates the configured Service 1 signer, not the upstream vendor or original publication time.",
             "OHLC candle anatomy cannot identify institutional participants, dealer inventory, or hidden liquidity.",
+            "Volume features, when available, are source-specific participation proxies and cannot be interpreted as consolidated spot-FX volume or aggressor-side order flow.",
             "No prediction or execution authority is granted by this research endpoint.",
         ]
         return HistoricalAnalogueResponseData(
@@ -212,7 +219,8 @@ class HistoricalAnalogueService:
             top_k=request.top_k,
             minimum_analogue_count=request.minimum_analogue_count,
             similarity_method="robust_mad_scaled_weighted_euclidean",
-            feature_set_version=FEATURE_SET_VERSION,
+            feature_set_version=str(analysis.get("feature_set_version", FEATURE_SET_VERSION)),
+            volume_context=analysis.get("volume_context", {}),
             analogues=analysis["analogues"],
             outcome_comparison=analysis["outcome_comparison"],
             dataset_fingerprint=fingerprint,
