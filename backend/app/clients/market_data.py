@@ -531,7 +531,7 @@ class MarketDataClient:
             Timeframe(timeframe)
         except ValueError as exc:
             raise UpstreamError("The requested timeframe is not supported.") from exc
-        if price_basis not in {PriceBasis.BID, PriceBasis.ASK, PriceBasis.MIDPOINT}:
+        if price_basis not in {PriceBasis.BID, PriceBasis.ASK, PriceBasis.MIDPOINT, PriceBasis.VENDOR_DEFINED}:
             raise UpstreamError("The requested price basis is not supported.")
         if start is not None and (start.tzinfo is None or start.utcoffset() is None):
             raise UpstreamError("The requested start timestamp must include a timezone.")
