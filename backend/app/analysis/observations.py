@@ -15,6 +15,7 @@ class Observation:
     low: float
     close: float
     volume: float | None = None
+    volume_kind: str | None = None
 
     def __post_init__(self) -> None:
         if self.high < self.low:
