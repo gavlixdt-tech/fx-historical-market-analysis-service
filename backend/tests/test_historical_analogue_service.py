@@ -19,7 +19,7 @@ from backend.app.schemas.upstream import (
 from backend.app.services import historical_analogue_service as service_module
 
 
-def _history(now: datetime) -> UpstreamHistoricalCandleData:
+def _history(now: datetime, *, with_volume: bool = False) -> UpstreamHistoricalCandleData:
     candles = []
     previous = 100.0
     start = now - timedelta(minutes=501)
@@ -40,9 +40,9 @@ def _history(now: datetime) -> UpstreamHistoricalCandleData:
             high=str(max(previous, close) * 1.0005),
             low=str(min(previous, close) * 0.9995),
             close=str(close),
-            volume=None,
+            volume=str(1000 + index) if with_volume else None,
             price_basis=PriceBasis.VENDOR_DEFINED,
-            volume_kind=None,
+            volume_kind="broker_tick" if with_volume else None,
             source="twelve-data",
             retrieved_at=now,
             completeness="complete",
@@ -91,7 +91,7 @@ def _history(now: datetime) -> UpstreamHistoricalCandleData:
 
 def test_historical_analogue_service_uses_provider_history_and_requires_attestation(monkeypatch: Any) -> None:
     now = datetime.now(UTC)
-    data = _history(now)
+    data = _history(now, with_volume=True)
     provider = SimpleNamespace(provider_id="twelve-data", provider_type=SimpleNamespace(value="real"))
 
     async def fake_provider(*args: Any, **kwargs: Any) -> Any:
@@ -143,6 +143,8 @@ def test_historical_analogue_service_uses_provider_history_and_requires_attestat
     assert result.status == "completed"
     assert result.source_integrity_status == "verified"
     assert result.analogue_count >= 5
+    assert result.volume_context["status"] == "AVAILABLE_SOURCE_SPECIFIC"
+    assert result.volume_context["volume_semantics"] == "broker_tick"
     assert result.forecast_eligible is False
     assert result.confidence is None
     assert result.prediction_authorized is False
