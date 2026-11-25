@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-GFX_INSTRUMENT_REGISTRY_VERSION = "surveillance-instruments/1"
+GFX_INSTRUMENT_REGISTRY_VERSION = "surveillance-instruments/2"
 SUPPORTED_GFX_INSTRUMENTS = frozenset(
     {
         "XAU/USD",
@@ -15,6 +15,7 @@ SUPPORTED_GFX_INSTRUMENTS = frozenset(
         "USD/CAD",
         "AUD/USD",
         "NZD/USD",
+        "BTC/USD",
     }
 )
 
