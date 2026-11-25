@@ -969,3 +969,6 @@ The response includes analogue timestamps, feature vectors, similarity scores, p
 - `forecast_eligible=false`, `confidence=null`, `prediction_authorized=false`, and `execution_authorized=false` are invariant response fields.
 
 The endpoint reuses the existing Service 1 origin/API key, provider registry, and historical-attestation settings. No new environment variables are introduced.
+
+
+Production access remains fail-closed until the Service 64 security/access service issues an approved workload identity and outbound grant for this historical provider operation. A configured provider ID and API key alone do not bypass that control. In research-simulation mode, the provider must still be explicitly registered, configured, advertise historical-candle capability, and pass a live connection check.
