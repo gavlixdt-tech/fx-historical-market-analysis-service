@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from math import isfinite
+from collections.abc import Sequence
 from statistics import median
-from typing import Sequence
 
 from backend.app.analysis.observations import Observation
 
