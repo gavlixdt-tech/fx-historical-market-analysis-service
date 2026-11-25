@@ -63,6 +63,30 @@ it is never silently replaced with zero. Invalid observations fail the request
 rather than being silently dropped or repaired. Regression coverage includes
 NaN/infinite/negative volume and timezone-naive timestamps.
 
+## Source-aware volume features in historical analogues
+
+Historical analogue retrieval uses the versioned
+`ohlc-candle-anatomy-volume-aware-v2` feature set. When the complete retrieved
+dataset carries one consistent, explicitly supported volume semantic
+(`exchange_traded`, `broker_tick`, or `venue_reported`) and every observation
+has a valid volume value, similarity additionally considers median-normalized
+relative activity, volume dispersion, volume/signed-return association, and
+absolute price displacement per unit of relative activity.
+
+Volume features are withheld when volume is absent, incomplete, mixed, or
+semantically unknown. The response includes `volume_context` so consumers can
+see whether the features were used and which volume semantic was supplied.
+Broker tick activity remains a provider-specific activity proxy; exchange- or
+venue-reported volume remains venue-specific. None is represented as
+consolidated global spot-FX volume, aggressor-side delta, institutional
+positioning, or proof of participant intent. The feature set does not infer
+buy/sell direction from unsigned volume.
+
+The complete source volume semantic is included in the dataset fingerprint,
+so otherwise identical OHLC datasets with different volume semantics cannot
+share an identity. The historical outcome-maturity barrier and non-overlapping
+selected-analogue policy remain unchanged.
+
 This endpoint is an OHLC structure extractor, not a trained forecasting model,
 not an order-book reconstruction, and not a trade authorization service.
 OHLC cannot reveal actual dealer inventory, participant identity, or complete
