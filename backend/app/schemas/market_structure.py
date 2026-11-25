@@ -1,7 +1,6 @@
 """API contracts for causal market-structure analysis."""
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -30,7 +29,7 @@ class MarketStructureRequest(BaseModel):
     @model_validator(mode="after")
     def chronological(self) -> MarketStructureRequest:
         timestamps = [item.timestamp for item in self.observations]
-        if any(right <= left for left, right in zip(timestamps, timestamps[1:])):
+        if any(right <= left for left, right in zip(timestamps, timestamps[1:], strict=False)):
             raise ValueError("observations must be strictly chronological and unique")
         return self
 
