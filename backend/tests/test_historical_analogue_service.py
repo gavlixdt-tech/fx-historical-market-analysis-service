@@ -33,7 +33,6 @@ def _history(now: datetime, *, with_volume: bool = False) -> UpstreamHistoricalC
             base_currency="EUR",
             quote_currency="USD",
             timeframe="M1",
-            price_basis="vendor_defined",
             open_time=open_time,
             close_time=open_time + timedelta(minutes=1),
             open=str(previous),
