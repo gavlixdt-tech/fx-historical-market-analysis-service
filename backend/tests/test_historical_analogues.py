@@ -129,7 +129,6 @@ def test_historical_analogues_exclude_query_and_future_outcome_overlap() -> None
     selected_intervals: list[tuple[int, int]] = []
     for analogue in result["analogues"]:
         start = next(i for i, bar in enumerate(bars) if bar.timestamp.isoformat() == analogue["window_start"])
-        end = next(i for i, bar in enumerate(bars) if bar.timestamp.isoformat() == analogue["window_end"])
         outcome_end = next(i for i, bar in enumerate(bars) if bar.timestamp.isoformat() == analogue["outcome_window_end"])
         assert outcome_end < query_start
         assert 0.0 <= analogue["similarity_score"] <= 1.0
